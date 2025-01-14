@@ -308,7 +308,8 @@ class TestConcurrentAuth(BaseAPITestCase):
                 'password': 'wrong_password'
             })
             self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-            self.assertIn('用户名或密码错误', response.data['non_field_errors'][0])
+            self.assertEqual(response.data['message'], '登录失败')
+            self.assertIn('non_field_errors', response.data['errors'])
 
         # 第6次尝试登录，即使使用正确密码也应该被锁定
         response = self.client.post(self.login_url, {
@@ -316,7 +317,8 @@ class TestConcurrentAuth(BaseAPITestCase):
             'password': self.test_password
         })
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('登录失败次数过多', response.data['non_field_errors'][0])
+        self.assertEqual(response.data['message'], '登录失败')
+        self.assertIn('non_field_errors', response.data['errors'])
 
     def test_concurrent_password_changes(self):
         """测试并发修改密码"""
