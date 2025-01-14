@@ -1,0 +1,59 @@
+[
+    {
+        "model": "monitoring.alertnotificationconfig",
+        "pk": 1,
+        "fields": {
+            "user": 1,
+            "notification_type": "email",
+            "name": "管理员邮件通知",
+            "config": {
+                "email": "admin@example.com",
+                "subject_template": "[{alert_level}] {rule_name} 告警通知",
+                "body_template": "告警详情：\n规则：{rule_name}\n描述：{rule_description}\n当前值：{metric_value}\n触发时间：{triggered_at}\n\n请及时处理！"
+            },
+            "alert_levels": ["warning", "critical"],
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "monitoring.alertnotificationconfig",
+        "pk": 2,
+        "fields": {
+            "user": 1,
+            "notification_type": "webhook",
+            "name": "Webhook通知",
+            "config": {
+                "url": "http://localhost:8000/api/webhook/alert",
+                "method": "POST",
+                "headers": {
+                    "Content-Type": "application/json",
+                    "Authorization": "Bearer your-token-here"
+                }
+            },
+            "alert_levels": ["critical"],
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "monitoring.alertnotificationconfig",
+        "pk": 3,
+        "fields": {
+            "user": 1,
+            "notification_type": "dingtalk",
+            "name": "钉钉机器人通知",
+            "config": {
+                "webhook": "https://oapi.dingtalk.com/robot/send?access_token=your-token-here",
+                "secret": "your-secret-here",
+                "message_template": "### {rule_name} 告警通知\n**级别**：{alert_level}\n**描述**：{rule_description}\n**当前值**：{metric_value}\n**触发时间**：{triggered_at}"
+            },
+            "alert_levels": ["warning", "critical"],
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    }
+] 

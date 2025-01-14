@@ -1,0 +1,114 @@
+[
+    {
+        "model": "news.newscategory",
+        "pk": 1,
+        "fields": {
+            "name": "国内新闻",
+            "description": "中国国内重要新闻",
+            "parent": null,
+            "level": 1,
+            "sort_order": 1,
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 2,
+        "fields": {
+            "name": "国际新闻",
+            "description": "国际重要新闻",
+            "parent": null,
+            "level": 1,
+            "sort_order": 2,
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 3,
+        "fields": {
+            "name": "财经新闻",
+            "description": "财经相关新闻",
+            "parent": null,
+            "level": 1,
+            "sort_order": 3,
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 4,
+        "fields": {
+            "name": "科技新闻",
+            "description": "科技相关新闻",
+            "parent": null,
+            "level": 1,
+            "sort_order": 4,
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 5,
+        "fields": {
+            "name": "政治新闻",
+            "description": "政治相关新闻",
+            "parent": 1,
+            "level": 2,
+            "sort_order": 1,
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 6,
+        "fields": {
+            "name": "社会新闻",
+            "description": "社会民生新闻",
+            "parent": 1,
+            "level": 2,
+            "sort_order": 2,
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 7,
+        "fields": {
+            "name": "股市新闻",
+            "description": "股票市场新闻",
+            "parent": 3,
+            "level": 2,
+            "sort_order": 1,
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 8,
+        "fields": {
+            "name": "互联网新闻",
+            "description": "互联网行业新闻",
+            "parent": 4,
+            "level": 2,
+            "sort_order": 1,
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    }
+] 

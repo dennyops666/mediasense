@@ -1,0 +1,115 @@
+[
+    {
+        "model": "auth.group",
+        "pk": 1,
+        "fields": {
+            "name": "editors",
+            "permissions": []
+        }
+    },
+    {
+        "model": "auth.group",
+        "pk": 2,
+        "fields": {
+            "name": "viewers",
+            "permissions": []
+        }
+    },
+    {
+        "model": "custom_auth.user",
+        "pk": 1,
+        "fields": {
+            "password": "pbkdf2_sha256$600000$test123$",
+            "last_login": null,
+            "is_superuser": true,
+            "username": "admin",
+            "email": "admin@mediasense.test",
+            "is_staff": true,
+            "is_active": true,
+            "date_joined": "2024-01-01T00:00:00Z",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+            "phone": "",
+            "user_type": "admin",
+            "status": "active",
+            "avatar": "",
+            "last_login_ip": null,
+            "groups": [],
+            "user_permissions": []
+        }
+    },
+    {
+        "model": "custom_auth.user",
+        "pk": 2,
+        "fields": {
+            "password": "pbkdf2_sha256$600000$test123$",
+            "last_login": null,
+            "is_superuser": false,
+            "username": "editor",
+            "email": "editor@mediasense.test",
+            "is_staff": false,
+            "is_active": true,
+            "date_joined": "2024-01-01T00:00:00Z",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+            "phone": "",
+            "user_type": "staff",
+            "status": "active",
+            "avatar": "",
+            "last_login_ip": null,
+            "groups": [1],
+            "user_permissions": []
+        }
+    },
+    {
+        "model": "custom_auth.user",
+        "pk": 3,
+        "fields": {
+            "password": "pbkdf2_sha256$600000$test123$",
+            "last_login": null,
+            "is_superuser": false,
+            "username": "viewer",
+            "email": "viewer@mediasense.test",
+            "is_staff": false,
+            "is_active": true,
+            "date_joined": "2024-01-01T00:00:00Z",
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z",
+            "phone": "",
+            "user_type": "user",
+            "status": "active",
+            "avatar": "",
+            "last_login_ip": null,
+            "groups": [2],
+            "user_permissions": []
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 1,
+        "fields": {
+            "name": "技术",
+            "description": "技术相关新闻",
+            "parent": null,
+            "level": 1,
+            "sort_order": 1,
+            "is_active": true,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 2,
+        "fields": {
+            "name": "商业",
+            "description": "商业相关新闻",
+            "parent": null,
+            "level": 1,
+            "sort_order": 2,
+            "is_active": true,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }
+    }
+] 

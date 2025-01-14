@@ -1,0 +1,15 @@
+[bandit]
+targets: .
+exclude: /tests,/migrations,/venv,/docs
+recursive: true
+aggregate: file
+number: 3
+format: txt
+confidence-level: HIGH
+severity-level: MEDIUM
+baseline: .bandit-baseline.json
+output: bandit-report.txt
+verbose: true
+quiet: false
+ignore-nosec: false
+skips: B101,B601 

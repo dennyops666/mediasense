@@ -1,0 +1,82 @@
+[
+    {
+        "model": "crawler.proxypool",
+        "pk": 1,
+        "fields": {
+            "ip": "47.92.234.75",
+            "port": 3128,
+            "protocol": "http",
+            "location": "中国-北京",
+            "speed": 100,
+            "success_rate": 0.98,
+            "status": 1,
+            "last_check_time": "2024-01-13T00:00:00Z",
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "crawler.proxypool",
+        "pk": 2,
+        "fields": {
+            "ip": "123.57.1.16",
+            "port": 8080,
+            "protocol": "https",
+            "location": "中国-上海",
+            "speed": 150,
+            "success_rate": 0.95,
+            "status": 1,
+            "last_check_time": "2024-01-13T00:00:00Z",
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "crawler.proxypool",
+        "pk": 3,
+        "fields": {
+            "ip": "35.221.210.87",
+            "port": 443,
+            "protocol": "https",
+            "location": "美国-加利福尼亚",
+            "speed": 200,
+            "success_rate": 0.92,
+            "status": 1,
+            "last_check_time": "2024-01-13T00:00:00Z",
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "crawler.proxypool",
+        "pk": 4,
+        "fields": {
+            "ip": "182.61.201.201",
+            "port": 80,
+            "protocol": "http",
+            "location": "中国-广州",
+            "speed": 120,
+            "success_rate": 0.96,
+            "status": 1,
+            "last_check_time": "2024-01-13T00:00:00Z",
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "crawler.proxypool",
+        "pk": 5,
+        "fields": {
+            "ip": "13.229.47.210",
+            "port": 8888,
+            "protocol": "https",
+            "location": "新加坡",
+            "speed": 180,
+            "success_rate": 0.94,
+            "status": 1,
+            "last_check_time": "2024-01-13T00:00:00Z",
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    }
+] 

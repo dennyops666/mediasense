@@ -1,0 +1,104 @@
+[tool.black]
+line-length = 120
+target-version = ['py312']
+include = '\.pyi?$'
+extend-exclude = '''
+# A regex preceded with ^/ will apply only to files and directories
+# in the root of the project.
+^/docs
+^/tests
+^/migrations
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
+line_length = 120
+skip = ["docs", "migrations", "venv"]
+known_first_party = ["mediasense"]
+known_third_party = ["django", "rest_framework", "celery"]
+
+[tool.mypy]
+python_version = "3.12"
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+warn_unreachable = true
+strict_optional = true
+plugins = [
+    "mypy_django_plugin.main",
+    "mypy_drf_plugin.main"
+]
+
+[[tool.mypy.overrides]]
+module = "*.migrations.*"
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = "*.tests.*"
+ignore_errors = true
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "mediasense.settings"
+python_files = ["test_*.py", "*_test.py", "tests.py"]
+addopts = "-v -s --tb=short --cov=. --cov-report=html --cov-report=term-missing --no-cov-on-fail --cov-fail-under=80"
+testpaths = ["tests"]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning"
+]
+markers = [
+    "slow: marks tests as slow",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests"
+]
+
+[tool.coverage.run]
+source = ["."]
+omit = [
+    "*/tests/*",
+    "*/migrations/*",
+    "*/settings/*",
+    "manage.py",
+    "wsgi.py",
+    "asgi.py",
+    "venv/*",
+    "*/urls.py",
+    "*/admin.py",
+    "*/apps.py"
+]
+branch = true
+parallel = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "pass",
+    "raise ImportError",
+    "except ImportError:",
+    "raise AssertionError"
+]
+fail_under = 80
+show_missing = true
+skip_covered = true
+
+[tool.bandit]
+exclude_dirs = ["tests", "migrations", "venv", "docs"]
+recursive = true
+aggregate = "file"
+number = 3
+format = "txt"
+targets = ["."] 

@@ -1,0 +1,116 @@
+[
+    {
+        "model": "monitoring.monitoringvisualization",
+        "pk": 5,
+        "fields": {
+            "name": "爬虫任务统计",
+            "description": "爬虫任务执行情况统计",
+            "chart_type": "bar",
+            "metric_type": "task_count",
+            "time_range": 1440,
+            "interval": 3600,
+            "aggregation_method": "sum",
+            "warning_threshold": null,
+            "critical_threshold": null,
+            "is_active": 1,
+            "refresh_interval": 300,
+            "created_by": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "monitoring.monitoringvisualization",
+        "pk": 6,
+        "fields": {
+            "name": "新闻处理错误率",
+            "description": "新闻处理过程中的错误率统计",
+            "chart_type": "line",
+            "metric_type": "error_rate",
+            "time_range": 1440,
+            "interval": 300,
+            "aggregation_method": "avg",
+            "warning_threshold": 5.0,
+            "critical_threshold": 10.0,
+            "is_active": 1,
+            "refresh_interval": 300,
+            "created_by": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "monitoring.dashboard",
+        "pk": 2,
+        "fields": {
+            "name": "新闻监控",
+            "description": "新闻爬取和处理状态监控",
+            "layout_type": "GRID",
+            "is_default": 0,
+            "created_by": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "monitoring.dashboardwidget",
+        "pk": 5,
+        "fields": {
+            "dashboard": 2,
+            "name": "爬虫任务监控",
+            "widget_type": "PERFORMANCE_TREND",
+            "config": {
+                "visualization_id": 5,
+                "refresh_interval": 300
+            },
+            "position": {
+                "x": 0,
+                "y": 0,
+                "w": 12,
+                "h": 4
+            },
+            "is_visible": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "monitoring.dashboardwidget",
+        "pk": 6,
+        "fields": {
+            "dashboard": 2,
+            "name": "错误率监控",
+            "widget_type": "PERFORMANCE_TREND",
+            "config": {
+                "visualization_id": 6,
+                "refresh_interval": 300
+            },
+            "position": {
+                "x": 0,
+                "y": 4,
+                "w": 12,
+                "h": 4
+            },
+            "is_visible": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "monitoring.alertrule",
+        "pk": 5,
+        "fields": {
+            "name": "新闻处理错误率告警",
+            "description": "新闻处理错误率超限告警",
+            "metric_type": "error_rate",
+            "operator": "gt",
+            "threshold": 10.0,
+            "duration": 15,
+            "alert_level": "critical",
+            "is_active": 1,
+            "created_by": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    }
+] 

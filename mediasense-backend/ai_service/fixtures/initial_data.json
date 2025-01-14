@@ -1,0 +1,56 @@
+[
+    {
+        "model": "ai_service.analysisrule",
+        "pk": 1,
+        "fields": {
+            "name": "基础情感分析",
+            "rule_type": "sentiment",
+            "system_prompt": "你是一个专业的新闻情感分析专家。请分析新闻文本的情感倾向，返回-1到1之间的分数，-1表示极度负面，0表示中性，1表示极度正面。",
+            "user_prompt_template": "请分析以下新闻的情感倾向：\n标题：{title}\n内容：{content}\n请只返回一个数字作为情感分数。",
+            "parameters": {
+                "temperature": 0.3,
+                "max_tokens": 100
+            },
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z",
+            "description": "基础的新闻情感分析规则"
+        }
+    },
+    {
+        "model": "ai_service.analysisrule",
+        "pk": 2,
+        "fields": {
+            "name": "关键词提取",
+            "rule_type": "keywords",
+            "system_prompt": "你是一个专业的新闻关键词提取专家。请从新闻文本中提取最重要的关键词，每个关键词附带重要性权重。",
+            "user_prompt_template": "请从以下新闻中提取关键词：\n标题：{title}\n内容：{content}\n请返回JSON格式的关键词列表，包含关键词和权重。",
+            "parameters": {
+                "temperature": 0.2,
+                "max_tokens": 200
+            },
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z",
+            "description": "提取新闻中的关键词和权重"
+        }
+    },
+    {
+        "model": "ai_service.analysisrule",
+        "pk": 3,
+        "fields": {
+            "name": "新闻摘要生成",
+            "rule_type": "summary",
+            "system_prompt": "你是一个专业的新闻摘要生成专家。请生成简洁、准确的新闻摘要，突出新闻的主要内容和关键信息。",
+            "user_prompt_template": "请为以下新闻生成摘要：\n标题：{title}\n内容：{content}\n请生成不超过200字的摘要。",
+            "parameters": {
+                "temperature": 0.4,
+                "max_tokens": 300
+            },
+            "is_active": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z",
+            "description": "生成新闻的简要摘要"
+        }
+    }
+] 

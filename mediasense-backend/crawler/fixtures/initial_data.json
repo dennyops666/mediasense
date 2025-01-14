@@ -1,0 +1,119 @@
+[
+    {
+        "model": "crawler.crawlerconfig",
+        "pk": 1,
+        "fields": {
+            "name": "新浪新闻RSS",
+            "description": "新浪新闻RSS订阅源",
+            "source_url": "https://rss.sina.com.cn/news/",
+            "crawler_type": 1,
+            "config_data": {
+                "categories": ["国内", "国际", "财经", "科技"],
+                "encoding": "utf-8",
+                "timeout": 30
+            },
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            },
+            "interval": 30,
+            "status": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "crawler.crawlerconfig",
+        "pk": 2,
+        "fields": {
+            "name": "腾讯新闻API",
+            "description": "腾讯新闻开放API接口",
+            "source_url": "https://api.inews.qq.com/",
+            "crawler_type": 2,
+            "config_data": {
+                "api_version": "v1",
+                "categories": ["news_hot", "news_tech", "news_finance"],
+                "page_size": 50
+            },
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Accept": "application/json"
+            },
+            "interval": 15,
+            "status": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "crawler.crawlerconfig",
+        "pk": 3,
+        "fields": {
+            "name": "网易新闻网页",
+            "description": "网易新闻网页爬虫",
+            "source_url": "https://news.163.com/",
+            "crawler_type": 3,
+            "config_data": {
+                "selectors": {
+                    "title": "h1.post_title",
+                    "content": "div.post_content",
+                    "publish_time": "div.post_time",
+                    "source": "div.post_source"
+                },
+                "categories": ["domestic", "world", "tech", "business"]
+            },
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Accept-Language": "zh-CN,zh;q=0.9"
+            },
+            "interval": 45,
+            "status": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "crawler.crawlerconfig",
+        "pk": 4,
+        "fields": {
+            "name": "凤凰新闻API",
+            "description": "凤凰新闻数据接口",
+            "source_url": "https://api.ifeng.com/",
+            "crawler_type": 2,
+            "config_data": {
+                "api_key": "test_key",
+                "categories": ["综合", "财经", "科技", "国际"],
+                "max_items": 100
+            },
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Accept": "application/json"
+            },
+            "interval": 20,
+            "status": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    },
+    {
+        "model": "crawler.crawlerconfig",
+        "pk": 5,
+        "fields": {
+            "name": "路透社RSS",
+            "description": "路透社中文新闻RSS",
+            "source_url": "https://cn.reuters.com/rssFeed",
+            "crawler_type": 1,
+            "config_data": {
+                "categories": ["china", "world", "business"],
+                "language": "zh-CN",
+                "items_per_fetch": 50
+            },
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            },
+            "interval": 60,
+            "status": 1,
+            "created_at": "2024-01-13T00:00:00Z",
+            "updated_at": "2024-01-13T00:00:00Z"
+        }
+    }
+] 

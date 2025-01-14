@@ -1,0 +1,42 @@
+# Django及其依赖
+Django==5.1.4
+djangorestframework==3.14.0
+djangorestframework-simplejwt==5.4.0
+django-cors-headers==4.6.0
+django-filter==24.3
+django-redis==5.4.0
+
+# 数据库
+mysqlclient==2.2.0
+
+# Elasticsearch
+elasticsearch==7.17.9
+elasticsearch-dsl==7.4.1
+django-elasticsearch-dsl==7.4
+
+# 爬虫相关
+feedparser==6.0.11
+beautifulsoup4==4.12.2
+requests==2.31.0
+
+# 系统监控
+psutil==6.1.1
+
+# 任务队列
+celery==5.3.6
+django-celery-beat==2.7.0
+django-celery-results==2.5.1
+
+# 测试工具
+pytest==8.1.1
+pytest-django==4.8.0
+factory-boy==3.3.0
+faker==24.3.0
+
+# 环境变量
+python-dotenv==1.0.0
+django-environ==0.11.2
+
+# 其他工具
+PyYAML==6.0.2
+python-dateutil==2.9.0.post0 

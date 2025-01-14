@@ -1,0 +1,96 @@
+[
+    {
+        "model": "monitoring.systemmetrics",
+        "pk": 1,
+        "fields": {
+            "metric_type": "cpu",
+            "value": 45.5,
+            "timestamp": "2024-01-13T00:00:00Z",
+            "metadata": {
+                "core_count": 8,
+                "process_count": 120
+            }
+        }
+    },
+    {
+        "model": "monitoring.systemmetrics",
+        "pk": 2,
+        "fields": {
+            "metric_type": "memory",
+            "value": 65.8,
+            "timestamp": "2024-01-13T00:00:00Z",
+            "metadata": {
+                "total_memory": 16384,
+                "used_memory": 10780
+            }
+        }
+    },
+    {
+        "model": "monitoring.systemmetrics",
+        "pk": 3,
+        "fields": {
+            "metric_type": "disk",
+            "value": 72.3,
+            "timestamp": "2024-01-13T00:00:00Z",
+            "metadata": {
+                "total_space": 512000,
+                "used_space": 370176,
+                "mount_point": "/"
+            }
+        }
+    },
+    {
+        "model": "monitoring.systemmetrics",
+        "pk": 4,
+        "fields": {
+            "metric_type": "network",
+            "value": 25.6,
+            "timestamp": "2024-01-13T00:00:00Z",
+            "metadata": {
+                "interface": "eth0",
+                "rx_bytes": 1024000,
+                "tx_bytes": 512000
+            }
+        }
+    },
+    {
+        "model": "monitoring.systemmetrics",
+        "pk": 5,
+        "fields": {
+            "metric_type": "api_latency",
+            "value": 156.8,
+            "timestamp": "2024-01-13T00:00:00Z",
+            "metadata": {
+                "endpoint": "/api/news/list",
+                "method": "GET"
+            }
+        }
+    },
+    {
+        "model": "monitoring.systemmetrics",
+        "pk": 6,
+        "fields": {
+            "metric_type": "error_rate",
+            "value": 2.5,
+            "timestamp": "2024-01-13T00:00:00Z",
+            "metadata": {
+                "total_requests": 1000,
+                "error_count": 25
+            }
+        }
+    },
+    {
+        "model": "monitoring.systemmetrics",
+        "pk": 7,
+        "fields": {
+            "metric_type": "task_count",
+            "value": 45,
+            "timestamp": "2024-01-13T00:00:00Z",
+            "metadata": {
+                "success_count": 42,
+                "failed_count": 3,
+                "crawler_type": "news"
+            }
+        }
+    }
+] 
