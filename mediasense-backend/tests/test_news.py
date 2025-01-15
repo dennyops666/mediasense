@@ -2,8 +2,9 @@ import pytest
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
-from news.models import News, Category
-from .factories import NewsFactory, CategoryFactory, UserFactory
+from news.models import NewsArticle, NewsCategory
+from .factories import NewsArticleFactory, NewsCategoryFactory, UserFactory
+from django.utils import timezone
 
 pytestmark = pytest.mark.django_db
 
@@ -24,60 +25,60 @@ class TestNewsCRUD:
     """TC-NEWS-001: 新闻CRUD操作测试"""
 
     @pytest.fixture
-    def news_data(self):
+    def news_data(self, admin_user):
+        category = NewsCategoryFactory()
         return {
             'title': 'Test News Title',
             'content': 'Test news content',
             'summary': 'Test summary',
             'source': 'Test Source',
             'author': 'Test Author',
-            'status': 'draft'
+            'url': 'https://example.com/test-news',
+            'category': category.id,
+            'tags': ['test', 'news'],
+            'status': 'draft',
+            'publish_time': timezone.now().isoformat()
         }
 
     def test_create_news(self, authenticated_client, news_data):
         """测试创建新闻文章"""
-        url = reverse('news-list')
-        response = authenticated_client.post(url, news_data)
+        response = authenticated_client.post('/api/v1/news/news-articles/', news_data)
         assert response.status_code == status.HTTP_201_CREATED
-        assert News.objects.filter(title=news_data['title']).exists()
+        assert NewsArticle.objects.filter(title=news_data['title']).exists()
 
     def test_read_news_detail(self, authenticated_client):
         """测试读取新闻详情"""
-        news = NewsFactory()
-        url = reverse('news-detail', kwargs={'pk': news.id})
-        response = authenticated_client.get(url)
+        news = NewsArticleFactory()
+        response = authenticated_client.get(f'/api/v1/news/news-articles/{news.id}/')
         assert response.status_code == status.HTTP_200_OK
         assert response.data['title'] == news.title
 
     def test_update_news(self, authenticated_client, news_data):
         """测试更新新闻内容"""
-        news = NewsFactory()
-        url = reverse('news-detail', kwargs={'pk': news.id})
+        news = NewsArticleFactory()
         news_data['title'] = 'Updated Title'
-        response = authenticated_client.put(url, news_data)
+        response = authenticated_client.put(f'/api/v1/news/news-articles/{news.id}/', news_data)
         assert response.status_code == status.HTTP_200_OK
         news.refresh_from_db()
         assert news.title == 'Updated Title'
 
     def test_delete_news(self, authenticated_client):
         """测试删除新闻文章"""
-        news = NewsFactory()
-        url = reverse('news-detail', kwargs={'pk': news.id})
-        response = authenticated_client.delete(url)
+        news = NewsArticleFactory()
+        response = authenticated_client.delete(f'/api/v1/news/news-articles/{news.id}/')
         assert response.status_code == status.HTTP_204_NO_CONTENT
-        assert not News.objects.filter(id=news.id).exists()
+        assert not NewsArticle.objects.filter(id=news.id).exists()
 
     def test_batch_news_operations(self, authenticated_client, news_data):
         """测试批量操作新闻"""
         # 批量创建
-        news_list = [NewsFactory() for _ in range(3)]
+        news_list = [NewsArticleFactory() for _ in range(3)]
         
         # 批量更新
-        url = reverse('news-bulk-update')
         update_data = {
             'items': [{'id': news.id, 'status': 'published'} for news in news_list]
         }
-        response = authenticated_client.put(url, update_data)
+        response = authenticated_client.put('/api/v1/news/news-articles/bulk-update/', update_data, format='json')
         assert response.status_code == status.HTTP_200_OK
         
         # 验证更新结果
@@ -86,13 +87,12 @@ class TestNewsCRUD:
             assert news.status == 'published'
         
         # 批量删除
-        url = reverse('news-bulk-delete')
         delete_data = {'ids': [news.id for news in news_list]}
-        response = authenticated_client.post(url, delete_data)
+        response = authenticated_client.post('/api/v1/news/news-articles/bulk-delete/', delete_data, format='json')
         assert response.status_code == status.HTTP_204_NO_CONTENT
         
         # 验证删除结果
-        assert not News.objects.filter(id__in=[news.id for news in news_list]).exists()
+        assert not NewsArticle.objects.filter(id__in=[news.id for news in news_list]).exists()
 
 class TestNewsCategory:
     """TC-NEWS-002: 新闻分类功能测试"""
@@ -102,63 +102,57 @@ class TestNewsCategory:
         return {
             'name': 'Test Category',
             'description': 'Test category description',
-            'status': 'active'
+            'is_active': 1
         }
 
     def test_create_category(self, authenticated_client, category_data):
         """测试创建新闻分类"""
-        url = reverse('category-list')
-        response = authenticated_client.post(url, category_data)
+        response = authenticated_client.post('/api/v1/news/categories/', category_data)
         assert response.status_code == status.HTTP_201_CREATED
-        assert Category.objects.filter(name=category_data['name']).exists()
+        assert NewsCategory.objects.filter(name=category_data['name']).exists()
 
     def test_edit_category(self, authenticated_client, category_data):
         """测试编辑分类信息"""
-        category = CategoryFactory()
-        url = reverse('category-detail', kwargs={'pk': category.id})
+        category = NewsCategoryFactory()
         category_data['name'] = 'Updated Category'
-        response = authenticated_client.put(url, category_data)
+        response = authenticated_client.put(f'/api/v1/news/categories/{category.id}/', category_data)
         assert response.status_code == status.HTTP_200_OK
         category.refresh_from_db()
         assert category.name == 'Updated Category'
 
     def test_delete_category(self, authenticated_client):
         """测试删除新闻分类"""
-        category = CategoryFactory()
-        url = reverse('category-detail', kwargs={'pk': category.id})
-        response = authenticated_client.delete(url)
+        category = NewsCategoryFactory()
+        response = authenticated_client.delete(f'/api/v1/news/categories/{category.id}/')
         assert response.status_code == status.HTTP_204_NO_CONTENT
-        assert not Category.objects.filter(id=category.id).exists()
+        assert not NewsCategory.objects.filter(id=category.id).exists()
 
     def test_category_news_association(self, authenticated_client, news_data):
         """测试分类新闻关联"""
-        category = CategoryFactory()
-        news = NewsFactory(category=category)
+        category = NewsCategoryFactory()
+        news = NewsArticleFactory(category=category)
         
         # 验证关联关系
         assert news.category == category
-        assert category.news_set.filter(id=news.id).exists()
+        assert category.articles.filter(id=news.id).exists()
         
         # 测试更改新闻分类
-        new_category = CategoryFactory()
-        url = reverse('news-detail', kwargs={'pk': news.id})
-        news_data['category'] = new_category.id
-        response = authenticated_client.patch(url, {'category': new_category.id})
+        new_category = NewsCategoryFactory()
+        response = authenticated_client.patch(f'/api/v1/news/news-articles/{news.id}/', {'category': new_category.id})
         assert response.status_code == status.HTTP_200_OK
         
         # 验证新的关联关系
         news.refresh_from_db()
         assert news.category == new_category
-        assert not category.news_set.filter(id=news.id).exists()
-        assert new_category.news_set.filter(id=news.id).exists()
+        assert not category.articles.filter(id=news.id).exists()
+        assert new_category.articles.filter(id=news.id).exists()
 
     def test_category_statistics(self, authenticated_client):
         """测试分类统计查看"""
-        category = CategoryFactory()
-        news_list = [NewsFactory(category=category) for _ in range(3)]
+        category = NewsCategoryFactory()
+        news_list = [NewsArticleFactory(category=category) for _ in range(3)]
         
-        url = reverse('category-statistics', kwargs={'pk': category.id})
-        response = authenticated_client.get(url)
+        response = authenticated_client.get(f'/api/v1/news/categories/{category.id}/statistics/')
         assert response.status_code == status.HTTP_200_OK
         
         # 验证统计数据

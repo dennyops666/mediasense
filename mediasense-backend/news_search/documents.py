@@ -28,8 +28,14 @@ class NewsArticleDocument(Document):
     )
 
     # 使用自定义分析器的文本字段
-    title_suggest = fields.CompletionField()  # 用于搜索建议
-    content_analyzed = fields.TextField()  # 用于全文搜索
+    title_suggest = fields.CompletionField(
+        analyzer='standard',
+        search_analyzer='standard',
+        preserve_separators=True,
+        preserve_position_increments=True,
+        max_input_length=50
+    )  # 用于搜索建议
+    content_analyzed = fields.TextField(analyzer='html_strip')  # 用于全文搜索
 
     class Index:
         name = "news_articles"
@@ -83,14 +89,19 @@ class NewsArticleDocument(Document):
         return None
 
     def prepare_title_suggest(self, instance):
-        """准备标题建议数据"""
-        suggestions = [instance.title]
-        if instance.category:
-            suggestions.append(instance.category.name)
+        """
+        准备标题建议数据
+        :param instance: NewsArticle实例
+        :return: 标题建议数据,包含输入和权重
+        """
+        inputs = [instance.title]
         if instance.tags:
-            suggestions.extend(instance.tags)
-        return suggestions
-
-    def prepare_content_analyzed(self, instance):
-        """准备内容分析数据"""
-        return f"{instance.title} {instance.summary} {instance.content}"
+            inputs.extend(instance.tags)
+        
+        # 根据状态设置权重,已发布的文章权重更高
+        weight = 100 if instance.status == 'published' else 50
+        
+        return {
+            'input': inputs,
+            'weight': weight
+        }

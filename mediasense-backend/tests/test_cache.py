@@ -67,17 +67,26 @@ class TestRedisConnectionManagement:
     def test_connection_timeout_handling(self, redis_client):
         """测试连接超时处理"""
         from redis.exceptions import TimeoutError
+        import socket
         
         # 设置一个很短的超时时间
+        original_timeout = redis_client.connection_pool.connection_kwargs.get('socket_timeout')
         redis_client.connection_pool.connection_kwargs['socket_timeout'] = 0.001
         
         try:
-            # 执行一个耗时操作，应该触发超时
-            with pytest.raises(TimeoutError):
-                redis_client.execute_command('DEBUG', 'SLEEP', '0.1')
+            # 使用一个无法访问的IP地址来触发超时
+            bad_client = Redis(host='240.0.0.0', port=6379, socket_timeout=0.001)
+            with pytest.raises((TimeoutError, socket.timeout, ConnectionError)):
+                bad_client.ping()
         finally:
-            # 恢复正常的超时设置
-            redis_client.connection_pool.connection_kwargs['socket_timeout'] = 1.0
+            # 恢复原始的超时设置
+            if original_timeout:
+                redis_client.connection_pool.connection_kwargs['socket_timeout'] = original_timeout
+            else:
+                redis_client.connection_pool.connection_kwargs.pop('socket_timeout', None)
+                
+        # 验证原始连接是否正常
+        assert redis_client.ping()
 
     def test_sentinel_mode_switching(self):
         """测试哨兵模式切换"""

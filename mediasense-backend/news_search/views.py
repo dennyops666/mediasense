@@ -12,6 +12,9 @@ from .serializers import (
     SuggestResultSerializer,
 )
 from .services import NewsSearchService
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class NewsSearchViewSet(viewsets.ViewSet):
@@ -99,14 +102,22 @@ class NewsSearchViewSet(viewsets.ViewSet):
             filters["category"] = query_serializer.validated_data["category"]
         if "status" in query_serializer.validated_data:
             filters["status"] = query_serializer.validated_data["status"]
+        if "time_range" in query_serializer.validated_data:
+            filters["time_range"] = query_serializer.validated_data["time_range"]
+        if "sentiment" in query_serializer.validated_data:
+            filters["sentiment"] = query_serializer.validated_data["sentiment"]
+        if "tags" in query_serializer.validated_data:
+            filters["tags"] = query_serializer.validated_data["tags"]
+        if "sort" in query_serializer.validated_data:
+            filters["sort"] = query_serializer.validated_data["sort"]
 
         try:
             # 执行搜索
             result = self.search_service.search_articles(
                 query=query_serializer.validated_data["query"],
                 filters=filters,
-                page=query_serializer.validated_data["page"],
-                size=query_serializer.validated_data["size"],
+                page=query_serializer.validated_data.get("page", 1),
+                size=query_serializer.validated_data.get("size", 10),
             )
 
             # 序列化结果
@@ -114,7 +125,11 @@ class NewsSearchViewSet(viewsets.ViewSet):
             return Response(response_serializer.data)
 
         except Exception as e:
-            return Response({"message": "搜索失败", "errors": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            logger.error(f"搜索失败: {str(e)}", exc_info=True)
+            return Response(
+                {"message": "搜索失败", "errors": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=False, methods=["get"])
     def suggest(self, request):
@@ -132,7 +147,8 @@ class NewsSearchViewSet(viewsets.ViewSet):
         try:
             # 获取建议
             suggestions = self.search_service.suggest_titles(
-                prefix=query_serializer.validated_data["prefix"], size=query_serializer.validated_data["size"]
+                prefix=query_serializer.validated_data["prefix"],
+                size=query_serializer.validated_data.get("size", 5)
             )
 
             # 序列化结果
@@ -140,8 +156,10 @@ class NewsSearchViewSet(viewsets.ViewSet):
             return Response(response_serializer.data)
 
         except Exception as e:
+            logger.error(f"获取搜索建议失败: {str(e)}", exc_info=True)
             return Response(
-                {"message": "获取搜索建议失败", "errors": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"message": "获取搜索建议失败", "errors": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     @action(detail=False, methods=["get"])

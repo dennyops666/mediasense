@@ -14,71 +14,36 @@ class NewsSearchService:
     """新闻搜索服务"""
 
     CACHE_PREFIX = "news_search:"
-    CACHE_VERSION_KEY = CACHE_PREFIX + "version"
-    CACHE_STATS_KEY = CACHE_PREFIX + "stats"
     CACHE_TIMEOUT = 60 * 5  # 5分钟缓存
 
     def __init__(self):
-        """初始化ES客户端"""
-        self.client = Elasticsearch(
-            hosts=settings.ELASTICSEARCH_HOSTS,
-            basic_auth=(settings.ELASTICSEARCH_USERNAME, settings.ELASTICSEARCH_PASSWORD),
-        )
+        """初始化搜索服务"""
+        self.client = Elasticsearch(hosts=settings.ELASTICSEARCH_HOSTS)
         self.search = Search(using=self.client, index=NewsArticleDocument._index._name)
-        self._ensure_cache_version()
-
-    def _ensure_cache_version(self):
-        """确保缓存版本存在"""
-        if not cache.get(self.CACHE_VERSION_KEY):
-            cache.set(self.CACHE_VERSION_KEY, datetime.now().timestamp())
+        self.cache_stats = {
+            "hits": 0,
+            "misses": 0,
+            "total": 0
+        }
 
     def _get_cache_key(self, query, filters=None, page=1, size=10):
         """生成缓存键"""
-        # 将查询参数序列化为确定性的字符串
-        params = {"query": query, "filters": filters, "page": page, "size": size}
-        params_str = json.dumps(params, sort_keys=True)
-
-        # 使用MD5生成固定长度的键
-        hash_key = hashlib.md5(params_str.encode()).hexdigest()
-        version = cache.get(self.CACHE_VERSION_KEY)
-
-        return f"{self.CACHE_PREFIX}result:{version}:{hash_key}"
+        key_parts = [query, str(page), str(size)]
+        if filters:
+            key_parts.append(json.dumps(filters, sort_keys=True))
+        return f"{self.CACHE_PREFIX}{'_'.join(key_parts)}"
 
     def _update_cache_stats(self, cache_hit=True):
-        """更新缓存统计信息"""
-        stats_key = self.CACHE_STATS_KEY
-        stats = cache.get(stats_key) or {"hits": 0, "misses": 0, "total_requests": 0}
-
-        stats["total_requests"] += 1
+        """更新缓存统计"""
         if cache_hit:
-            stats["hits"] += 1
+            self.cache_stats["hits"] += 1
         else:
-            stats["misses"] += 1
-
-        cache.set(stats_key, stats)
-
-    def invalidate_cache(self):
-        """使所有搜索缓存失效"""
-        cache.incr(self.CACHE_VERSION_KEY)
+            self.cache_stats["misses"] += 1
+        self.cache_stats["total"] += 1
 
     def get_cache_stats(self):
         """获取缓存统计信息"""
-        stats = cache.get(self.CACHE_STATS_KEY) or {"hits": 0, "misses": 0, "total_requests": 0}
-
-        if stats["total_requests"] > 0:
-            stats["hit_rate"] = stats["hits"] / stats["total_requests"]
-        else:
-            stats["hit_rate"] = 0
-
-        return stats
-
-    def warm_cache(self, queries):
-        """
-        预热缓存
-        :param queries: 要预热的查询列表，每个查询是一个字典，包含query和filters
-        """
-        for query_params in queries:
-            self.search_articles(query=query_params["query"], filters=query_params.get("filters"), use_cache=True)
+        return self.cache_stats
 
     def search_articles(self, query, filters=None, page=1, size=10, use_cache=True):
         """
@@ -117,7 +82,7 @@ class NewsSearchService:
 
         # 构建搜索查询
         search_query = self.search.query(
-            Q("multi_match", query=query, fields=["title^3", "summary^2", "content", "tags^2"])
+            Q("multi_match", query=query, fields=["title^3", "content", "summary"])
         )
 
         # 添加过滤条件
@@ -153,6 +118,17 @@ class NewsSearchService:
             if "tags" in filters and filters["tags"]:
                 search_query = search_query.filter("terms", tags=filters["tags"])
 
+            # 排序
+            if "sort" in filters:
+                sort_field = filters["sort"]
+                if sort_field.startswith("-"):
+                    search_query = search_query.sort({sort_field[1:]: {"order": "desc"}})
+                else:
+                    search_query = search_query.sort({sort_field: {"order": "asc"}})
+            else:
+                # 默认按相关性和时间排序
+                search_query = search_query.sort("_score", {"publish_time": {"order": "desc"}})
+
         # 分页
         start = (page - 1) * size
         search_query = search_query[start : start + size]
@@ -170,14 +146,15 @@ class NewsSearchService:
             result = {
                 "id": hit.meta.id,
                 "title": hit.title,
-                "summary": hit.summary,
-                "url": hit.url,
-                "publish_time": hit.publish_time,
+                "summary": hit.summary if hasattr(hit, 'summary') else '',
+                "url": hit.url if hasattr(hit, 'url') else '',
+                "publish_time": hit.publish_time if hasattr(hit, 'publish_time') else None,
                 "score": hit.meta.score,
-                "source": hit.source,
-                "author": hit.author,
-                "tags": hit.tags,
-                "sentiment_score": hit.sentiment_score,
+                "source": hit.source if hasattr(hit, 'source') else '',
+                "author": hit.author if hasattr(hit, 'author') else '',
+                "tags": hit.tags if hasattr(hit, 'tags') else [],
+                "sentiment_score": hit.sentiment_score if hasattr(hit, 'sentiment_score') else 0.0,
+                "status": hit.status if hasattr(hit, 'status') else ''
             }
 
             # 添加高亮内容
@@ -196,33 +173,47 @@ class NewsSearchService:
 
         # 缓存结果
         if use_cache:
-            # 对于热门查询，延长缓存时间
-            if response.hits.total.value > 100:
-                cache_timeout = self.CACHE_TIMEOUT * 2
-            else:
-                cache_timeout = self.CACHE_TIMEOUT
-
-            cache.set(cache_key, search_result, cache_timeout)
+            cache.set(cache_key, search_result, 60 * 5)  # 5分钟缓存
 
         return search_result
 
     def suggest_titles(self, prefix, size=5):
         """
-        标题搜索建议
+        获取标题建议
         :param prefix: 标题前缀
         :param size: 建议数量
         :return: 建议列表
         """
-        suggest_query = self.search.suggest(
-            "title_suggest", prefix, completion={"field": "title_suggest", "size": size, "skip_duplicates": True}
+        # 构建建议查询
+        suggest_query = {
+            "suggest": {
+                "title_suggest": {
+                    "prefix": prefix,
+                    "completion": {
+                        "field": "title_suggest",
+                        "size": size,
+                        "skip_duplicates": True
+                    }
+                }
+            },
+            "_source": ["title"]
+        }
+
+        # 执行查询
+        response = self.client.search(
+            index=NewsArticleDocument._index._name,
+            body=suggest_query
         )
 
-        response = suggest_query.execute()
+        # 处理结果
         suggestions = []
-
-        if "title_suggest" in response.suggest:
-            for item in response.suggest.title_suggest[0].options:
-                suggestions.append({"id": item._id, "title": item._source.title, "score": item._score})
+        if "suggest" in response and "title_suggest" in response["suggest"]:
+            for suggestion in response["suggest"]["title_suggest"][0]["options"]:
+                suggestions.append({
+                    "id": suggestion["_id"],
+                    "title": suggestion["_source"]["title"],
+                    "score": suggestion["_score"]
+                })
 
         return suggestions
 

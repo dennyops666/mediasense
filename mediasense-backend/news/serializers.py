@@ -35,10 +35,8 @@ class NewsCategorySerializer(serializers.ModelSerializer):
             'children',
             'created_at',
             'updated_at',
-            'creator',
-            'updater',
         ]
-        read_only_fields = ['level', 'article_count', 'created_at', 'updated_at', 'creator', 'updater']
+        read_only_fields = ['level', 'article_count', 'created_at', 'updated_at']
 
     def get_children(self, obj):
         """获取子分类列表."""
@@ -125,35 +123,36 @@ class NewsArticleSerializer(serializers.ModelSerializer):
             'id',
             'title',
             'content',
-            'category',
-            'category_name',
+            'summary',
             'source',
             'author',
             'url',
-            'publish_time',
+            'category',
+            'category_name',
             'tags',
             'status',
             'status_display',
+            'sentiment_score',
+            'publish_time',
+            'read_count',
+            'like_count',
+            'comment_count',
             'reviewer',
             'reviewer_name',
             'review_time',
             'review_comment',
             'created_at',
             'updated_at',
-            'creator',
-            'updater',
         ]
         read_only_fields = [
-            'status',
             'status_display',
-            'reviewer',
+            'category_name',
             'reviewer_name',
-            'review_time',
-            'review_comment',
+            'read_count',
+            'like_count',
+            'comment_count',
             'created_at',
             'updated_at',
-            'creator',
-            'updater',
         ]
 
     def validate_category(self, value):

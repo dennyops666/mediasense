@@ -1,9 +1,11 @@
 import factory
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 from factory.django import DjangoModelFactory
 from faker import Faker
+import random
 
-from news.models import NewsCategory
+from news.models import NewsCategory, NewsArticle
 from monitoring.models import (
     MonitoringVisualization, AlertRule, Dashboard,
     DashboardWidget, SystemMetrics, AlertHistory
@@ -24,7 +26,7 @@ class NewsCategoryFactory(DjangoModelFactory):
     class Meta:
         model = NewsCategory
 
-    name = factory.LazyFunction(lambda: fake.word())
+    name = factory.Sequence(lambda n: f'分类{n}')
     description = factory.LazyFunction(lambda: fake.sentence())
     level = factory.LazyFunction(lambda: fake.random_int(min=1, max=3))
     sort_order = factory.Sequence(lambda n: n)
@@ -113,4 +115,26 @@ class AlertHistoryFactory(DjangoModelFactory):
     resolved_at = factory.LazyFunction(lambda: fake.date_time_this_month())
     acknowledged_at = factory.LazyFunction(lambda: fake.date_time_this_month())
     acknowledged_by = factory.SubFactory(UserFactory)
-    note = factory.LazyFunction(lambda: fake.sentence()) 
+    note = factory.LazyFunction(lambda: fake.sentence())
+
+class NewsArticleFactory(DjangoModelFactory):
+    class Meta:
+        model = NewsArticle
+
+    title = factory.LazyFunction(lambda: fake.sentence())
+    content = factory.LazyFunction(lambda: fake.text())
+    summary = factory.LazyFunction(lambda: fake.paragraph())
+    source = factory.LazyFunction(lambda: fake.company())
+    author = factory.LazyFunction(lambda: fake.name())
+    url = factory.Sequence(lambda n: f'http://example.com/news/{n}')
+    category = factory.SubFactory(NewsCategoryFactory)
+    tags = factory.LazyFunction(lambda: [fake.word() for _ in range(3)])
+    status = factory.Iterator(['draft', 'published', 'archived'])
+    sentiment_score = factory.LazyFunction(lambda: round(random.uniform(0, 1), 2))
+    publish_time = factory.LazyFunction(lambda: timezone.now())
+    read_count = factory.LazyFunction(lambda: fake.random_int(min=0, max=10000))
+    like_count = factory.LazyFunction(lambda: fake.random_int(min=0, max=1000))
+    comment_count = factory.LazyFunction(lambda: fake.random_int(min=0, max=500))
+    reviewer = factory.SubFactory(UserFactory)
+    review_time = factory.LazyFunction(lambda: timezone.now())
+    review_comment = factory.LazyFunction(lambda: fake.sentence()) 

@@ -84,7 +84,7 @@ class SearchQuerySerializer(serializers.Serializer):
 class SearchResultSerializer(serializers.Serializer):
     """搜索结果序列化器"""
 
-    id = serializers.IntegerField()
+    id = serializers.CharField()
     title = serializers.CharField()
     summary = serializers.CharField()
     url = serializers.URLField()
@@ -94,6 +94,7 @@ class SearchResultSerializer(serializers.Serializer):
     author = serializers.CharField()
     tags = serializers.ListField(child=serializers.CharField())
     sentiment_score = serializers.FloatField()
+    status = serializers.CharField()
     title_highlight = serializers.CharField(required=False)
     summary_highlight = serializers.CharField(required=False)
     content_highlight = serializers.CharField(required=False)
@@ -116,7 +117,7 @@ class SuggestQuerySerializer(serializers.Serializer):
 class SuggestResultSerializer(serializers.Serializer):
     """搜索建议结果序列化器"""
 
-    id = serializers.IntegerField()
+    id = serializers.CharField()
     title = serializers.CharField()
     score = serializers.FloatField()
 

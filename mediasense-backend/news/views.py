@@ -195,7 +195,7 @@ class NewsArticleViewSet(viewsets.ModelViewSet):
     search_fields = ['title', 'content', 'summary', 'source', 'author']
     ordering_fields = ['publish_time', 'created_at', 'sentiment_score']
     ordering = ['-publish_time']
-    parser_classes = [MultiPartParser]
+    parser_classes = [JSONParser, MultiPartParser]
 
     def get_queryset(self):
         """获取文章列表，支持多种过滤."""
@@ -249,6 +249,8 @@ class NewsArticleViewSet(viewsets.ModelViewSet):
                 'submit_review',
                 'import_articles',
                 'export_articles',
+                'bulk_update',
+                'bulk_delete',
             ],
             IsAdmin: ['review'],
         }
@@ -433,6 +435,47 @@ class NewsArticleViewSet(viewsets.ModelViewSet):
 
         except Exception as e:
             return Response({'message': '导出失败', 'errors': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=False, methods=['put'], url_path='bulk-update')
+    def bulk_update(self, request):
+        """批量更新文章."""
+        items = request.data.get('items', [])
+        if not items:
+            return Response({"message": "没有提供要更新的数据"}, status=status.HTTP_400_BAD_REQUEST)
+
+        updated_count = 0
+        errors = []
+
+        for item in items:
+            try:
+                article_id = item.pop('id')
+                article = NewsArticle.objects.get(id=article_id)
+                serializer = self.get_serializer(article, data=item, partial=True)
+                serializer.is_valid(raise_exception=True)
+                serializer.save()
+                updated_count += 1
+            except Exception as e:
+                errors.append(f"更新文章 {article_id} 失败: {str(e)}")
+
+        return Response({
+            "message": f"成功更新 {updated_count} 篇文章",
+            "errors": errors
+        })
+
+    @action(detail=False, methods=['post'], url_path='bulk-delete')
+    def bulk_delete(self, request):
+        """批量删除文章."""
+        ids = request.data.get('ids', [])
+        if not ids:
+            return Response({"message": "没有提供要删除的文章ID"}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            articles = NewsArticle.objects.filter(id__in=ids)
+            count = articles.count()
+            articles.delete()
+            return Response({"message": f"成功删除 {count} 篇文章"}, status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response({"message": f"删除失败: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class CategoryViewSet(viewsets.ModelViewSet):

@@ -9,24 +9,54 @@ ENV = 'test'
 # 数据库配置
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': os.path.join(BASE_DIR, 'test_db.sqlite3'),
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'mediasense',
+        'USER': 'mediasense',
+        'PASSWORD': '123456',
+        'HOST': 'localhost',
+        'PORT': '3306',
+        'CONN_MAX_AGE': 600,  # 连接池配置，保持连接10分钟
+        'OPTIONS': {
+            'connect_timeout': 20,  # 连接超时时间20秒
+            'charset': 'utf8mb4',  # 使用utf8mb4字符集
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",  # 设置严格模式
+        },
+        'TEST': {
+            'NAME': 'mediasense',  # 使用同一个数据库
+            'SERIALIZE': False,  # 禁用序列化
+            'MIRROR': None,  # 不使用镜像
+            'DEPENDENCIES': [],  # 不依赖其他数据库
+            'CREATE_DB': False,  # 不创建新数据库
+        }
     }
 }
 
-# 测试缓存配置
+# Redis配置
+REDIS_HOST = 'localhost'
+REDIS_PORT = 6379
+REDIS_DB = 0
+REDIS_PASSWORD = None
+
+# Elasticsearch配置
+ELASTICSEARCH_HOSTS = ['localhost:9200']
+ELASTICSEARCH_INDEX_PREFIX = 'test_'
+ELASTICSEARCH_USERNAME = None
+ELASTICSEARCH_PASSWORD = None
+
+# 缓存配置
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'RETRY_ON_TIMEOUT': True,
+            'MAX_CONNECTIONS': 1000,
+            'CONNECTION_POOL_KWARGS': {'max_connections': 100}
+        }
     }
-}
-
-# 测试Elasticsearch配置
-ELASTICSEARCH_DSL = {
-    'default': {
-        'hosts': 'localhost:9200'
-    },
 }
 
 # 测试邮件配置
@@ -102,3 +132,11 @@ INSTALLED_APPS = [
     'ai_service',
     'crawler',
 ] 
+
+# 测试数据库配置
+TEST = {
+    'NAME': 'mediasense',  # 使用同一个数据库
+    'SERIALIZE': False,  # 禁用序列化
+    'MIRROR': None,  # 不使用镜像
+    'DEPENDENCIES': [],  # 不依赖其他数据库
+} 
