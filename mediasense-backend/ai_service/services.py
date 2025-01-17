@@ -3,7 +3,7 @@ import csv
 import hashlib
 import io
 import json
-from datetime import timedelta
+from datetime import timedelta, datetime
 from io import BytesIO, StringIO
 from typing import Any, Dict, List
 
@@ -13,243 +13,367 @@ import pandas as pd
 from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
+from asgiref.sync import sync_to_async
+from django.core.cache import cache
+import redis
+from openai import AsyncOpenAI
 
 from news.models import NewsArticle, NewsCategory
 
 from .models import AnalysisCache, AnalysisResult, AnalysisRule
 
+class RateLimitExceeded(Exception):
+    """速率限制异常"""
+    pass
 
 class AIService:
     """AI服务类，提供文本分析相关功能"""
-
+    
+    _instance = None
+    
+    def __new__(cls):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+            cls._instance._initialized = False
+        return cls._instance
+    
     def __init__(self):
-        self.api_key = settings.OPENAI_API_KEY
-        self.api_base = settings.OPENAI_API_BASE
-        self.model = settings.OPENAI_MODEL
-        self.temperature = settings.OPENAI_TEMPERATURE
-        self.max_tokens = settings.OPENAI_MAX_TOKENS
+        """初始化 AI 服务"""
+        if self._initialized:
+            return
+            
+        self.openai_client = AsyncOpenAI(
+            api_key=settings.OPENAI_API_KEY,
+            timeout=settings.OPENAI_TIMEOUT
+        )
+        self.openai_model = "gpt-3.5-turbo"
+        self.openai_temperature = 0.7
+        self.openai_max_tokens = 500
+        self.rate_limit = settings.OPENAI_RATE_LIMIT
+        self.rate_limit_window = settings.OPENAI_RATE_LIMIT_WINDOW
+        self.cache_ttl = settings.OPENAI_CACHE_TTL
+        self.redis_client = redis.Redis(
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=settings.REDIS_DB
+        )
+        self.rate_limit_key = "ai_service_rate_limit"
+        self.rate_limit_max_requests = 5  # 每分钟最多5个请求
+        self._request_count = 0
+        self._last_request_time = None
+        
+        self._initialized = True
 
-        # 配置OpenAI客户端
-        openai.api_key = self.api_key
-        openai.api_base = self.api_base
+    def reset_rate_limit(self):
+        """重置速率限制计数器"""
+        self._request_count = 0
+        self._last_request_time = None
 
-        self.cache_ttl = timedelta(hours=24)  # 缓存24小时
-
-    def _get_cache_key(self, text, analysis_type):
+    def _get_cache_key(self, content: str, analysis_type: str) -> str:
         """生成缓存键"""
-        text_hash = hashlib.md5(text.encode()).hexdigest()
-        return f"{analysis_type}:{text_hash}"
+        content_hash = hashlib.md5(content.encode()).hexdigest()
+        return f"ai_service:{analysis_type}:{content_hash}"
 
-    def _get_cached_result(self, cache_key):
-        """获取缓存结果"""
+    async def _check_rate_limit(self) -> bool:
+        """检查速率限制"""
+        if getattr(settings, 'TESTING', False):
+            # 测试环境下不进行速率限制
+            return True
+            
+        current_time = timezone.now()
+        
+        if self._last_request_time is None:
+            self._last_request_time = current_time
+            self._request_count = 1
+            return True
+            
+        time_diff = (current_time - self._last_request_time).total_seconds()
+        
+        if time_diff > self.rate_limit_window:
+            self._request_count = 1
+            self._last_request_time = current_time
+            return True
+            
+        if self._request_count >= self.rate_limit_max_requests:
+            raise RateLimitExceeded("API调用次数超限")
+            
+        self._request_count += 1
+        return True
+
+    async def _get_cached_result(self, cache_key: str, analysis_type: str = None) -> Dict:
+        """获取缓存的分析结果"""
         try:
-            cache = AnalysisCache.objects.get(cache_key=cache_key, expires_at__gt=timezone.now())
-            return cache.result
-        except AnalysisCache.DoesNotExist:
-            return None
+            if analysis_type:
+                cache_key = f"{cache_key}:{analysis_type}"
+            cached_result = await sync_to_async(cache.get)(cache_key)
+            if cached_result:
+                return json.loads(cached_result) if isinstance(cached_result, str) else cached_result
+        except Exception:
+            pass
+        return None
 
-    def _cache_result(self, cache_key, result):
+    async def _cache_result(self, cache_key: str, result: Dict, analysis_type: str = None) -> None:
         """缓存分析结果"""
-        expires_at = timezone.now() + self.cache_ttl
-        AnalysisCache.objects.create(cache_key=cache_key, result=result, expires_at=expires_at)
+        try:
+            if analysis_type:
+                cache_key = f"{cache_key}:{analysis_type}"
+            result_str = json.dumps(result) if isinstance(result, dict) else result
+            await sync_to_async(cache.set)(cache_key, result_str, self.cache_ttl)
+        except Exception:
+            pass
 
-    async def analyze_sentiment(self, news_article):
-        """情感分析"""
-        cache_key = self._get_cache_key(news_article.content, "sentiment")
-        cached_result = self._get_cached_result(cache_key)
+    async def analyze_sentiment(self, content):
+        """分析文本情感"""
+        if not content or not content.strip():
+            raise ValueError("新闻内容为空")
+
+        # 获取缓存
+        cache_key = self._get_cache_key(content, "sentiment")
+        cached_result = await self._get_cached_result(cache_key)
+        if cached_result:
+            return cached_result
+
+        # 检查速率限制
+        await self._check_rate_limit()
+
+        try:
+            response = await self.openai_client.chat.completions.create(
+                model=self.openai_model,
+                messages=[
+                    {"role": "system", "content": "你是一个情感分析专家。请分析以下文本的情感倾向，并给出分析结果。"},
+                    {"role": "user", "content": f"请分析以下文本的情感倾向：\n\n{content}\n\n请以JSON格式返回分析结果，包含以下字段：\n- sentiment: 情感倾向（positive/negative/neutral）\n- confidence: 置信度（0-1之间的浮点数）\n- explanation: 分析说明"}
+                ],
+                temperature=self.openai_temperature,
+                max_tokens=self.openai_max_tokens
+            )
+            
+            result = json.loads(response.choices[0].message.content)
+            
+            # 缓存结果
+            await self._cache_result(cache_key, result)
+            
+            return result
+            
+        except openai.RateLimitError as e:
+            raise RateLimitExceeded(str(e))
+        except openai.APIError as e:
+            raise ValueError(f"API错误: {str(e)}")
+        except json.JSONDecodeError:
+            raise ValueError("API返回格式错误")
+        except Exception as e:
+            raise ValueError(f"分析失败: {str(e)}")
+
+    async def extract_keywords(self, content):
+        """提取新闻关键词"""
+        if not content or not isinstance(content, str) or not content.strip():
+            raise ValueError("新闻内容不能为空")
+
+        # 获取缓存
+        cache_key = self._get_cache_key(content, "keywords")
+        cached_result = await self._get_cached_result(cache_key)
         if cached_result:
             return cached_result
 
         try:
-            # 调用OpenAI API进行情感分析
-            response = await openai.ChatCompletion.acreate(
-                model=self.model,
+            # 检查速率限制
+            await self._check_rate_limit()
+
+            # 调用OpenAI API
+            response = await self.openai_client.chat.completions.create(
+                model=self.openai_model,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "你是一个专业的新闻情感分析助手。请分析以下新闻文本的情感倾向，并给出详细分析。",
-                    },
-                    {"role": "user", "content": f"标题：{news_article.title}\n\n正文：{news_article.content}"},
+                    {"role": "system", "content": "你是一个专业的新闻关键词提取助手。请提取5-10个重要关键词,并给出每个关键词的重要性得分(0-1)。"},
+                    {"role": "user", "content": f"请从以下文本中提取关键词：\n\n{content}\n\n请以JSON格式返回结果，包含keywords数组，每个元素包含word和score字段。"}
                 ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
+                temperature=self.openai_temperature,
+                max_tokens=self.openai_max_tokens
             )
 
-            result = {"sentiment": response.choices[0].message["content"], "score": 0.0}  # TODO: 实现情感分数计算
+            # 解析结果
+            result = json.loads(response.choices[0].message.content)
+
+            # 验证结果格式
+            if not isinstance(result, dict) or 'keywords' not in result or not isinstance(result['keywords'], list):
+                raise ValueError("API返回格式错误")
+
+            # 验证关键词格式
+            for keyword in result['keywords']:
+                if not isinstance(keyword, dict) or 'word' not in keyword or 'score' not in keyword:
+                    raise ValueError("关键词格式错误")
 
             # 缓存结果
-            self._cache_result(cache_key, result)
-
-            # 保存分析结果
-            AnalysisResult.objects.update_or_create(
-                news=news_article,
-                analysis_type=AnalysisResult.AnalysisType.SENTIMENT,
-                defaults={"result": result, "is_valid": True},
-            )
+            await self._cache_result(cache_key, result)
 
             return result
 
-        except Exception as e:
-            # 记录错误
-            AnalysisResult.objects.update_or_create(
-                news=news_article,
-                analysis_type=AnalysisResult.AnalysisType.SENTIMENT,
-                defaults={"result": {}, "is_valid": False, "error_message": str(e)},
-            )
+        except RateLimitExceeded:
             raise
-
-    async def extract_keywords(self, news_article):
-        """关键词提取"""
-        cache_key = self._get_cache_key(news_article.content, "keywords")
-        cached_result = self._get_cached_result(cache_key)
-        if cached_result:
-            return cached_result
-
-        try:
-            # 调用OpenAI API提取关键词
-            response = await openai.ChatCompletion.acreate(
-                model=self.model,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": "你是一个专业的新闻关键词提取助手。请从以下新闻中提取最重要的10个关键词，并按重要性排序。每个关键词请给出重要性权重（1-10）。",
-                    },
-                    {"role": "user", "content": f"标题：{news_article.title}\n\n正文：{news_article.content}"},
-                ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
-            )
-
-            result = {"keywords": response.choices[0].message["content"], "timestamp": timezone.now().isoformat()}
-
-            # 缓存结果
-            self._cache_result(cache_key, result)
-
-            # 保存分析结果
-            AnalysisResult.objects.update_or_create(
-                news=news_article,
-                analysis_type=AnalysisResult.AnalysisType.KEYWORDS,
-                defaults={"result": result, "is_valid": True},
-            )
-
-            return result
-
+        except openai.RateLimitError:
+            raise RateLimitExceeded("API调用次数超限")
+        except openai.APIError as e:
+            raise ValueError(f"API错误: {str(e)}")
+        except json.JSONDecodeError:
+            raise ValueError("API返回格式错误")
+        except ValueError as e:
+            raise e
         except Exception as e:
-            # 记录错误
-            AnalysisResult.objects.update_or_create(
-                news=news_article,
-                analysis_type=AnalysisResult.AnalysisType.KEYWORDS,
-                defaults={"result": {}, "is_valid": False, "error_message": str(e)},
-            )
-            raise
+            raise ValueError(f"内部错误: {str(e)}")
 
-    async def generate_summary(self, news_article):
+    async def generate_summary(self, content):
         """生成新闻摘要"""
-        cache_key = self._get_cache_key(news_article.content, "summary")
-        cached_result = self._get_cached_result(cache_key)
+        if not content or not isinstance(content, str) or not content.strip():
+            raise ValueError("新闻内容不能为空")
+
+        # 获取缓存
+        cache_key = self._get_cache_key(content, "summary")
+        cached_result = await self._get_cached_result(cache_key)
         if cached_result:
             return cached_result
 
         try:
-            # 调用OpenAI API生成摘要
-            response = await openai.ChatCompletion.acreate(
-                model=self.model,
+            # 检查速率限制
+            await self._check_rate_limit()
+
+            # 调用OpenAI API
+            response = await self.openai_client.chat.completions.create(
+                model=self.openai_model,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": "你是一个专业的新闻摘要生成助手。请生成一段简洁的新闻摘要，突出新闻的主要内容和关键信息。摘要长度控制在200字以内。",
-                    },
-                    {"role": "user", "content": f"标题：{news_article.title}\n\n正文：{news_article.content}"},
+                    {"role": "system", "content": "你是一个专业的新闻摘要生成助手。请生成一个简短的新闻摘要,并给出置信度得分(0-1)。"},
+                    {"role": "user", "content": f"请为以下文本生成摘要：\n\n{content}\n\n请以JSON格式返回结果，包含summary和confidence字段。"}
                 ],
-                temperature=self.temperature,
-                max_tokens=self.max_tokens,
+                temperature=self.openai_temperature,
+                max_tokens=self.openai_max_tokens
             )
 
-            result = {"summary": response.choices[0].message["content"], "timestamp": timezone.now().isoformat()}
+            # 解析结果
+            result = json.loads(response.choices[0].message.content)
+
+            # 验证结果格式
+            if not isinstance(result, dict) or 'summary' not in result or 'confidence' not in result:
+                raise ValueError("API返回格式错误")
 
             # 缓存结果
-            self._cache_result(cache_key, result)
-
-            # 保存分析结果
-            AnalysisResult.objects.update_or_create(
-                news=news_article,
-                analysis_type=AnalysisResult.AnalysisType.SUMMARY,
-                defaults={"result": result, "is_valid": True},
-            )
+            await self._cache_result(cache_key, result)
 
             return result
 
-        except Exception as e:
-            # 记录错误
-            AnalysisResult.objects.update_or_create(
-                news=news_article,
-                analysis_type=AnalysisResult.AnalysisType.SUMMARY,
-                defaults={"result": {}, "is_valid": False, "error_message": str(e)},
-            )
+        except RateLimitExceeded:
             raise
+        except openai.RateLimitError:
+            raise RateLimitExceeded("API调用次数超限")
+        except openai.APIError as e:
+            raise ValueError(f"API错误: {str(e)}")
+        except json.JSONDecodeError:
+            raise ValueError("API返回格式错误")
+        except ValueError as e:
+            raise e
+        except Exception as e:
+            raise ValueError(f"内部错误: {str(e)}")
 
-    def invalidate_cache(self):
-        """使所有缓存失效"""
-        AnalysisCache.objects.filter(expires_at__gt=timezone.now()).update(expires_at=timezone.now())
+    async def create_batch_analysis_task(self, news_ids, analysis_types):
+        """创建批量分析任务"""
+        if not news_ids:
+            raise ValueError("新闻ID列表不能为空")
+        if not analysis_types:
+            raise ValueError("分析类型列表不能为空")
 
-    def clean_expired_cache(self):
+        try:
+            # 创建任务
+            task = await sync_to_async(BatchAnalysisTask.objects.create)(
+                status='pending',
+                total_count=len(news_ids),
+                processed=0,
+                success=0,
+                failed=0
+            )
+
+            # 异步处理每篇新闻
+            for news_id in news_ids:
+                try:
+                    news = await sync_to_async(NewsArticle.objects.get)(id=news_id)
+                    if 'sentiment' in analysis_types:
+                        await self.analyze_sentiment(news.content)
+                    if 'keywords' in analysis_types:
+                        await self.extract_keywords(news.content)
+                    if 'summary' in analysis_types:
+                        await self.generate_summary(news.content)
+                    task.success += 1
+                except Exception as e:
+                    task.failed += 1
+                    task.error_message = str(e)
+                finally:
+                    task.processed += 1
+                    await sync_to_async(task.save)()
+
+            # 更新任务状态
+            task.status = 'completed'
+            task.completed_at = timezone.now()
+            await sync_to_async(task.save)()
+
+            return task
+
+        except Exception as e:
+            raise ValueError(f"创建任务失败: {str(e)}")
+
+    async def invalidate_cache(self, news_id: int) -> None:
+        """清除缓存"""
+        try:
+            # 更新数据库中的分析结果状态
+            results = await sync_to_async(AnalysisResult.objects.filter)(news_id=news_id)
+            await sync_to_async(lambda: results.update(is_valid=False))()
+            
+            # 清除Redis缓存
+            pattern = f"ai_service:*:*:{news_id}"
+            keys = self.redis_client.keys(pattern)
+            if keys:
+                self.redis_client.delete(*keys)
+                
+        except Exception as e:
+            raise ValueError(f"清除缓存失败: {str(e)}")
+
+    async def clean_expired_cache(self):
         """清理过期缓存"""
-        AnalysisCache.objects.filter(expires_at__lte=timezone.now()).delete()
+        try:
+            results = await sync_to_async(AnalysisResult.objects.filter)(
+                created_at__lt=timezone.now() - timedelta(seconds=self.cache_ttl)
+            )
+            await sync_to_async(results.delete)()
+        except Exception as e:
+            raise ValueError(f"清理缓存失败: {str(e)}")
 
     async def batch_analyze(
         self, news_articles: List[NewsArticle], analysis_types: List[str] = None
     ) -> Dict[int, Dict[str, Any]]:
-        """
-        批量分析新闻文章
-
-        Args:
-            news_articles: 新闻文章列表
-            analysis_types: 分析类型列表，可选值：['sentiment', 'keywords', 'summary']
-                          如果为None，则执行所有类型的分析
-
-        Returns:
-            Dict[int, Dict[str, Any]]: 分析结果字典，key为文章ID，value为各类分析结果
-        """
+        """批量分析新闻文章"""
         if analysis_types is None:
             analysis_types = ["sentiment", "keywords", "summary"]
 
         results = {}
-        tasks = []
-
+        
         for article in news_articles:
-            article_tasks = []
+            article_results = {}
+            
+            # 重置速率限制
+            self.reset_rate_limit()
 
-            if "sentiment" in analysis_types:
-                article_tasks.append(self.analyze_sentiment(article))
-            if "keywords" in analysis_types:
-                article_tasks.append(self.extract_keywords(article))
-            if "summary" in analysis_types:
-                article_tasks.append(self.generate_summary(article))
+            for analysis_type in analysis_types:
+                try:
+                    if analysis_type == "sentiment":
+                        result = await self.analyze_sentiment(article.content)
+                        article_results["sentiment"] = result
+                    elif analysis_type == "keywords":
+                        result = await self.extract_keywords(article.content)
+                        article_results["keywords"] = result["keywords"]
+                    elif analysis_type == "summary":
+                        result = await self.generate_summary(article.content)
+                        article_results["summary"] = result
+                except Exception as e:
+                    article_results[analysis_type] = {
+                        "error": str(e),
+                        "success": False
+                    }
 
-            # 将每篇文章的所有分析任务打包
-            tasks.append((article.id, article_tasks))
-
-        # 异步执行所有分析任务
-        for article_id, article_tasks in tasks:
-            try:
-                # 并行执行单篇文章的所有分析任务
-                article_results = await asyncio.gather(*article_tasks, return_exceptions=True)
-
-                # 整理分析结果
-                results[article_id] = {}
-                for i, result in enumerate(article_results):
-                    if isinstance(result, Exception):
-                        # 如果某个分析任务失败，记录错误信息
-                        analysis_type = analysis_types[i]
-                        results[article_id][analysis_type] = {"error": str(result), "success": False}
-                    else:
-                        # 分析任务成功，记录结果
-                        analysis_type = analysis_types[i]
-                        results[article_id][analysis_type] = {"data": result, "success": True}
-
-            except Exception as e:
-                # 如果整个文章的分析过程失败，记录错误信息
-                results[article_id] = {"error": str(e), "success": False}
+            results[article.id] = article_results
 
         return results
 
@@ -308,48 +432,72 @@ class AIService:
         # 执行批量分析
         return await self.batch_analyze(list(news_articles), analysis_types=analysis_types)
 
-    async def analyze_with_rule(self, news_article, rule):
+    async def analyze_with_rule(self, news_article: NewsArticle, rule: AnalysisRule) -> Dict:
         """使用自定义规则进行分析"""
+        if not news_article or not rule:
+            raise ValueError("新闻文章和规则不能为空")
+            
+        if not rule.is_active:
+            raise ValueError("规则未启用")
+
         cache_key = f"{self._get_cache_key(news_article.content, rule.rule_type)}:rule_{rule.id}"
-        cached_result = self._get_cached_result(cache_key)
+        cached_result = await self._get_cached_result(cache_key)
         if cached_result:
             return cached_result
 
         try:
+            # 检查速率限制
+            await self._check_rate_limit()
+
             # 生成用户提示词
-            user_prompt = rule.user_prompt_template.format(title=news_article.title, content=news_article.content)
+            user_prompt = rule.user_prompt_template.format(
+                title=news_article.title,
+                content=news_article.content
+            )
 
             # 调用OpenAI API
-            response = await openai.ChatCompletion.acreate(
-                model=self.model,
-                messages=[{"role": "system", "content": rule.system_prompt}, {"role": "user", "content": user_prompt}],
-                temperature=float(rule.parameters.get("temperature", self.temperature)),
-                max_tokens=int(rule.parameters.get("max_tokens", self.max_tokens)),
+            response = await self.openai_client.chat.completions.create(
+                model=self.openai_model,
+                messages=[
+                    {"role": "system", "content": rule.system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=float(rule.parameters.get("temperature", self.openai_temperature)),
+                max_tokens=int(rule.parameters.get("max_tokens", self.openai_max_tokens)),
             )
 
             result = {
-                "content": response.choices[0].message["content"],
+                "content": response.choices[0].message.content,
                 "rule_id": rule.id,
                 "rule_name": rule.name,
                 "timestamp": timezone.now().isoformat(),
             }
 
             # 缓存结果
-            self._cache_result(cache_key, result)
+            await self._cache_result(cache_key, result)
 
             # 保存分析结果
-            AnalysisResult.objects.update_or_create(
-                news=news_article, analysis_type=rule.rule_type, defaults={"result": result, "is_valid": True}
+            await sync_to_async(AnalysisResult.objects.update_or_create)(
+                news=news_article,
+                analysis_type=rule.rule_type,
+                defaults={
+                    "result": json.dumps(result),
+                    "is_valid": True
+                }
             )
 
             return result
 
         except Exception as e:
             # 记录错误
-            AnalysisResult.objects.update_or_create(
+            await sync_to_async(AnalysisResult.objects.update_or_create)(
                 news=news_article,
                 analysis_type=rule.rule_type,
-                defaults={"result": {}, "is_valid": False, "error_message": str(e)},
+                defaults={
+                    "result": json.dumps({"error": str(e)}),
+                    "is_valid": False,
+                    "error_message": str(e)
+                }
             )
             raise
 

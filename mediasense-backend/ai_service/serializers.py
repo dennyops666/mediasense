@@ -63,11 +63,19 @@ class AnalysisRuleSerializer(serializers.ModelSerializer):
 
 class AnalysisResultSerializer(serializers.ModelSerializer):
     """分析结果序列化器"""
-
+    result = serializers.JSONField()
+    
     class Meta:
         model = AnalysisResult
-        fields = ["id", "news", "analysis_type", "result", "created_at", "updated_at", "is_valid", "error_message"]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        fields = ['id', 'news', 'analysis_type', 'result', 'is_valid', 'created_at']
+        read_only_fields = ['id', 'created_at']
+    
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        # 将result字段的内容展开到顶层
+        if instance.result:
+            data.update(instance.result)
+        return data
 
 
 class AnalysisCacheSerializer(serializers.ModelSerializer):

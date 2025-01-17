@@ -4,12 +4,14 @@ from django.utils import timezone
 from factory.django import DjangoModelFactory
 from faker import Faker
 import random
+import uuid
 
 from news.models import NewsCategory, NewsArticle
 from monitoring.models import (
     MonitoringVisualization, AlertRule, Dashboard,
     DashboardWidget, SystemMetrics, AlertHistory
 )
+from ai_service.models import AnalysisResult
 
 fake = Faker('zh_CN')
 
@@ -17,7 +19,7 @@ class UserFactory(DjangoModelFactory):
     class Meta:
         model = get_user_model()
 
-    username = factory.Sequence(lambda n: f'user{n}')
+    username = factory.LazyFunction(lambda: f'user_{uuid.uuid4().hex[:8]}')
     email = factory.LazyAttribute(lambda obj: f'{obj.username}@example.com')
     password = factory.PostGenerationMethodCall('set_password', 'password123')
     is_active = True
@@ -137,4 +139,28 @@ class NewsArticleFactory(DjangoModelFactory):
     comment_count = factory.LazyFunction(lambda: fake.random_int(min=0, max=500))
     reviewer = factory.SubFactory(UserFactory)
     review_time = factory.LazyFunction(lambda: timezone.now())
-    review_comment = factory.LazyFunction(lambda: fake.sentence()) 
+    review_comment = factory.LazyFunction(lambda: fake.sentence())
+
+class NewsFactory(DjangoModelFactory):
+    class Meta:
+        model = NewsArticle
+
+    title = factory.Sequence(lambda n: f'Test News {n}')
+    content = factory.Faker('text', max_nb_chars=1000)
+    status = 'published'
+    source = 'test'
+    url = factory.LazyAttribute(lambda obj: f'https://example.com/news/{obj.title}')
+
+class AnalysisResultFactory(DjangoModelFactory):
+    class Meta:
+        model = AnalysisResult
+
+    news = factory.SubFactory(NewsFactory)
+    analysis_type = AnalysisResult.AnalysisType.SENTIMENT
+    result = factory.Dict({
+        'sentiment': 'positive',
+        'confidence': 0.9,
+        'keywords': ['test', 'news'],
+        'summary': 'Test summary'
+    })
+    is_valid = True 

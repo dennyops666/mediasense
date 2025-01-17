@@ -2,6 +2,9 @@ from django.test import TestCase, Client
 from rest_framework.test import APITestCase, APIClient
 from django.contrib.auth import get_user_model
 from rest_framework_simplejwt.tokens import RefreshToken
+import pytest
+
+from .test_ai import AsyncAPIClient
 
 User = get_user_model()
 
@@ -29,7 +32,7 @@ class BaseAPITestCase(APITestCase):
     """基础API测试类"""
     
     def setUp(self):
-        self.client = APIClient()
+        self.client = AsyncAPIClient()  # 使用异步客户端
         self.test_password = 'testpass123'  # 设置测试密码
         # 创建测试用户
         self.user = User.objects.create_user(

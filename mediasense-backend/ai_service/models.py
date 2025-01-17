@@ -92,48 +92,43 @@ class AnalysisCache(models.Model):
 
 class BatchAnalysisTask(models.Model):
     """批量分析任务"""
-
-    class Status(models.TextChoices):
-        PENDING = "pending", "等待处理"
-        PROCESSING = "processing", "处理中"
-        COMPLETED = "completed", "已完成"
-        FAILED = "failed", "失败"
-
-    created_by = models.ForeignKey(
-        User, on_delete=models.SET_NULL, null=True, related_name="batch_analysis_tasks", verbose_name="创建者"
+    STATUS_CHOICES = (
+        ('pending', '等待中'),
+        ('processing', '处理中'),
+        ('completed', '已完成'),
+        ('failed', '失败')
     )
-    news_ids = models.JSONField("新闻ID列表")
-    analysis_types = models.JSONField("分析类型列表", null=True, blank=True)
-    status = models.CharField("状态", max_length=20, choices=Status.choices, default=Status.PENDING)
-    total_articles = models.IntegerField("总文章数", default=0)
-    processed_articles = models.IntegerField("已处理文章数", default=0)
-    success_articles = models.IntegerField("成功处理文章数", default=0)
-    error_message = models.TextField("错误信息", blank=True)
-    created_at = models.DateTimeField("创建时间", auto_now_add=True)
-    started_at = models.DateTimeField("开始时间", null=True)
-    completed_at = models.DateTimeField("完成时间", null=True)
+
+    status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default='pending')
+    total_count = models.IntegerField('总数', default=0)
+    processed = models.IntegerField('已处理', default=0)
+    success = models.IntegerField('成功数', default=0)
+    failed = models.IntegerField('失败数', default=0)
+    error_message = models.TextField('错误信息', null=True, blank=True)
+    created_at = models.DateTimeField('创建时间', auto_now_add=True)
+    completed_at = models.DateTimeField('完成时间', null=True, blank=True)
 
     class Meta:
-        verbose_name = "批量分析任务"
+        db_table = 'ai_service_batchanalysistask'
+        verbose_name = '批量分析任务'
         verbose_name_plural = verbose_name
-        ordering = ["-created_at"]
 
     def __str__(self):
-        return f"批量分析任务 {self.id}"
+        return f'BatchAnalysisTask {self.id} ({self.status})'
 
     @property
     def duration(self):
-        """任务持续时间（秒）"""
-        if self.started_at and self.completed_at:
-            return (self.completed_at - self.started_at).total_seconds()
-        return None
+        """任务持续时间(秒)"""
+        if not self.completed_at:
+            return None
+        return (self.completed_at - self.created_at).total_seconds()
 
     @property
     def success_rate(self):
-        """任务成功率"""
-        if self.total_articles > 0:
-            return round(self.success_articles / self.total_articles * 100, 2)
-        return 0
+        """成功率"""
+        if self.total_count == 0:
+            return 0
+        return round(self.success / self.total_count * 100, 2)
 
 
 class BatchAnalysisResult(models.Model):
