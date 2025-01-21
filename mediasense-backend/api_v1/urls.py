@@ -1,32 +1,18 @@
-from django.urls import include, path
-from rest_framework import routers
+from django.urls import path, include
+from rest_framework.schemas import get_schema_view
+from rest_framework.documentation import include_docs_urls
 
-from .views import docs_view, schema_view
+API_VERSION = 'v1'
 
-app_name = "api_v1"
-
-# API路由注册
-router = routers.DefaultRouter()
-
-# API版本
-API_VERSION = "v1"
+app_name = "api"
 
 urlpatterns = [
-    # API文档
-    path("schema/", schema_view.with_ui("swagger", cache_timeout=0), name="schema"),
-    path("docs/", docs_view, name="docs"),
-    # 认证相关API
-    path(f"{API_VERSION}/auth/", include("custom_auth.urls")),
-    # 新闻相关API
+    path(f"{API_VERSION}/schema/", get_schema_view(title="MediaSense API"), name="schema"),
+    path(f"{API_VERSION}/docs/", include_docs_urls(title="MediaSense API"), name="docs"),
+    path(f"{API_VERSION}/auth/", include("custom_auth.urls", namespace="auth")),
     path(f"{API_VERSION}/news/", include("news.urls")),
-    # 新闻搜索API
     path(f"{API_VERSION}/search/", include("news_search.urls")),
-    # 爬虫管理API
     path(f"{API_VERSION}/crawler/", include("crawler.urls")),
-    # AI服务API
     path(f"{API_VERSION}/ai/", include("ai_service.urls")),
-    # 系统监控API
-    path(f"{API_VERSION}/monitoring/", include("monitoring.urls")),
-    # 默认API路由
-    path(f"{API_VERSION}/", include(router.urls)),
+    # path(f"{API_VERSION}/monitoring/", include("monitoring.urls", namespace="monitoring")),
 ]

@@ -40,53 +40,86 @@ class AsyncMiddleware:
                 else:
                     rendered = response.render()
                 
-                # 创建新的 JsonResponse
-                return JsonResponse(
-                    response.data,
+                # 创建新的 HttpResponse
+                http_response = HttpResponse(
+                    content=rendered.content,
                     status=response.status_code,
-                    safe=False
+                    content_type=response.content_type
                 )
+                
+                # 复制原始响应的属性
+                if hasattr(response, 'headers'):
+                    for key, value in response.headers.items():
+                        http_response[key] = value
+                
+                # 确保响应有 headers 属性
+                if not hasattr(http_response, 'headers'):
+                    http_response.headers = {}
+                
+                return http_response
             
             # 处理 JsonResponse 对象
             if isinstance(response, JsonResponse):
+                # 确保响应有 headers 属性
+                if not hasattr(response, 'headers'):
+                    response.headers = {}
                 return response
             
             # 处理其他类型的响应
             if not isinstance(response, HttpResponse):
                 if isinstance(response, (dict, list)):
-                    return JsonResponse(response, safe=False)
+                    response = JsonResponse(response, safe=False)
                 elif isinstance(response, str):
-                    return JsonResponse({'message': response})
+                    response = JsonResponse({'message': response})
                 else:
-                    return JsonResponse({'data': str(response)})
+                    response = JsonResponse({'data': str(response)})
+                
+                # 确保响应有 headers 属性
+                if not hasattr(response, 'headers'):
+                    response.headers = {}
+                
+                return response
+            
+            # 确保 HttpResponse 有 headers 属性
+            if not hasattr(response, 'headers'):
+                response.headers = {}
             
             return response
             
         except openai.RateLimitError as e:
-            return JsonResponse(
+            response = JsonResponse(
                 {'error': 'rate_limit_exceeded', 'detail': str(e)},
                 status=status.HTTP_429_TOO_MANY_REQUESTS
             )
+            response.headers = {}
+            return response
         except openai.APIStatusError as e:
             if e.response.status == 429:
-                return JsonResponse(
+                response = JsonResponse(
                     {'error': 'rate_limit_exceeded', 'detail': str(e)},
                     status=status.HTTP_429_TOO_MANY_REQUESTS
                 )
-            return JsonResponse(
-                {'error': 'openai_error', 'detail': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            else:
+                response = JsonResponse(
+                    {'error': 'openai_error', 'detail': str(e)},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+            response.headers = {}
+            return response
         except ValueError as e:
-            return JsonResponse(
+            response = JsonResponse(
                 {'error': 'invalid_input', 'detail': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )
+            response.headers = {}
+            return response
         except Exception as e:
-            return JsonResponse(
+            response = JsonResponse(
                 {'error': 'internal_error', 'detail': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+            response.headers = {}
+            return response
 
     async def process_request(self, request):
         """处理请求"""

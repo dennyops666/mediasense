@@ -1,194 +1,135 @@
+from environ import Env
 import os
-from datetime import timedelta
-import environ
-from pathlib import Path
+
+env = Env()
+env.read_env(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
+
 from .base import *
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
+# 允许在异步上下文中执行同步操作
+os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
 
-env = environ.Env()
+# 设置用户模型
+AUTH_USER_MODEL = 'custom_auth.User'  # 使用自定义用户模型
 
-# 测试环境标识
-ENV = 'test'
-
-# 安全配置
-SECRET_KEY = 'django-insecure-test-key-do-not-use-in-production'
-
-# 模板配置
-TEMPLATES = [
-    {
-        'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [os.path.join(BASE_DIR, 'templates')],
-        'APP_DIRS': True,
-        'OPTIONS': {
-            'context_processors': [
-                'django.template.context_processors.debug',
-                'django.template.context_processors.request',
-                'django.contrib.auth.context_processors.auth',
-                'django.contrib.messages.context_processors.messages',
-            ],
-        },
-    },
+# 配置认证后端
+AUTHENTICATION_BACKENDS = [
+    'django.contrib.auth.backends.ModelBackend',
 ]
 
-# 数据库配置
+# 使用 pytest 测试运行器
+TEST_RUNNER = 'mediasense.test_runner.PytestTestRunner'
+
+# 使用现有的 MySQL 数据库
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'test_db.sqlite3',
-    }
-}
-
-# Redis配置
-REDIS_HOST = 'localhost'
-REDIS_PORT = 6379
-REDIS_DB = 0
-REDIS_PASSWORD = None
-
-# Elasticsearch配置
-ELASTICSEARCH_HOSTS = ['localhost:9200']
-ELASTICSEARCH_INDEX_PREFIX = 'test_'
-ELASTICSEARCH_USERNAME = None
-ELASTICSEARCH_PASSWORD = None
-
-# 缓存配置
-CACHES = {
-    'default': {
-        'BACKEND': 'django_redis.cache.RedisCache',
-        'LOCATION': f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': env('MYSQL_DATABASE'),
+        'USER': env('MYSQL_USER'),
+        'PASSWORD': env('MYSQL_PASSWORD'),
+        'HOST': env('MYSQL_HOST'),
+        'PORT': env('MYSQL_PORT'),
         'OPTIONS': {
-            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            'SOCKET_CONNECT_TIMEOUT': 5,
-            'SOCKET_TIMEOUT': 5,
-            'RETRY_ON_TIMEOUT': True,
-            'MAX_CONNECTIONS': 1000,
-            'CONNECTION_POOL_KWARGS': {'max_connections': 100}
+            'charset': 'utf8mb4',
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            'isolation_level': 'read committed',
+        },
+        'ATOMIC_REQUESTS': False,  # 禁用自动事务
+        'AUTOCOMMIT': True,  # 启用自动提交
+        'CONN_MAX_AGE': 0,
+        'TEST': {
+            'NAME': env('MYSQL_DATABASE'),
+            'MIRROR': None,
+            'CREATE_DB': False,
+            'DEPENDENCIES': [],
         }
     }
 }
 
-# 测试邮件配置
-EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
+# 配置数据库并发设置
+DATABASE_ROUTERS = []
 
-# 测试文件存储配置
-DEFAULT_FILE_STORAGE = 'django.core.files.storage.FileSystemStorage'
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media_test')
-
-# 测试日志配置
-LOGGING = {
-    'version': 1,
-    'disable_existing_loggers': False,
-    'handlers': {
-        'console': {
-            'class': 'logging.StreamHandler',
-        },
-    },
-    'root': {
-        'handlers': ['console'],
-        'level': 'INFO',
-    },
-}
-
-# 测试安全配置
-PASSWORD_HASHERS = [
-    'django.contrib.auth.hashers.MD5PasswordHasher',
-]
-
-# 测试中间件配置
-MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'ai_service.middleware.AsyncMiddleware',  # 将异步中间件放在最后
-]
-
-# JWT测试配置
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=5),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
-    'SIGNING_KEY': 'test-secret-key',
-    'AUTH_HEADER_TYPES': ('Bearer',),
-    'BLACKLIST_AFTER_ROTATION': True,  # 启用token blacklist
-    'ROTATE_REFRESH_TOKENS': True,
-    'TOKEN_BLACKLIST_SERIALIZER': 'rest_framework_simplejwt.serializers.TokenBlacklistSerializer',
-}
-
-# 测试性能配置
-DEBUG = False
-ALLOWED_HOSTS = ['*']
-
-# REST framework配置
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.TokenAuthentication',
-        'rest_framework.authentication.SessionAuthentication',
-    ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
-    ],
-}
-
-# 测试任务配置
-CELERY_TASK_ALWAYS_EAGER = True
-CELERY_TASK_EAGER_PROPAGATES = True 
-
-# 添加token blacklist应用
+# 禁用不必要的应用
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
-    'django.contrib.contenttypes', 
+    'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
     'rest_framework.authtoken',
-    'rest_framework_simplejwt.token_blacklist',
-    'corsheaders',
-    'django_celery_beat',
-    'django_celery_results',
-    'custom_auth.apps.CustomAuthConfig',
-    'news.apps.NewsConfig',
-    'news_search.apps.NewsSearchConfig',
-    'monitoring.apps.MonitoringConfig',
-    'ai_service.apps.AIServiceConfig',
-    'crawler.apps.CrawlerConfig',
+    'monitoring',
+    'custom_auth',
+    'news',
+    'news_search',
+    'crawler',
+    'ai_service',
 ]
 
-# 测试数据库配置
-TEST = {
-    'NAME': 'mediasense',  # 使用同一个数据库
-    'SERIALIZE': False,  # 禁用序列化
-    'MIRROR': None,  # 不使用镜像
-    'DEPENDENCIES': [],  # 不依赖其他数据库
-    'CREATE_DB': False  # 不创建新数据库
-} 
+# 使用异步中间件
+MIDDLEWARE = [
+    'monitoring.middleware.AsyncMiddleware',
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
 
-# OpenAI配置
-OPENAI_API_KEY = "test-api-key"
-OPENAI_API_BASE = "https://api.openai-proxy.com/v1"
-OPENAI_MODEL = "gpt-4"
-OPENAI_TEMPERATURE = 0.2
-OPENAI_MAX_TOKENS = 2000
-OPENAI_TIMEOUT = 30  # 添加超时设置
-OPENAI_RATE_LIMIT = 60  # 每分钟请求限制
-OPENAI_RATE_LIMIT_WINDOW = 60  # 速率限制窗口(秒)
-OPENAI_CACHE_TTL = 3600  # 缓存过期时间(秒)
+# 使用内存缓存
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+    }
+}
 
-# AI服务配置
-AUTO_ANALYZE_NEWS = True
-GENERATE_SUMMARY = True 
+# 禁用密码哈希器以加快测试速度
+PASSWORD_HASHERS = [
+    'django.contrib.auth.hashers.MD5PasswordHasher',
+]
 
-# 测试环境异步配置
-ASYNC_VIEW_TIMEOUT = 10  # 测试环境设置较短的超时时间
-CELERY_TASK_ALWAYS_EAGER = True  # 测试环境同步执行任务
-CELERY_TASK_EAGER_PROPAGATES = True
-CELERY_TASK_TIME_LIMIT = 30  # 测试环境30秒超时
-CELERY_TASK_SOFT_TIME_LIMIT = 25  # 测试环境25秒软超时
+# 禁用日志记录
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': True,
+    'handlers': {
+        'null': {
+            'class': 'logging.NullHandler',
+        },
+    },
+    'loggers': {
+        '': {
+            'handlers': ['null'],
+            'level': 'CRITICAL',
+        },
+    },
+}
 
-# 确保正确设置 AUTH_USER_MODEL
-AUTH_USER_MODEL = 'custom_auth.User' 
+# 使用控制台邮件后端
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
+
+# 禁用 Celery
+CELERY_ALWAYS_EAGER = True
+CELERY_EAGER_PROPAGATES_EXCEPTIONS = True
+
+# REST Framework 配置
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.SessionAuthentication',
+        'rest_framework.authentication.BasicAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.AllowAny',
+    ],
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+        'rest_framework.renderers.BrowsableAPIRenderer',
+        'rest_framework.renderers.MultiPartRenderer',
+    ],
+    'UNAUTHENTICATED_USER': None,
+    'UNAUTHENTICATED_TOKEN': None,
+}

@@ -1,4 +1,5 @@
 from datetime import timedelta
+import asyncio
 
 import psutil
 import requests
@@ -13,7 +14,7 @@ class MonitoringVisualizationService:
     """监控可视化服务类"""
 
     @staticmethod
-    def generate_chart_data(visualization):
+    async def generate_chart_data(visualization):
         """生成图表数据"""
         # 计算时间范围
         end_time = timezone.now()
@@ -40,7 +41,7 @@ class MonitoringVisualizationService:
             next_time = current_time + timedelta(seconds=interval_seconds)
 
             # 查询当前时间段的数据
-            period_data = queryset.filter(timestamp__gte=current_time, timestamp__lt=next_time).aggregate(
+            period_data = await queryset.filter(timestamp__gte=current_time, timestamp__lt=next_time).aaggregate(
                 value=agg_func("value")
             )
 
@@ -97,12 +98,12 @@ class MonitoringVisualizationService:
         # 更新缓存
         visualization.cached_data = chart_data
         visualization.last_generated = timezone.now()
-        visualization.save()
+        await visualization.asave()
 
         return chart_data
 
     @staticmethod
-    def get_chart_data(visualization):
+    async def get_chart_data(visualization):
         """获取图表数据，如果缓存有效则返回缓存数据"""
         # 检查缓存是否有效
         if (
@@ -113,10 +114,10 @@ class MonitoringVisualizationService:
             return visualization.cached_data
 
         # 生成新数据
-        return MonitoringVisualizationService.generate_chart_data(visualization)
+        return await MonitoringVisualizationService.generate_chart_data(visualization)
 
     @staticmethod
-    def get_available_fields():
+    async def get_available_fields():
         """获取可用的字段列表"""
         return {
             "metric_types": [

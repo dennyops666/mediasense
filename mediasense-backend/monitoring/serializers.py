@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from django.utils import timezone
 
 from .models import (
     AlertHistory,
@@ -8,6 +9,7 @@ from .models import (
     DashboardWidget,
     MonitoringVisualization,
     SystemMetrics,
+    ErrorLog,
 )
 
 
@@ -15,11 +17,37 @@ class SystemMetricsSerializer(serializers.ModelSerializer):
     """系统指标序列化器"""
 
     metric_type_display = serializers.CharField(source="get_metric_type_display", read_only=True)
+    timestamp = serializers.DateTimeField(required=False)
 
     class Meta:
         model = SystemMetrics
-        fields = ["id", "metric_type", "metric_type_display", "value", "unit", "timestamp", "description"]
-        read_only_fields = ["timestamp"]
+        fields = ["id", "metric_type", "metric_type_display", "value", "timestamp", "metadata"]
+        read_only_fields = ["id"]
+
+    def validate_metric_type(self, value):
+        """验证指标类型"""
+        valid_types = [choice[0] for choice in SystemMetrics.MetricType.choices]
+        if value not in valid_types:
+            raise serializers.ValidationError(f"无效的指标类型: {value}")
+        return value
+
+    def validate_value(self, value):
+        """验证指标值"""
+        if not isinstance(value, (int, float)):
+            raise serializers.ValidationError("指标值必须是数字")
+        return value
+
+    def validate_metadata(self, value):
+        """验证元数据"""
+        if not isinstance(value, dict):
+            raise serializers.ValidationError("元数据必须是字典类型")
+        return value
+
+    def create(self, validated_data):
+        """创建系统指标"""
+        if 'timestamp' not in validated_data:
+            validated_data['timestamp'] = timezone.now()
+        return super().create(validated_data)
 
 
 class MonitoringVisualizationSerializer(serializers.ModelSerializer):
@@ -52,6 +80,32 @@ class MonitoringVisualizationSerializer(serializers.ModelSerializer):
             "cached_data",
         ]
         read_only_fields = ["id", "created_by", "created_at", "updated_at", "last_generated", "cached_data"]
+
+    def validate_chart_type(self, value):
+        """验证图表类型"""
+        valid_types = [choice[0] for choice in MonitoringVisualization.ChartType.choices]
+        if value not in valid_types:
+            raise serializers.ValidationError(f"无效的图表类型: {value}")
+        return value
+
+    def validate_metric_type(self, value):
+        """验证指标类型"""
+        valid_types = [choice[0] for choice in MonitoringVisualization.MetricType.choices]
+        if value not in valid_types:
+            raise serializers.ValidationError(f"无效的指标类型: {value}")
+        return value
+
+    def validate_time_range(self, value):
+        """验证时间范围"""
+        if value < 1:
+            raise serializers.ValidationError("时间范围必须大于0")
+        return value
+
+    def validate_interval(self, value):
+        """验证时间间隔"""
+        if value < 1:
+            raise serializers.ValidationError("时间间隔必须大于0")
+        return value
 
 
 class AlertRuleSerializer(serializers.ModelSerializer):
@@ -89,6 +143,27 @@ class AlertRuleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("持续时间必须大于0")
         return value
 
+    def validate_alert_level(self, value):
+        """验证告警级别"""
+        valid_levels = [choice[0] for choice in AlertRule.AlertLevel.choices]
+        if value not in valid_levels:
+            raise serializers.ValidationError(f"无效的告警级别: {value}")
+        return value
+
+    def validate_metric_type(self, value):
+        """验证指标类型"""
+        valid_types = [choice[0] for choice in AlertRule.MetricType.choices]
+        if value not in valid_types:
+            raise serializers.ValidationError(f"无效的指标类型: {value}")
+        return value
+
+    def validate_operator(self, value):
+        """验证操作符"""
+        valid_operators = [choice[0] for choice in AlertRule.Operator.choices]
+        if value not in valid_operators:
+            raise serializers.ValidationError(f"无效的操作符: {value}")
+        return value
+
 
 class AlertHistorySerializer(serializers.ModelSerializer):
     """告警历史序列化器"""
@@ -119,7 +194,6 @@ class AlertHistorySerializer(serializers.ModelSerializer):
         ]
         read_only_fields = [
             "id",
-            "rule",
             "rule_name",
             "metric_value",
             "triggered_at",
@@ -142,55 +216,43 @@ class AlertNotificationConfigSerializer(serializers.ModelSerializer):
         model = AlertNotificationConfig
         fields = [
             "id",
-            "user",
+            "name",
             "notification_type",
             "notification_type_display",
-            "name",
             "config",
             "alert_levels",
             "is_active",
+            "user",
             "created_at",
             "updated_at",
+            "last_notified",
+            "notification_count",
         ]
-        read_only_fields = ["id", "user", "created_at", "updated_at"]
+        read_only_fields = ["user", "created_at", "updated_at", "last_notified", "notification_count"]
 
     def validate_config(self, value):
-        """验证配置参数"""
+        """验证配置信息"""
         notification_type = self.initial_data.get("notification_type")
-
-        if notification_type == AlertNotificationConfig.NotificationType.EMAIL:
-            required_fields = ["email"]
-        elif notification_type == AlertNotificationConfig.NotificationType.SMS:
-            required_fields = ["phone"]
-        elif notification_type == AlertNotificationConfig.NotificationType.WEBHOOK:
-            required_fields = ["url"]
-        elif notification_type == AlertNotificationConfig.NotificationType.DINGTALK:
-            required_fields = ["webhook_url", "secret"]
-        elif notification_type == AlertNotificationConfig.NotificationType.WECHAT:
-            required_fields = ["corp_id", "agent_id", "secret"]
-        else:
-            return value
-
-        for field in required_fields:
-            if field not in value:
-                raise serializers.ValidationError(f"缺少必需的配置参数: {field}")
-
+        if notification_type == "email":
+            if "email" not in value:
+                raise serializers.ValidationError("邮件通知配置必须包含email字段")
+        elif notification_type == "webhook":
+            if "url" not in value:
+                raise serializers.ValidationError("Webhook通知配置必须包含url字段")
+        elif notification_type == "dingtalk":
+            if "webhook_url" not in value:
+                raise serializers.ValidationError("钉钉通知配置必须包含webhook_url字段")
+        elif notification_type == "wechat":
+            if "corp_id" not in value or "agent_id" not in value or "secret" not in value:
+                raise serializers.ValidationError("微信通知配置必须包含corp_id、agent_id和secret字段")
         return value
 
     def validate_alert_levels(self, value):
-        """验证告警级别列表"""
-        valid_levels = [level[0] for level in AlertRule.AlertLevel.choices]
-
-        if not isinstance(value, list):
-            raise serializers.ValidationError("告警级别必须是一个列表")
-
-        if not value:
-            raise serializers.ValidationError("至少需要选择一个告警级别")
-
+        """验证告警级别"""
+        valid_levels = ["info", "warning", "error", "critical"]
         for level in value:
             if level not in valid_levels:
                 raise serializers.ValidationError(f"无效的告警级别: {level}")
-
         return value
 
 
@@ -238,3 +300,18 @@ class DashboardSerializer(serializers.ModelSerializer):
             "widgets",
         ]
         read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+
+
+class ErrorLogSerializer(serializers.ModelSerializer):
+    """错误日志序列化器"""
+    class Meta:
+        model = ErrorLog
+        fields = ['id', 'severity', 'message', 'stack_trace', 'source', 'created_by', 'created_at']
+        read_only_fields = ['created_by', 'created_at']
+
+    def validate_severity(self, value):
+        """验证日志级别"""
+        valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
+        if value not in valid_levels:
+            raise serializers.ValidationError(f"无效的日志级别: {value}")
+        return value

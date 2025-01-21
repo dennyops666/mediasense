@@ -2,6 +2,7 @@ from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -107,7 +108,7 @@ class AlertRule(models.Model):
     threshold = models.FloatField("阈值")
     duration = models.IntegerField("持续时间(分钟)", default=5, help_text="指标超过阈值持续n分钟后触发告警")
     alert_level = models.CharField("告警级别", max_length=20, choices=AlertLevel.choices, default=AlertLevel.WARNING)
-    is_active = models.IntegerField("是否启用", default=1)
+    is_enabled = models.BooleanField("是否启用", default=True)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="alert_rules", verbose_name="创建者"
     )
@@ -119,7 +120,7 @@ class AlertRule(models.Model):
         verbose_name_plural = verbose_name
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["metric_type", "is_active"]),
+            models.Index(fields=["metric_type", "is_enabled"]),
             models.Index(fields=["created_at"]),
         ]
 
@@ -142,12 +143,16 @@ class AlertHistory(models.Model):
 
     rule = models.ForeignKey(AlertRule, on_delete=models.CASCADE, related_name="alert_history", verbose_name="告警规则")
     status = models.CharField("状态", max_length=20, choices=Status.choices, default=Status.ACTIVE)
+    message = models.TextField("告警消息", blank=True)
     metric_value = models.FloatField("指标值")
     triggered_at = models.DateTimeField("触发时间", auto_now_add=True)
     resolved_at = models.DateTimeField("解决时间", null=True, blank=True)
     acknowledged_at = models.DateTimeField("确认时间", null=True, blank=True)
     acknowledged_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="acknowledged_alerts", verbose_name="确认者"
+    )
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="created_alerts", verbose_name="创建者"
     )
     note = models.TextField("备注", blank=True)
 
@@ -165,100 +170,108 @@ class AlertHistory(models.Model):
 
 
 class AlertNotificationConfig(models.Model):
-    """告警通知配置"""
+    """告警通知配置模型"""
 
     class NotificationType(models.TextChoices):
-        EMAIL = "email", "邮件"
-        SMS = "sms", "短信"
-        WEBHOOK = "webhook", "Webhook"
-        DINGTALK = "dingtalk", "钉钉"
-        WECHAT = "wechat", "企业微信"
+        EMAIL = "email", "邮件通知"
+        SMS = "sms", "短信通知"
+        WEBHOOK = "webhook", "Webhook通知"
+        DINGTALK = "dingtalk", "钉钉通知"
+        WECHAT = "wechat", "微信通知"
 
-    user = models.ForeignKey(
-        User, on_delete=models.CASCADE, related_name="alert_notification_configs", verbose_name="用户"
-    )
+    name = models.CharField("通知名称", max_length=100)
     notification_type = models.CharField("通知类型", max_length=20, choices=NotificationType.choices)
-    name = models.CharField("配置名称", max_length=100)
-    config = models.JSONField("配置详情", help_text="不同通知类型的具体配置参数")
-    alert_levels = models.JSONField("接收的告警级别", default=list, help_text="接收哪些级别的告警")
-    is_active = models.IntegerField("是否启用", default=1)
+    config = models.JSONField("通知配置", help_text="通知相关的配置信息")
+    alert_levels = models.JSONField("告警级别", help_text="接收哪些级别的告警")
+    is_active = models.BooleanField("是否启用", default=True)
+    user = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="alert_notifications", verbose_name="用户"
+    )
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
     updated_at = models.DateTimeField("更新时间", auto_now=True)
+    last_notified = models.DateTimeField("上次通知时间", null=True, blank=True)
+    notification_count = models.IntegerField("通知次数", default=0)
 
     class Meta:
         verbose_name = "告警通知配置"
         verbose_name_plural = verbose_name
         ordering = ["-created_at"]
-        indexes = [
-            models.Index(fields=["user", "notification_type"]),
-            models.Index(fields=["created_at"]),
-        ]
 
     def __str__(self):
         return f"{self.name} ({self.get_notification_type_display()})"
 
+    async def send_test_notification(self):
+        """发送测试通知"""
+        try:
+            # 这里应该实现实际的通知发送逻辑
+            return True
+        except Exception as e:
+            return False
+
 
 class Dashboard(models.Model):
-    """监控仪表板"""
-
+    """仪表盘模型"""
+    
     class LayoutType(models.TextChoices):
-        GRID = "GRID", "网格布局"
-        FLOW = "FLOW", "流式布局"
-
-    name = models.CharField("名称", max_length=100)
-    description = models.TextField("描述", blank=True)
+        GRID = "grid", "网格布局"
+        FLEX = "flex", "弹性布局"
+        FREE = "free", "自由布局"
+    
+    name = models.CharField("仪表盘名称", max_length=100)
+    description = models.TextField("仪表盘描述", blank=True)
     layout_type = models.CharField("布局类型", max_length=20, choices=LayoutType.choices, default=LayoutType.GRID)
-    is_default = models.IntegerField("是否默认", default=0)
-    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, verbose_name="创建者")
+    layout = models.JSONField("布局配置", default=dict)
+    is_default = models.BooleanField("是否默认", default=False)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="dashboards", verbose_name="创建者"
+    )
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
     updated_at = models.DateTimeField("更新时间", auto_now=True)
 
     class Meta:
-        verbose_name = "监控仪表板"
+        verbose_name = "仪表盘"
         verbose_name_plural = verbose_name
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["created_by", "-created_at"]),
+            models.Index(fields=["created_by", "is_default"]),
+            models.Index(fields=["created_at"]),
         ]
 
     def __str__(self):
         return self.name
 
-    def save(self, *args, **kwargs):
-        """确保只有一个默认仪表板"""
-        if self.is_default:
-            Dashboard.objects.filter(created_by=self.created_by, is_default=True).exclude(pk=self.pk).update(
-                is_default=False
-            )
-        super().save(*args, **kwargs)
-
 
 class DashboardWidget(models.Model):
-    """仪表板组件"""
-
+    """仪表盘小部件模型"""
+    
     class WidgetType(models.TextChoices):
-        SYSTEM_OVERVIEW = "SYSTEM_OVERVIEW", "系统概览"
-        PERFORMANCE_TREND = "PERFORMANCE_TREND", "性能趋势"
-        ALERT_STATISTICS = "ALERT_STATISTICS", "告警统计"
-        CUSTOM_METRICS = "CUSTOM_METRICS", "自定义指标"
-
+        CHART = "chart", "图表"
+        METRIC = "metric", "指标"
+        TEXT = "text", "文本"
+        ALERT = "alert", "告警"
+    
     dashboard = models.ForeignKey(
-        Dashboard, on_delete=models.CASCADE, related_name="widgets", verbose_name="所属仪表板"
+        Dashboard, on_delete=models.CASCADE, related_name="widgets", verbose_name="所属仪表盘"
     )
-    name = models.CharField("名称", max_length=100)
-    widget_type = models.CharField("组件类型", max_length=20, choices=WidgetType.choices)
-    config = models.JSONField("配置", default=dict)
-    position = models.JSONField("位置", default=dict)
-    is_visible = models.IntegerField("是否可见", default=1)
+    name = models.CharField("小部件名称", max_length=100)
+    widget_type = models.CharField("小部件类型", max_length=20, choices=WidgetType.choices, default=WidgetType.CHART)
+    visualization = models.ForeignKey(
+        MonitoringVisualization, on_delete=models.CASCADE, related_name="widgets", 
+        verbose_name="可视化配置", null=True, blank=True
+    )
+    config = models.JSONField("配置信息", default=dict)
+    position = models.JSONField("位置信息", default=dict)
+    is_visible = models.BooleanField("是否可见", default=True)
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
     updated_at = models.DateTimeField("更新时间", auto_now=True)
 
     class Meta:
-        verbose_name = "仪表板组件"
+        verbose_name = "仪表盘小部件"
         verbose_name_plural = verbose_name
         ordering = ["dashboard", "created_at"]
         indexes = [
-            models.Index(fields=["dashboard", "widget_type"]),
+            models.Index(fields=["dashboard", "is_visible"]),
+            models.Index(fields=["created_at"]),
         ]
 
     def __str__(self):
@@ -280,16 +293,58 @@ class SystemMetrics(models.Model):
 
     metric_type = models.CharField("指标类型", max_length=20, choices=MetricType.choices)
     value = models.FloatField("指标值")
-    timestamp = models.DateTimeField("记录时间", auto_now_add=True)
+    timestamp = models.DateTimeField("时间戳", auto_now_add=True)
     metadata = models.JSONField("元数据", default=dict, blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="system_metrics",
+        verbose_name="创建者"
+    )
 
     class Meta:
         verbose_name = "系统指标"
         verbose_name_plural = verbose_name
         ordering = ["-timestamp"]
         indexes = [
-            models.Index(fields=["metric_type", "-timestamp"]),
+            models.Index(fields=["metric_type", "timestamp"]),
+            models.Index(fields=["created_by"]),
         ]
 
     def __str__(self):
-        return f"{self.get_metric_type_display()}: {self.value} ({self.timestamp})"
+        return f"{self.get_metric_type_display()} - {self.timestamp}"
+
+
+class ErrorLog(models.Model):
+    """错误日志模型"""
+    
+    SEVERITY_CHOICES = (
+        ('INFO', '信息'),
+        ('WARNING', '警告'),
+        ('ERROR', '错误'),
+        ('CRITICAL', '严重'),
+    )
+    
+    message = models.TextField("错误信息")
+    stack_trace = models.TextField("堆栈跟踪", null=True, blank=True)
+    severity = models.CharField("严重程度", max_length=10, choices=SEVERITY_CHOICES, default='ERROR')
+    source = models.CharField("错误来源", max_length=100)
+    timestamp = models.DateTimeField("发生时间", default=timezone.now)
+    resolved = models.BooleanField("是否已解决", default=False)
+    resolution_notes = models.TextField("解决说明", blank=True)
+    resolved_at = models.DateTimeField("解决时间", null=True, blank=True)
+    created_at = models.DateTimeField("创建时间", auto_now_add=True)
+    updated_at = models.DateTimeField("更新时间", auto_now=True)
+
+    class Meta:
+        verbose_name = "错误日志"
+        verbose_name_plural = verbose_name
+        ordering = ["-timestamp"]
+        indexes = [
+            models.Index(fields=["-timestamp"], name="error_log_timestamp_idx"),
+            models.Index(fields=["severity", "-timestamp"], name="error_log_severity_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.severity} - {self.message[:50]}"

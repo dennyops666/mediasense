@@ -1,31 +1,37 @@
-from django.urls import include, path
+from django.urls import path
 from rest_framework.routers import DefaultRouter
-
 from .views import (
-    AlertHistoryViewSet,
-    AlertNotificationConfigViewSet,
-    AlertRuleViewSet,
-    DashboardViewSet,
-    DashboardWidgetViewSet,
-    ErrorLogViewSet,
-    MonitoringVisualizationViewSet,
-    PerformanceMonitorViewSet,
     SystemMetricsViewSet,
-    SystemStatusViewSet,
+    AlertRuleViewSet,
+    AlertHistoryViewSet,
+    MonitoringVisualizationViewSet,
+    ErrorLogViewSet,
+    SystemStatusViewSet
 )
 
+app_name = "monitoring"
+
 router = DefaultRouter()
-router.register(r"metrics", SystemMetricsViewSet, basename="metrics")
-router.register(r"system-status", SystemStatusViewSet, basename="system-status")
-router.register(r"performance", PerformanceMonitorViewSet, basename="performance")
-router.register(r"error-logs", ErrorLogViewSet, basename="error-logs")
-router.register(r"visualizations", MonitoringVisualizationViewSet, basename="visualizations")
-router.register(r"alert-rules", AlertRuleViewSet, basename="alert-rules")
-router.register(r"alert-history", AlertHistoryViewSet, basename="alert-history")
-router.register(r"alert-notifications", AlertNotificationConfigViewSet, basename="alert-notifications")
-router.register(r"dashboards", DashboardViewSet, basename="dashboards")
-router.register(r"dashboard-widgets", DashboardWidgetViewSet, basename="dashboard-widgets")
+router.register('system-metrics', SystemMetricsViewSet, basename='system-metrics')
+router.register('alert-rules', AlertRuleViewSet, basename='alert-rules')
+router.register('alert-history', AlertHistoryViewSet, basename='alert-history')
+router.register('visualization', MonitoringVisualizationViewSet, basename='visualization')
+router.register('error-logs', ErrorLogViewSet, basename='error-logs')
+router.register('system-status', SystemStatusViewSet, basename='system-status')
 
 urlpatterns = [
-    path("", include(router.urls)),
-]
+    path('system-status/overview/', SystemStatusViewSet.as_view({'get': 'overview'}), name='system-status-overview'),
+    path('system-status/health/', SystemStatusViewSet.as_view({'get': 'health'}), name='system-status-health'),
+    path('system-status/performance/', SystemStatusViewSet.as_view({'get': 'performance'}), name='system-performance'),
+    
+    path('alert-rules/<int:pk>/enable/', AlertRuleViewSet.as_view({'post': 'enable'}), name='alert-rule-enable'),
+    path('alert-rules/<int:pk>/disable/', AlertRuleViewSet.as_view({'post': 'disable'}), name='alert-rule-disable'),
+    
+    path('alert-history/<int:pk>/notify/', AlertHistoryViewSet.as_view({'post': 'notify'}), name='alert-history-notify'),
+    path('alert-history/<int:pk>/acknowledge/', AlertHistoryViewSet.as_view({'post': 'acknowledge'}), name='alert-history-acknowledge'),
+    path('alert-history/<int:pk>/resolve/', AlertHistoryViewSet.as_view({'post': 'resolve'}), name='alert-history-resolve'),
+    
+    path('visualization/<int:pk>/data/', MonitoringVisualizationViewSet.as_view({'get': 'data'}), name='visualization-data'),
+    
+    path('error-logs/statistics/', ErrorLogViewSet.as_view({'get': 'statistics'}), name='error-log-statistics'),
+] + router.urls

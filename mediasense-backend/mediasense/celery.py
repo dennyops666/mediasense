@@ -14,19 +14,13 @@ app = Celery("mediasense")
 app.config_from_object("django.conf:settings", namespace="CELERY")
 
 # 自动发现任务
-app.autodiscover_tasks(lambda: settings.INSTALLED_APPS)
+app.autodiscover_tasks()
 
 # 配置定时任务
 app.conf.beat_schedule = {
-    # 每小时验证一次代理池
-    "verify-proxy-pool": {
-        "task": "crawler.verify_proxy_pool",
-        "schedule": crontab(minute=0),  # 每小时整点执行
-    },
-    # 每天凌晨2点清理无效代理
-    "clean-proxy-pool": {
-        "task": "crawler.clean_proxy_pool",
-        "schedule": crontab(hour=2, minute=0),  # 每天凌晨2点执行
+    'crawl-news-every-hour': {
+        'task': 'crawler.tasks.schedule_crawlers',
+        'schedule': crontab(minute='0'),  # 每小时执行一次
     },
 }
 
