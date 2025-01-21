@@ -50,37 +50,35 @@ class CrawlerTask(models.Model):
     爬虫任务模型
     """
 
-    config = models.ForeignKey(CrawlerConfig, verbose_name="爬虫配置", on_delete=models.CASCADE)
-    task_id = models.CharField("任务ID", max_length=100, unique=True)
-    status = models.IntegerField(
-        "状态",
-        choices=(
-            (0, "未开始"),
-            (1, "运行中"),
-            (2, "已完成"),
-            (3, "已停止"),
-            (4, "出错"),
-        ),
-        default=0,
-    )
-    start_time = models.DateTimeField("开始时间", null=True, blank=True)
-    end_time = models.DateTimeField("结束时间", null=True, blank=True)
-    result = models.JSONField("执行结果", default=dict)
-    error_message = models.TextField("错误信息", blank=True)
+    class Status(models.IntegerChoices):
+        PENDING = 0, '未开始'
+        RUNNING = 1, '运行中'
+        COMPLETED = 2, '已完成'
+        CANCELLED = 3, '已取消'
+        ERROR = 4, '出错'
+
+    config = models.ForeignKey(CrawlerConfig, on_delete=models.CASCADE, verbose_name='爬虫配置')
+    task_id = models.CharField(max_length=36, unique=True, verbose_name='任务ID')
+    status = models.IntegerField(choices=Status.choices, default=Status.PENDING, verbose_name='状态')
+    start_time = models.DateTimeField(null=True, blank=True, verbose_name='开始时间')
+    end_time = models.DateTimeField(null=True, blank=True, verbose_name='结束时间')
+    result = models.JSONField(null=True, blank=True, verbose_name='执行结果')
+    error_message = models.TextField(null=True, blank=True, verbose_name='错误信息')
+    retry_count = models.IntegerField(default=0, verbose_name='重试次数')
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
     updated_at = models.DateTimeField("更新时间", auto_now=True)
 
     class Meta:
         verbose_name = "爬虫任务"
         verbose_name_plural = verbose_name
-        ordering = ["-created_at"]
+        ordering = ["-start_time"]
         indexes = [
-            models.Index(fields=["config", "-created_at"]),
-            models.Index(fields=["status", "-created_at"]),
+            models.Index(fields=["config", "-start_time"]),
+            models.Index(fields=["status", "-start_time"]),
         ]
 
     def __str__(self):
-        return f"{self.config.name}-{self.task_id}"
+        return f"{self.config.name} - {self.task_id}"
 
 
 class ProxyPool(models.Model):
@@ -136,3 +134,29 @@ class ProxyPool(models.Model):
         self.save()
 
         return self.status == 1
+
+
+class NewsArticle(models.Model):
+    """新闻文章模型"""
+
+    title = models.CharField("标题", max_length=500)
+    description = models.TextField("描述", blank=True)
+    content = models.TextField("内容", blank=True)
+    url = models.URLField("链接", max_length=255, unique=True)
+    source = models.CharField("来源", max_length=100)
+    author = models.CharField("作者", max_length=100, blank=True)
+    pub_time = models.DateTimeField("发布时间")
+    created_at = models.DateTimeField("创建时间", auto_now_add=True)
+    updated_at = models.DateTimeField("更新时间", auto_now=True)
+
+    class Meta:
+        verbose_name = "新闻文章"
+        verbose_name_plural = verbose_name
+        ordering = ["-pub_time"]
+        indexes = [
+            models.Index(fields=["-pub_time"], name="news_article_pub_time_idx"),
+            models.Index(fields=["source", "-pub_time"], name="news_article_source_idx"),
+        ]
+
+    def __str__(self):
+        return self.title
