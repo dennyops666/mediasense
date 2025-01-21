@@ -1,166 +1,234 @@
 import factory
-from django.contrib.auth import get_user_model
 from django.utils import timezone
+from django.contrib.auth import get_user_model
 from factory.django import DjangoModelFactory
-from faker import Faker
-import random
-import uuid
+from asgiref.sync import sync_to_async
 
-from news.models import NewsCategory, NewsArticle
 from monitoring.models import (
-    MonitoringVisualization, AlertRule, Dashboard,
-    DashboardWidget, SystemMetrics, AlertHistory
+    SystemMetrics, AlertRule, AlertHistory,
+    MonitoringVisualization, ErrorLog, Dashboard, DashboardWidget, AlertNotificationConfig
 )
-from ai_service.models import AnalysisResult
+from crawler.models import CrawlerConfig, CrawlerTask
 
-fake = Faker('zh_CN')
+User = get_user_model()
 
 class UserFactory(DjangoModelFactory):
-    class Meta:
-        model = get_user_model()
+    """用户工厂类"""
 
-    username = factory.LazyFunction(lambda: f'user_{uuid.uuid4().hex[:8]}')
+    class Meta:
+        model = User
+        django_get_or_create = ('username',)
+
+    username = factory.Sequence(lambda n: f'user{n}')
     email = factory.LazyAttribute(lambda obj: f'{obj.username}@example.com')
     password = factory.PostGenerationMethodCall('set_password', 'password123')
     is_active = True
+    user_type = 'user'
+    status = 'active'
 
-class NewsCategoryFactory(DjangoModelFactory):
-    class Meta:
-        model = NewsCategory
+    @classmethod
+    async def acreate(cls, **kwargs):
+        """异步创建实例"""
+        return await sync_to_async(cls.create)(**kwargs)
 
-    name = factory.Sequence(lambda n: f'分类{n}')
-    description = factory.LazyFunction(lambda: fake.sentence())
-    level = factory.LazyFunction(lambda: fake.random_int(min=1, max=3))
-    sort_order = factory.Sequence(lambda n: n)
-    is_active = 1
+class AsyncFactoryMixin:
+    """异步工厂混入类"""
 
-class MonitoringVisualizationFactory(DjangoModelFactory):
-    class Meta:
-        model = MonitoringVisualization
+    @classmethod
+    async def acreate(cls, **kwargs):
+        """异步创建实例"""
+        return await sync_to_async(cls.create)(**kwargs)
 
-    name = factory.LazyFunction(lambda: fake.word() + '监控')
-    description = factory.LazyFunction(lambda: fake.sentence())
-    chart_type = factory.Iterator(['line', 'bar', 'gauge', 'pie'])
-    metric_type = factory.Iterator(['cpu', 'memory', 'disk', 'network'])
-    time_range = factory.LazyFunction(lambda: fake.random_int(min=30, max=1440))
-    interval = factory.LazyFunction(lambda: fake.random_int(min=30, max=300))
-    aggregation_method = factory.Iterator(['avg', 'max', 'min', 'sum'])
-    warning_threshold = factory.LazyFunction(lambda: fake.random_int(min=70, max=80))
-    critical_threshold = factory.LazyFunction(lambda: fake.random_int(min=85, max=95))
-    is_active = 1
-    refresh_interval = factory.LazyFunction(lambda: fake.random_int(min=30, max=300))
-    created_by = factory.SubFactory(UserFactory)
+    @classmethod
+    async def acreate_batch(cls, size, **kwargs):
+        """异步批量创建实例"""
+        return await sync_to_async(cls.create_batch)(size, **kwargs)
 
-class AlertRuleFactory(DjangoModelFactory):
-    class Meta:
-        model = AlertRule
+class SystemMetricsFactory(AsyncFactoryMixin, DjangoModelFactory):
+    """系统指标工厂类"""
 
-    name = factory.LazyFunction(lambda: fake.word() + '告警规则')
-    description = factory.LazyFunction(lambda: fake.sentence())
-    metric_type = factory.Iterator(['cpu', 'memory', 'disk', 'network'])
-    operator = factory.Iterator(['gt', 'lt', 'gte', 'lte'])
-    threshold = factory.LazyFunction(lambda: fake.random_int(min=70, max=95))
-    duration = factory.LazyFunction(lambda: fake.random_int(min=1, max=15))
-    alert_level = factory.Iterator(['info', 'warning', 'critical'])
-    is_active = 1
-    created_by = factory.SubFactory(UserFactory)
-
-class DashboardFactory(DjangoModelFactory):
-    class Meta:
-        model = Dashboard
-
-    name = factory.LazyFunction(lambda: fake.word() + '仪表板')
-    description = factory.LazyFunction(lambda: fake.sentence())
-    layout_type = factory.Iterator(['GRID', 'FLOW'])
-    is_default = factory.Iterator([0, 1])
-    created_by = factory.SubFactory(UserFactory)
-
-class DashboardWidgetFactory(DjangoModelFactory):
-    class Meta:
-        model = DashboardWidget
-
-    dashboard = factory.SubFactory(DashboardFactory)
-    name = factory.LazyFunction(lambda: fake.word() + '组件')
-    widget_type = factory.Iterator(['SYSTEM_OVERVIEW', 'PERFORMANCE_TREND', 'ALERT_STATISTICS'])
-    config = factory.Dict({
-        'visualization_id': factory.SelfAttribute('..visualization.id'),
-        'refresh_interval': 30
-    })
-    position = factory.Dict({
-        'x': factory.LazyFunction(lambda: fake.random_int(min=0, max=11)),
-        'y': factory.LazyFunction(lambda: fake.random_int(min=0, max=11)),
-        'w': factory.LazyFunction(lambda: fake.random_int(min=3, max=12)),
-        'h': factory.LazyFunction(lambda: fake.random_int(min=2, max=8))
-    })
-    is_visible = 1
-    visualization = factory.SubFactory(MonitoringVisualizationFactory)
-
-class SystemMetricsFactory(DjangoModelFactory):
     class Meta:
         model = SystemMetrics
 
-    metric_type = factory.Iterator(['cpu', 'memory', 'disk', 'network'])
-    value = factory.LazyFunction(lambda: fake.random_int(min=0, max=100))
+    metric_type = SystemMetrics.MetricType.CPU
+    value = factory.Faker('pyfloat', min_value=0, max_value=100)
+    timestamp = factory.LazyFunction(timezone.now)
     metadata = factory.Dict({
-        'host': factory.LazyFunction(lambda: fake.hostname()),
-        'timestamp': factory.LazyFunction(lambda: fake.date_time().isoformat())
+        'host': factory.Sequence(lambda n: f'server-{n}'),
+        'core': 'all'
     })
 
+class AlertRuleFactory(DjangoModelFactory):
+    """告警规则工厂类"""
+
+    class Meta:
+        model = AlertRule
+
+    name = factory.Sequence(lambda n: f'Rule {n}')
+    description = factory.Faker('text')
+    metric_type = AlertRule.MetricType.CPU
+    operator = AlertRule.Operator.GT
+    threshold = 90.0
+    duration = 5
+    alert_level = AlertRule.AlertLevel.WARNING
+    is_enabled = True
+    created_by = factory.SubFactory(UserFactory)
+
+    @classmethod
+    async def acreate(cls, **kwargs):
+        """异步创建实例"""
+        return await sync_to_async(cls.create)(**kwargs)
+
 class AlertHistoryFactory(DjangoModelFactory):
+    """告警历史工厂类"""
+
     class Meta:
         model = AlertHistory
 
     rule = factory.SubFactory(AlertRuleFactory)
-    status = factory.Iterator(['active', 'resolved', 'acknowledged'])
-    metric_value = factory.LazyFunction(lambda: fake.random_int(min=0, max=100))
-    triggered_at = factory.LazyFunction(lambda: fake.date_time_this_month())
-    resolved_at = factory.LazyFunction(lambda: fake.date_time_this_month())
-    acknowledged_at = factory.LazyFunction(lambda: fake.date_time_this_month())
-    acknowledged_by = factory.SubFactory(UserFactory)
-    note = factory.LazyFunction(lambda: fake.sentence())
+    status = AlertHistory.Status.ACTIVE
+    metric_value = factory.Faker('pyfloat', min_value=0, max_value=100)
+    note = factory.Faker('sentence')
+    created_by = factory.SubFactory(UserFactory)
 
-class NewsArticleFactory(DjangoModelFactory):
+    @classmethod
+    async def acreate(cls, **kwargs):
+        """异步创建实例"""
+        return await sync_to_async(cls.create)(**kwargs)
+
+class MonitoringVisualizationFactory(DjangoModelFactory):
+    """监控可视化工厂类"""
+
     class Meta:
-        model = NewsArticle
+        model = MonitoringVisualization
 
-    title = factory.LazyFunction(lambda: fake.sentence())
-    content = factory.LazyFunction(lambda: fake.text())
-    summary = factory.LazyFunction(lambda: fake.paragraph())
-    source = factory.LazyFunction(lambda: fake.company())
-    author = factory.LazyFunction(lambda: fake.name())
-    url = factory.Sequence(lambda n: f'http://example.com/news/{n}')
-    category = factory.SubFactory(NewsCategoryFactory)
-    tags = factory.LazyFunction(lambda: [fake.word() for _ in range(3)])
-    status = factory.Iterator(['draft', 'published', 'archived'])
-    sentiment_score = factory.LazyFunction(lambda: round(random.uniform(0, 1), 2))
-    publish_time = factory.LazyFunction(lambda: timezone.now())
-    read_count = factory.LazyFunction(lambda: fake.random_int(min=0, max=10000))
-    like_count = factory.LazyFunction(lambda: fake.random_int(min=0, max=1000))
-    comment_count = factory.LazyFunction(lambda: fake.random_int(min=0, max=500))
-    reviewer = factory.SubFactory(UserFactory)
-    review_time = factory.LazyFunction(lambda: timezone.now())
-    review_comment = factory.LazyFunction(lambda: fake.sentence())
+    name = factory.Sequence(lambda n: f'Visualization {n}')
+    description = factory.Faker('text')
+    chart_type = MonitoringVisualization.ChartType.LINE
+    metric_type = MonitoringVisualization.MetricType.CPU
+    time_range = 60
+    interval = 60
+    aggregation_method = 'avg'
+    warning_threshold = 80.0
+    critical_threshold = 90.0
+    is_active = 1
+    refresh_interval = 30
+    created_by = factory.SubFactory(UserFactory)
 
-class NewsFactory(DjangoModelFactory):
+    @classmethod
+    async def acreate(cls, **kwargs):
+        """异步创建实例"""
+        return await sync_to_async(cls.create)(**kwargs)
+
+class ErrorLogFactory(DjangoModelFactory):
+    """错误日志工厂类"""
+
     class Meta:
-        model = NewsArticle
+        model = ErrorLog
 
-    title = factory.Sequence(lambda n: f'Test News {n}')
-    content = factory.Faker('text', max_nb_chars=1000)
-    status = 'published'
-    source = 'test'
-    url = factory.LazyAttribute(lambda obj: f'https://example.com/news/{obj.title}')
+    severity = 'ERROR'
+    message = factory.Faker('sentence')
+    source = factory.Faker('word')
+    stack_trace = factory.Faker('text')
+    created_by = factory.SubFactory(UserFactory)
 
-class AnalysisResultFactory(DjangoModelFactory):
+    @classmethod
+    async def acreate(cls, **kwargs):
+        """异步创建实例"""
+        instance = await sync_to_async(cls.create)(**kwargs)
+        return instance
+
+class DashboardFactory(AsyncFactoryMixin, DjangoModelFactory):
+    """仪表板工厂类"""
+
     class Meta:
-        model = AnalysisResult
+        model = Dashboard
 
-    news = factory.SubFactory(NewsFactory)
-    analysis_type = AnalysisResult.AnalysisType.SENTIMENT
-    result = factory.Dict({
-        'sentiment': 'positive',
-        'confidence': 0.9,
-        'keywords': ['test', 'news'],
-        'summary': 'Test summary'
+    name = factory.Sequence(lambda n: f'Dashboard {n}')
+    description = factory.Faker('text', max_nb_chars=200)
+    layout_type = Dashboard.LayoutType.GRID
+    layout = factory.Dict({
+        'widgets': [],
+        'settings': {'columns': 12, 'margin': 10, 'responsive': True}
     })
-    is_valid = True 
+    is_default = False
+    created_by = factory.SubFactory(UserFactory)
+
+class DashboardWidgetFactory(AsyncFactoryMixin, DjangoModelFactory):
+    """仪表板组件工厂类"""
+
+    class Meta:
+        model = DashboardWidget
+
+    dashboard = factory.SubFactory(DashboardFactory)
+    name = factory.Sequence(lambda n: f'Widget {n}')
+    widget_type = DashboardWidget.WidgetType.CHART
+    visualization = factory.SubFactory(MonitoringVisualizationFactory)
+    config = factory.Dict({
+        'metric_type': 'cpu',
+        'chart_type': 'line',
+        'refresh_interval': 30
+    })
+    position = factory.Dict({
+        'x': 0,
+        'y': 0,
+        'w': 2,
+        'h': 2
+    })
+    is_visible = True
+
+class AlertNotificationConfigFactory(AsyncFactoryMixin, DjangoModelFactory):
+    """告警通知配置工厂类"""
+
+    class Meta:
+        model = AlertNotificationConfig
+
+    name = factory.Sequence(lambda n: f'Notification Config {n}')
+    notification_type = AlertNotificationConfig.NotificationType.EMAIL
+    config = factory.Dict({
+        'email': factory.Faker('email'),
+        'template': 'default',
+        'subject_prefix': '[ALERT]'
+    })
+    alert_levels = ['warning', 'critical']
+    is_active = True
+    user = factory.SubFactory(UserFactory)
+
+class CrawlerConfigFactory(DjangoModelFactory):
+    """爬虫配置工厂类"""
+
+    class Meta:
+        model = CrawlerConfig
+
+    name = factory.Sequence(lambda n: f'Crawler {n}')
+    description = factory.Faker('text')
+    source_url = factory.Faker('url')
+    crawler_type = 1  # RSS类型
+    config_data = factory.Dict({
+        'categories': ['news', 'tech'],
+        'encoding': 'utf-8',
+        'timeout': 30
+    })
+    headers = factory.Dict({
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    })
+    interval = 60
+    status = 1  # 启用状态
+    created_at = factory.LazyFunction(timezone.now)
+    updated_at = factory.LazyFunction(timezone.now)
+
+class CrawlerTaskFactory(DjangoModelFactory):
+    """爬虫任务工厂类"""
+
+    class Meta:
+        model = CrawlerTask
+
+    config = factory.SubFactory(CrawlerConfigFactory)
+    task_id = factory.Sequence(lambda n: f'task_{n}')
+    status = 0  # 未开始状态
+    start_time = None
+    end_time = None
+    result = factory.Dict({})
+    error_message = ''
+    created_at = factory.LazyFunction(timezone.now)
+    updated_at = factory.LazyFunction(timezone.now) 

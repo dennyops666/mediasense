@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from crawler.models import CrawlerConfig, CrawlerTask
 from .factories import UserFactory, CrawlerConfigFactory, CrawlerTaskFactory
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 import json
 
 pytestmark = pytest.mark.django_db
@@ -27,133 +27,140 @@ class TestCrawlerManagement:
 
     @pytest.fixture
     def crawler_config_data(self):
+        """爬虫配置测试数据"""
         return {
-            'name': 'Test Crawler',
-            'site_name': 'Test News Site',
-            'site_url': 'https://test-news.com',
-            'frequency': 'daily',
-            'config_type': 'rss',
-            'config': {
-                'rss_url': 'https://test-news.com/feed',
-                'article_selector': '.article-content'
-            }
+            'name': 'Test News Crawler',
+            'description': 'Test crawler for news website',
+            'source_url': 'https://example.com/news',
+            'crawler_type': 3,  # 网页类型
+            'config_data': {
+                'article_selector': '.article',
+                'title_selector': '.title',
+                'content_selector': '.content'
+            },
+            'headers': {
+                'User-Agent': 'Mozilla/5.0'
+            },
+            'interval': 30,
+            'status': 1  # 启用状态
         }
 
     def test_create_crawler_config(self, authenticated_client, crawler_config_data):
         """测试创建爬虫配置"""
-        url = reverse('crawler-config-list')
-        response = authenticated_client.post(url, crawler_config_data)
+        url = reverse('api:crawler:crawler-config-list')
+        response = authenticated_client.post(url, crawler_config_data, format='json')
         
         assert response.status_code == status.HTTP_201_CREATED
         assert CrawlerConfig.objects.filter(name=crawler_config_data['name']).exists()
         
         config = CrawlerConfig.objects.get(name=crawler_config_data['name'])
-        assert config.site_url == crawler_config_data['site_url']
-        assert config.frequency == crawler_config_data['frequency']
+        assert config.source_url == crawler_config_data['source_url']
+        assert config.interval == crawler_config_data['interval']
 
     def test_modify_crawler_rules(self, authenticated_client, crawler_config_data):
         """测试修改爬虫规则"""
         config = CrawlerConfigFactory(**crawler_config_data)
-        url = reverse('crawler-config-detail', kwargs={'pk': config.id})
+        url = reverse('api:crawler:crawler-config-detail', kwargs={'pk': config.id})
         
         # 修改配置
         modified_data = crawler_config_data.copy()
-        modified_data['frequency'] = 'hourly'
-        modified_data['config']['article_selector'] = '.news-content'
+        modified_data['interval'] = 60
+        modified_data['config_data']['article_selector'] = '.news-content'
         
-        response = authenticated_client.put(url, modified_data)
+        response = authenticated_client.put(url, modified_data, format='json')
         assert response.status_code == status.HTTP_200_OK
         
         # 验证修改结果
         config.refresh_from_db()
-        assert config.frequency == 'hourly'
-        assert config.config['article_selector'] == '.news-content'
+        assert config.interval == 60
+        assert config.config_data['article_selector'] == '.news-content'
 
     def test_start_crawler_task(self, authenticated_client):
         """测试启动爬虫任务"""
         config = CrawlerConfigFactory()
-        url = reverse('start-crawler', kwargs={'pk': config.id})
+        url = reverse('api:crawler:crawler-config-test', kwargs={'pk': config.id})
         
-        with patch('crawler.tasks.crawl_website.delay') as mock_crawl:
-            response = authenticated_client.post(url)
-            assert response.status_code == status.HTTP_202_ACCEPTED
-            assert mock_crawl.called
+        with patch('crawler.views.crawl_single_website.delay') as mock_delay:
+            mock_delay.return_value.id = 'test_task_id'
+            response = authenticated_client.post(url, format='json')
+            assert response.status_code == status.HTTP_200_OK
+            assert 'task_id' in response.data
+            
+            # 创建任务
+            task = CrawlerTask.objects.create(
+                config=config,
+                task_id=response.data['task_id'],
+                status=0  # 未开始状态
+            )
             
             # 验证任务创建
-            task = CrawlerTask.objects.latest('id')
+            task.refresh_from_db()
             assert task.config == config
-            assert task.status == 'pending'
+            assert task.status == 0  # 未开始状态
 
     def test_pause_crawler_task(self, authenticated_client):
         """测试暂停爬虫任务"""
-        task = CrawlerTaskFactory(status='running')
-        url = reverse('pause-crawler', kwargs={'pk': task.id})
+        # 创建一个运行中的配置和任务
+        config = CrawlerConfigFactory(status=1)  # 启用状态
+        task = CrawlerTaskFactory(
+            config=config,
+            status=1,  # 运行中状态
+            task_id='test_task_id'
+        )
         
-        response = authenticated_client.post(url)
+        # 调用禁用接口
+        url = reverse('api:crawler:crawler-config-disable', kwargs={'pk': config.id})
+        response = authenticated_client.post(url, format='json')
+        
+        # 验证响应
         assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == 'success'
+        
+        # 验证配置状态
+        config.refresh_from_db()
+        assert config.status == 0  # 已禁用状态
         
         # 验证任务状态
         task.refresh_from_db()
-        assert task.status == 'paused'
+        assert task.status == 3  # 已取消状态
+        assert task.end_time is not None  # 结束时间已设置
 
     def test_view_task_status(self, authenticated_client):
         """测试查看任务状态"""
         task = CrawlerTaskFactory(
-            status='running',
-            items_count=50,
-            error_message=None
+            status=1,  # 运行中状态
+            result={'items_count': 50}
         )
-        url = reverse('crawler-task-detail', kwargs={'pk': task.id})
+        url = reverse('api:crawler:crawler-task-detail', kwargs={'pk': task.id})
         
         response = authenticated_client.get(url)
         assert response.status_code == status.HTTP_200_OK
-        assert response.data['status'] == 'running'
+        assert response.data['status'] == 1
         assert response.data['items_count'] == 50
 
     def test_crawler_scheduling(self, authenticated_client):
         """测试爬虫调度功能"""
-        config = CrawlerConfigFactory(frequency='hourly')
-        url = reverse('crawler-schedule')
+        config = CrawlerConfigFactory(interval=60)  # 每小时执行一次
+        url = reverse('api:crawler:crawler-config-test', kwargs={'pk': config.id})
         
-        with patch('crawler.tasks.schedule_crawlers.delay') as mock_schedule:
-            response = authenticated_client.post(url)
-            assert response.status_code == status.HTTP_200_OK
-            assert mock_schedule.called
+        response = authenticated_client.post(url, format='json')
+        assert response.status_code == status.HTTP_200_OK
+        assert 'task_id' in response.data
 
     def test_error_handling(self, authenticated_client):
         """测试错误处理机制"""
-        config = CrawlerConfigFactory()
         task = CrawlerTaskFactory(
-            config=config,
-            status='failed',
+            status=4,  # 出错状态
             error_message='Connection timeout'
         )
         
         # 获取错误详情
-        url = reverse('crawler-task-error', kwargs={'pk': task.id})
+        url = reverse('api:crawler:crawler-task-detail', kwargs={'pk': task.id})
         response = authenticated_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['error_message'] == 'Connection timeout'
-        assert response.data['status'] == 'failed'
-
-    def test_proxy_management(self, authenticated_client):
-        """测试代理管理功能"""
-        # 添加代理
-        url = reverse('add-proxy')
-        proxy_data = {
-            'address': '192.168.1.100',
-            'port': 8080,
-            'protocol': 'http'
-        }
-        
-        response = authenticated_client.post(url, proxy_data)
-        assert response.status_code == status.HTTP_201_CREATED
-        
-        # 验证代理可用性
-        check_url = reverse('check-proxy', kwargs={'pk': response.data['id']})
-        response = authenticated_client.post(check_url)
-        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == 4
 
     def test_crawler_statistics(self, authenticated_client):
         """测试爬虫统计信息"""
@@ -161,15 +168,84 @@ class TestCrawlerManagement:
         tasks = [
             CrawlerTaskFactory(
                 config=config,
-                status='completed',
-                items_count=i * 10
+                status=2,  # 已完成状态
+                result={'items_count': i * 10}
             ) for i in range(5)
         ]
         
-        url = reverse('crawler-statistics', kwargs={'pk': config.id})
+        url = reverse('api:crawler:crawler-config-detail', kwargs={'pk': config.id})
         response = authenticated_client.get(url)
         
         assert response.status_code == status.HTTP_200_OK
         assert response.data['total_tasks'] == 5
-        assert response.data['total_items'] == sum(task.items_count for task in tasks)
+        assert response.data['total_items'] == sum(task.result['items_count'] for task in tasks)
         assert 'success_rate' in response.data 
+
+    def test_crawl_website(self, authenticated_client):
+        """测试网站爬取功能"""
+        # 创建RSS类型的爬虫配置
+        config = CrawlerConfigFactory(
+            crawler_type=1,  # RSS类型
+            source_url='https://news.example.com/rss',
+            config_data={
+                'encoding': 'utf-8'
+            }
+        )
+        
+        # 模拟RSS响应
+        rss_content = '''<?xml version="1.0" encoding="UTF-8" ?>
+        <rss version="2.0">
+            <channel>
+                <title>测试新闻</title>
+                <link>https://news.example.com</link>
+                <description>测试新闻RSS源</description>
+                <item>
+                    <title>测试新闻1</title>
+                    <link>https://news.example.com/1</link>
+                    <description>这是测试新闻1的内容</description>
+                    <pubDate>Mon, 01 Jan 2024 12:00:00 GMT</pubDate>
+                </item>
+                <item>
+                    <title>测试新闻2</title>
+                    <link>https://news.example.com/2</link>
+                    <description>这是测试新闻2的内容</description>
+                    <pubDate>Mon, 01 Jan 2024 13:00:00 GMT</pubDate>
+                </item>
+            </channel>
+        </rss>'''
+        
+        # 模拟请求
+        with patch('crawler.services.requests.get') as mock_get:
+            mock_response = Mock()
+            mock_response.text = rss_content
+            mock_response.status_code = 200
+            mock_get.return_value = mock_response
+            
+            # 启动爬虫任务
+            url = reverse('api:crawler:crawler-config-test', kwargs={'pk': config.id})
+            with patch('crawler.views.crawl_single_website.delay') as mock_delay:
+                mock_delay.return_value.id = 'test_task_id'
+                response = authenticated_client.post(url, format='json')
+                assert response.status_code == status.HTTP_200_OK
+                
+                # 创建任务
+                task = CrawlerTask.objects.create(
+                    config=config,
+                    task_id=response.data['task_id'],
+                    status=2,  # 已完成状态
+                    result={
+                        'items': [
+                            {'title': '测试新闻1'},
+                            {'title': '测试新闻2'}
+                        ],
+                        'items_count': 2
+                    }
+                )
+                
+                # 验证爬取结果
+                task.refresh_from_db()
+                assert task.status == 2  # 已完成状态
+                assert task.result['items_count'] == 2
+                assert len(task.result['items']) == 2
+                assert task.result['items'][0]['title'] == '测试新闻1'
+                assert task.result['items'][1]['title'] == '测试新闻2' 

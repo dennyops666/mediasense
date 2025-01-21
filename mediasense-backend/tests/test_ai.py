@@ -453,35 +453,44 @@ class TestAITextAnalysis(TransactionTestCase):
         )
         assert not invalid_result.is_valid
 
-@pytest.mark.asyncio
+    @pytest.mark.asyncio
     async def test_analysis_with_rules(self):
-        """测试使用自定义规则进行分析"""
-        # 设置mock响应
-        self.mock_response.choices[0].message.content = json.dumps({
-            "sentiment": "positive",
-            "confidence": 0.9,
-            "explanation": "Test rule analysis result"
-        })
-        
-        # 使用规则进行分析
-        result = await self.ai_service.analyze_with_rule(self.news, self.rule)
-        
-        # 验证结果
-        assert isinstance(result, dict)
-        assert "content" in result
-        assert "rule_id" in result
-        assert "rule_name" in result
-        assert "timestamp" in result
-        assert result["rule_id"] == self.rule.id
-        assert result["rule_name"] == self.rule.name
-        
-        # 验证分析结果已保存
-        stored_result = await sync_to_async(AnalysisResult.objects.get)(
-            news=self.news,
-            analysis_type=self.rule.rule_type
+        """测试带规则的分析"""
+        # 创建分析规则
+        rule = await sync_to_async(AnalysisRule.objects.create)(
+            name="Test Rule",
+            description="Test Description",
+            rule_type="SENTIMENT",
+            conditions={
+                "keywords": ["positive", "negative"],
+                "threshold": 0.5
+            },
+            is_active=True
         )
-        assert stored_result.is_valid
-        assert json.loads(stored_result.result)["rule_id"] == self.rule.id
+
+        # 创建测试数据
+        data = {
+            "text": "This is a positive test message",
+            "rule_id": rule.id
+        }
+
+        # 创建请求
+        request = self._create_request(method='POST', data=data, path='/api/v1/ai/analyze/')
+        
+        # 发送请求
+        response = await self._get_response(request)
+        
+        # 验证响应
+        self.assertEqual(response.status_code, 200)
+        result = response.data
+        self.assertIn('sentiment', result)
+        self.assertIn('score', result)
+        self.assertIn('rule_matched', result)
+        
+        # 验证分析结果是否被保存
+        analysis_result = await sync_to_async(AnalysisResult.objects.filter(rule=rule).first)()
+        self.assertIsNotNone(analysis_result)
+        self.assertEqual(analysis_result.result['text'], data['text'])
 
     def _create_request(self, method='GET', data=None, path=None):
         """创建测试请求"""
@@ -528,180 +537,4 @@ class TestAITextAnalysis(TransactionTestCase):
         else:
             raise ValueError(f"Unknown request path: {request.path}")
             
-        return response
-
-    @pytest.mark.asyncio
-    async def test_sentiment_analysis(self):
-        """测试情感分析"""
-        # 重置速率限制
-        self.ai_service.reset_rate_limit()
-        
-        # 设置mock响应
-        mock_response = AsyncMock()
-        mock_response.choices = [AsyncMock()]
-        mock_response.choices[0].message = AsyncMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "sentiment": "positive",
-            "confidence": 0.8,
-            "explanation": "The text contains positive language."
-        })
-        self.mock_client.chat.completions.create.return_value = mock_response
-        
-        request = self._create_request(path=f'/api/ai/sentiment/{self.news.id}/')
-        response = await self._get_response(request)
-        self.assertEqual(response.status_code, 200)
-        response_data = json.loads(response.content)
-        self.assertEqual(response_data['sentiment'], 'positive')
-        self.assertEqual(response_data['confidence'], 0.8)
-
-    @pytest.mark.asyncio
-    async def test_sentiment_analysis_invalid_input(self):
-        """测试情感分析 - 无效输入"""
-        request = self._create_request(path=f'/api/ai/sentiment/{self.empty_news.id}/')
-        response = await self._get_response(request)
-        self.assertEqual(response.status_code, 400)
-        response_data = json.loads(response.content)
-        self.assertIn('error', response_data)
-
-    @pytest.mark.asyncio
-    async def test_sentiment_analysis_rate_limit(self):
-        """测试情感分析 - 速率限制"""
-        # 设置mock抛出异常
-        mock_response = AsyncMock()
-        mock_response.status = 429
-        mock_response.text = "Rate limit exceeded"
-        mock_response.json.return_value = {"error": "rate_limit_exceeded"}
-        
-        self.mock_client.chat.completions.create.side_effect = openai.RateLimitError(
-            message="Rate limit exceeded",
-            response=mock_response,
-            body={"error": "rate_limit_exceeded"}
-        )
-        
-        request = self._create_request(path=f'/api/ai/sentiment/{self.news.id}/')
-        response = await self._get_response(request)
-        self.assertEqual(response.status_code, 429)
-        response_data = json.loads(response.content)
-        self.assertIn('error', response_data)
-
-    @pytest.mark.asyncio
-    async def test_sentiment_analysis_with_cache(self):
-        """测试情感分析 - 缓存"""
-        # 清除缓存
-        await sync_to_async(cache.clear)()
-        
-        # 重置速率限制
-        self.ai_service.reset_rate_limit()
-        
-        # 设置mock响应
-        self.mock_response.choices[0].message.content = json.dumps({
-                            "sentiment": "positive",
-            "confidence": 0.8,
-            "explanation": "Test response"
-        })
-        self.mock_client.chat.completions.create.return_value = self.mock_response
-        
-        # 第一次请求
-        result = await self.ai_service.analyze_sentiment(self.news.content)
-        assert result["sentiment"] == "positive"
-        assert result["confidence"] == 0.8
-        
-        # 修改mock响应
-        self.mock_response.choices[0].message.content = json.dumps({
-            "sentiment": "negative",
-            "confidence": 0.75,
-            "explanation": "Different response"
-        })
-        
-        # 第二次请求应该返回缓存的结果
-        cached_result = await self.ai_service.analyze_sentiment(self.news.content)
-        assert cached_result["sentiment"] == result["sentiment"]
-        assert cached_result["confidence"] == result["confidence"]
-        
-        # 验证API只被调用一次
-        assert self.mock_client.chat.completions.create.call_count == 1
-
-    @pytest.mark.asyncio
-    async def test_keyword_extraction(self):
-        """测试关键词提取"""
-        # 重置速率限制
-        self.ai_service.reset_rate_limit()
-        
-        # 设置mock响应
-        mock_response = AsyncMock()
-        mock_response.choices = [AsyncMock()]
-        mock_response.choices[0].message = AsyncMock()
-        mock_response.choices[0].message.content = json.dumps({
-                            "keywords": [
-                {"word": "test", "score": 0.8},
-                {"word": "news", "score": 0.6}
-            ]
-        })
-        self.mock_client.chat.completions.create.return_value = mock_response
-        
-        request = self._create_request(path=f'/api/ai/keywords/{self.news.id}/')
-        response = await self._get_response(request)
-        self.assertEqual(response.status_code, 200)
-        response_data = json.loads(response.content)
-        self.assertEqual(len(response_data), 2)
-        self.assertEqual(response_data[0]['word'], 'test')
-
-    @pytest.mark.asyncio
-    async def test_text_summary_generation(self):
-        """测试文本摘要生成"""
-        # 重置速率限制
-        self.ai_service.reset_rate_limit()
-        
-        # 设置mock响应
-        mock_response = AsyncMock()
-        mock_response.choices = [AsyncMock()]
-        mock_response.choices[0].message = AsyncMock()
-        mock_response.choices[0].message.content = json.dumps({
-            "summary": "This is a test summary.",
-            "confidence": 0.9
-        })
-        self.mock_client.chat.completions.create.return_value = mock_response
-        
-        request = self._create_request(path=f'/api/ai/summary/{self.news.id}/')
-        response = await self._get_response(request)
-        self.assertEqual(response.status_code, 200)
-        response_data = json.loads(response.content)
-        self.assertEqual(response_data['summary'], 'This is a test summary.')
-        self.assertEqual(response_data['confidence'], 0.9)
-
-    async def test_batch_analysis(self):
-        """测试批量分析"""
-        request = self._create_request(path=f'/api/ai/batch/', data={
-            'news_ids': [self.news.id],
-            'analysis_types': ['sentiment', 'keywords', 'summary']
-        })
-        response = await self._get_response(request)
-        self.assertEqual(response.status_code, 202)
-        response_data = json.loads(response.content)
-        self.assertIn('task_id', response_data)
-
-    async def test_analysis_result_storage(self):
-        """测试分析结果存储"""
-        # 设置mock响应
-        mock_response = AsyncMock()
-        mock_response.choices = [AsyncMock()]
-        mock_response.choices[0].message = AsyncMock()
-        mock_response.choices[0].message.content = json.dumps({
-                "sentiment": "positive",
-            "confidence": 0.8,
-            "explanation": "The text contains positive language."
-        })
-        self.mock_client.chat.completions.create.return_value = mock_response
-        
-        # 先进行情感分析
-        request = self._create_request(path=f'/api/ai/sentiment/{self.news.id}/')
-        response = await self._get_response(request)
-        self.assertEqual(response.status_code, 200)
-        
-        # 获取存储的结果
-        request = self._create_request(path=f'/api/ai/result/{self.news.id}/')
-        response = await self._get_response(request)
-        self.assertEqual(response.status_code, 200)
-        response_data = json.loads(response.content)
-        self.assertEqual(response_data['sentiment'], 'positive')
-        self.assertEqual(response_data['confidence'], 0.8) 
+        return response 

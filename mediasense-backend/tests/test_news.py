@@ -5,6 +5,10 @@ from rest_framework.test import APIClient
 from news.models import NewsArticle, NewsCategory
 from .factories import NewsArticleFactory, NewsCategoryFactory, UserFactory
 from django.utils import timezone
+from django.db import transaction
+from custom_auth.models import User
+from tests.base import BaseTestCase
+from asgiref.sync import sync_to_async
 
 pytestmark = pytest.mark.django_db
 
@@ -162,3 +166,101 @@ class TestNewsCategory:
         ])
         assert 'latest_news' in response.data
         assert 'news_by_status' in response.data 
+
+class TestNewsViewSet(BaseTestCase):
+    """新闻视图集测试"""
+
+    @pytest.mark.django_db
+    @pytest.mark.asyncio
+    async def test_list_news(self):
+        """测试获取新闻列表"""
+        url = reverse('news-article-list')
+        response = await self.client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert isinstance(response.data, list)
+
+    @pytest.mark.django_db
+    @pytest.mark.asyncio
+    async def test_create_news(self):
+        """测试创建新闻"""
+        url = reverse('news-article-list')
+        data = {
+            'title': '测试新闻',
+            'content': '这是一条测试新闻',
+            'source': '测试来源',
+            'url': f'http://example.com/test_{self.id()}',
+            'publish_time': '2024-01-16T00:00:00Z'
+        }
+        response = await self.client.post(url, data)
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['title'] == data['title']
+
+    @pytest.mark.django_db
+    @pytest.mark.asyncio
+    async def test_retrieve_news(self):
+        """测试获取单条新闻"""
+        @sync_to_async
+        def create_news():
+            with transaction.atomic():
+                return NewsArticle.objects.create(
+                    title='测试新闻',
+                    content='这是一条测试新闻',
+                    source='测试来源',
+                    url=f'http://example.com/test_{self.id()}',
+                    publish_time='2024-01-16T00:00:00Z'
+                )
+        
+        news = await create_news()
+        url = reverse('news-article-detail', args=[news.id])
+        response = await self.client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['title'] == news.title
+
+    @pytest.mark.django_db
+    @pytest.mark.asyncio
+    async def test_update_news(self):
+        """测试更新新闻"""
+        @sync_to_async
+        def create_news():
+            with transaction.atomic():
+                return NewsArticle.objects.create(
+                    title='测试新闻',
+                    content='这是一条测试新闻',
+                    source='测试来源',
+                    url=f'http://example.com/test_{self.id()}',
+                    publish_time='2024-01-16T00:00:00Z'
+                )
+        
+        news = await create_news()
+        url = reverse('news-article-detail', args=[news.id])
+        data = {
+            'title': '更新后的新闻',
+            'content': '这是更新后的测试新闻',
+            'source': '更新后的来源',
+            'url': f'http://example.com/updated_{self.id()}',
+            'publish_time': '2024-01-16T00:00:00Z'
+        }
+        response = await self.client.put(url, data)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['title'] == data['title']
+
+    @pytest.mark.django_db
+    @pytest.mark.asyncio
+    async def test_delete_news(self):
+        """测试删除新闻"""
+        @sync_to_async
+        def create_news():
+            with transaction.atomic():
+                return NewsArticle.objects.create(
+                    title='测试新闻',
+                    content='这是一条测试新闻',
+                    source='测试来源',
+                    url=f'http://example.com/test_{self.id()}',
+                    publish_time='2024-01-16T00:00:00Z'
+                )
+        
+        news = await create_news()
+        url = reverse('news-article-detail', args=[news.id])
+        response = await self.client.delete(url)
+        assert response.status_code == status.HTTP_204_NO_CONTENT
+        assert not await NewsArticle.objects.filter(id=news.id).aexists() 
