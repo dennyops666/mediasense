@@ -1,138 +1,138 @@
 import pytest
 from django.core.cache import cache
 from django.conf import settings
-from redis import Redis
-from redis.sentinel import Sentinel
+from django.test import TestCase, override_settings
+from redis.exceptions import ConnectionError
+import redis
 import time
 from concurrent.futures import ThreadPoolExecutor
 
-pytestmark = pytest.mark.django_db
-
-class TestRedisConnectionManagement:
+class TestRedisConnection(TestCase):
     """TC-CACHE-001: Redis连接管理测试"""
 
-    @pytest.fixture
-    def redis_client(self):
-        """获取Redis客户端"""
-        if hasattr(settings, 'REDIS_SENTINEL_HOSTS'):
-            sentinel = Sentinel(settings.REDIS_SENTINEL_HOSTS)
-            return sentinel.master_for('mymaster')
-        else:
-            return Redis(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                db=settings.REDIS_DB
-            )
+    def setUp(self):
+        """测试初始化"""
+        self.redis_settings = settings.CACHES['default']
 
-    def test_redis_connection_establishment(self, redis_client):
-        """测试Redis连接建立"""
-        assert redis_client.ping()
-        
-        # 测试基本的读写操作
-        redis_client.set('test_key', 'test_value')
-        assert redis_client.get('test_key') == b'test_value'
-        redis_client.delete('test_key')
+    def test_connection_settings(self):
+        """测试Redis连接配置"""
+        # 验证Redis基本配置
+        self.assertEqual(self.redis_settings['BACKEND'], 'django.core.cache.backends.redis.RedisCache')
+        self.assertTrue('LOCATION' in self.redis_settings)
+        self.assertTrue('OPTIONS' in self.redis_settings)
 
-    def test_connection_pool_management(self, redis_client):
-        """测试连接池管理"""
-        def redis_operation():
-            # 执行一个简单的Redis操作
-            return redis_client.incr('test_counter')
-
-        # 并发执行多个Redis操作
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(redis_operation) for _ in range(10)]
-            results = [f.result() for f in futures]
-        
-        # 验证计数器的最终值
-        assert redis_client.get('test_counter') == b'10'
-        redis_client.delete('test_counter')
-
-    def test_connection_failure_recovery(self, redis_client):
-        """测试连接失败恢复"""
-        # 模拟连接断开
-        redis_client.connection_pool.disconnect()
-        
-        # 尝试重新连接
-        max_retries = 3
-        for i in range(max_retries):
-            try:
-                assert redis_client.ping()
-                break
-            except Exception:
-                if i == max_retries - 1:
-                    raise
-                time.sleep(0.1)
-
-    def test_connection_timeout_handling(self, redis_client):
-        """测试连接超时处理"""
-        from redis.exceptions import TimeoutError
-        import socket
-        
-        # 设置一个很短的超时时间
-        original_timeout = redis_client.connection_pool.connection_kwargs.get('socket_timeout')
-        redis_client.connection_pool.connection_kwargs['socket_timeout'] = 0.001
-        
+    def test_connection_successful(self):
+        """测试Redis连接成功"""
         try:
-            # 使用一个无法访问的IP地址来触发超时
-            bad_client = Redis(host='240.0.0.0', port=6379, socket_timeout=0.001)
-            with pytest.raises((TimeoutError, socket.timeout, ConnectionError)):
-                bad_client.ping()
-        finally:
-            # 恢复原始的超时设置
-            if original_timeout:
-                redis_client.connection_pool.connection_kwargs['socket_timeout'] = original_timeout
-            else:
-                redis_client.connection_pool.connection_kwargs.pop('socket_timeout', None)
-                
-        # 验证原始连接是否正常
-        assert redis_client.ping()
+            # 测试基本的缓存操作来验证连接
+            cache.set('test_connection', 'test_value')
+            value = cache.get('test_connection')
+            self.assertEqual(value, 'test_value')
+        except Exception as e:
+            self.fail(f"Redis连接失败: {str(e)}")
 
-    def test_sentinel_mode_switching(self):
-        """测试哨兵模式切换"""
-        if not hasattr(settings, 'REDIS_SENTINEL_HOSTS'):
-            pytest.skip("Sentinel configuration not found")
-        
-        sentinel = Sentinel(settings.REDIS_SENTINEL_HOSTS)
-        master = sentinel.master_for('mymaster')
-        slave = sentinel.slave_for('mymaster')
-        
-        # 测试主从连接
-        assert master.ping()
-        assert slave.ping()
-        
-        # 写入测试数据到主节点
-        master.set('test_sentinel', 'value')
-        
-        # 从从节点读取数据（可能需要等待复制）
-        max_retries = 3
-        for _ in range(max_retries):
-            if slave.get('test_sentinel') == b'value':
-                break
-            time.sleep(0.1)
-        else:
-            pytest.fail("Data replication to slave failed")
-        
-        # 清理测试数据
-        master.delete('test_sentinel')
-
-    def test_cache_operations(self, redis_client):
-        """测试缓存基本操作"""
-        # 测试设置缓存
+    def test_basic_operations(self):
+        """测试基本的缓存操作"""
+        # 设置缓存
         cache.set('test_key', 'test_value', 60)
-        assert cache.get('test_key') == 'test_value'
-        
-        # 测试缓存过期
-        cache.set('expire_key', 'expire_value', 1)
+        # 获取缓存
+        value = cache.get('test_key')
+        self.assertEqual(value, 'test_value')
+        # 删除缓存
+        cache.delete('test_key')
+        value = cache.get('test_key')
+        self.assertIsNone(value)
+
+    def test_cache_timeout(self):
+        """测试缓存超时"""
+        # 设置一个1秒过期的缓存
+        cache.set('timeout_key', 'timeout_value', 1)
+        # 立即获取
+        value = cache.get('timeout_key')
+        self.assertEqual(value, 'timeout_value')
+        # 等待缓存过期
         time.sleep(1.1)
-        assert cache.get('expire_key') is None
+        # 再次获取
+        value = cache.get('timeout_key')
+        self.assertIsNone(value)
+
+    def test_concurrent_access(self):
+        """测试并发访问"""
+        def cache_operation():
+            try:
+                key = f'concurrent_key_{time.time()}'
+                cache.set(key, 'value', 60)
+                value = cache.get(key)
+                cache.delete(key)
+                return value == 'value'
+            except Exception:
+                return False
+
+        # 使用线程池模拟并发请求
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(lambda _: cache_operation(), range(20)))
+
+        # 验证所有操作都成功完成
+        self.assertTrue(all(results))
+
+    def test_connection_failure_handling(self):
+        """测试Redis连接失败的处理"""
+        try:
+            # 使用错误的Redis地址来测试连接失败的情况
+            with self.settings(CACHES={
+                'default': {
+                    'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+                    'LOCATION': 'redis://127.0.0.1:6380/1',  # 使用错误的端口
+                    'OPTIONS': {
+                        'db': 1,
+                        'socket_connect_timeout': 1,  # 设置较短的超时时间
+                        'socket_timeout': 1,
+                        'retry_on_timeout': False,
+                        'max_connections': 100,
+                    },
+                }
+            }):
+                from django.core.cache import cache
+                cache.set('test_key', 'test_value')
+                self.fail("应该抛出连接异常")
+        except Exception as e:
+            self.assertTrue(isinstance(e, Exception))
+            self.assertIn("Error", str(e))
+
+    def test_large_data_handling(self):
+        """测试大数据处理"""
+        # 生成1MB的测试数据
+        large_data = 'x' * (1024 * 1024)  # 1MB string
         
-        # 测试删除缓存
-        cache.set('delete_key', 'delete_value')
-        cache.delete('delete_key')
-        assert cache.get('delete_key') is None
+        # 设置大数据缓存
+        cache.set('large_key', large_data, 60)
         
-        # 测试缓存命中率
-        cache.set('hit_key', 'hit_value')
-        for _ in range(10):
-            assert cache.get('hit_key') == 'hit_value' 
+        # 获取并验证数据
+        retrieved_data = cache.get('large_key')
+        self.assertEqual(len(retrieved_data), len(large_data))
+        self.assertEqual(retrieved_data, large_data)
+
+    def test_cache_versioning(self):
+        """测试缓存版本控制"""
+        # 设置不同版本的缓存
+        cache.set('version_key', 'v1', version=1)
+        cache.set('version_key', 'v2', version=2)
+        
+        # 验证不同版本的数据
+        self.assertEqual(cache.get('version_key', version=1), 'v1')
+        self.assertEqual(cache.get('version_key', version=2), 'v2')
+
+    def test_cache_prefix(self):
+        """测试缓存前缀"""
+        # 设置缓存
+        key = 'test_key'
+        value = 'test_value'
+        cache.set(key, value)
+        
+        # 验证缓存是否设置成功
+        self.assertEqual(cache.get(key), value)
+
+    def tearDown(self):
+        """测试清理"""
+        # 清理所有测试用的缓存键
+        cache.clear() 

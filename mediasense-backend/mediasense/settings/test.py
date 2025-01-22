@@ -82,12 +82,28 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# 使用内存缓存
+# 使用Redis缓存
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://127.0.0.1:6379/1',
+        'OPTIONS': {
+            'db': 1,
+            'socket_connect_timeout': 5,
+            'socket_timeout': 5,
+            'retry_on_timeout': True,
+            'max_connections': 100,
+        },
+        'KEY_PREFIX': 'test',
+        'TIMEOUT': 300,
     }
 }
+
+# Redis配置
+REDIS_URL = env('REDIS_URL')
+REDIS_HOST = env('REDIS_HOST')
+REDIS_PORT = env('REDIS_PORT')
+REDIS_DB = 1  # 使用DB 1作为测试数据库
 
 # 禁用密码哈希器以加快测试速度
 PASSWORD_HASHERS = [
