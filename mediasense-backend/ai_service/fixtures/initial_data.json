@@ -12,8 +12,8 @@
                 "max_tokens": 100
             },
             "is_active": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z",
+            "created_at": "2025-01-22T10:54:34Z",
+            "updated_at": "2025-01-22T10:54:34Z",
             "description": "基础的新闻情感分析规则"
         }
     },
@@ -30,8 +30,8 @@
                 "max_tokens": 200
             },
             "is_active": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z",
+            "created_at": "2025-01-22T10:54:34Z",
+            "updated_at": "2025-01-22T10:54:34Z",
             "description": "提取新闻中的关键词和权重"
         }
     },
@@ -48,8 +48,8 @@
                 "max_tokens": 300
             },
             "is_active": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z",
+            "created_at": "2025-01-22T10:54:34Z",
+            "updated_at": "2025-01-22T10:54:34Z",
             "description": "生成新闻的简要摘要"
         }
     }
