@@ -1,12 +1,161 @@
 import pytest
-from django.db import connection, transaction
+from django.test import TestCase, TransactionTestCase
+from django.db import connection, transaction, OperationalError, connections
 from django.conf import settings
 from concurrent.futures import ThreadPoolExecutor
-import threading
+import time
 from news.models import NewsArticle
 from .factories import NewsArticleFactory
 
 pytestmark = pytest.mark.django_db(transaction=True)
+
+class TestDatabasePool(TestCase):
+    """数据库连接池测试"""
+
+    def setUp(self):
+        """测试初始化"""
+        self.db_settings = settings.DATABASES['default']
+
+    def test_connection_settings(self):
+        """测试连接池配置"""
+        # 验证连接池基本配置
+        self.assertEqual(self.db_settings['CONN_MAX_AGE'], 600)  # 连接保持10分钟
+        self.assertEqual(self.db_settings['OPTIONS']['connect_timeout'], 20)  # 连接超时20秒
+        self.assertEqual(self.db_settings['OPTIONS']['charset'], 'utf8mb4')  # 字符集utf8mb4
+
+    def test_connection_reuse(self):
+        """测试连接复用"""
+        # 第一次查询，建立连接
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT CONNECTION_ID()')
+            first_thread_id = cursor.fetchone()[0]
+
+        # 短时间内第二次查询，应该复用连接
+        with connection.cursor() as cursor:
+            cursor.execute('SELECT CONNECTION_ID()')
+            second_thread_id = cursor.fetchone()[0]
+
+        # 验证两次查询使用了同一个连接
+        self.assertEqual(first_thread_id, second_thread_id)
+
+    def test_concurrent_connections(self):
+        """测试并发连接"""
+        def db_operation():
+            try:
+                with connection.cursor() as cursor:
+                    cursor.execute('SELECT SLEEP(1)')
+                return True
+            except OperationalError:
+                return False
+
+        # 使用线程池模拟并发请求
+        with ThreadPoolExecutor(max_workers=10) as executor:
+            results = list(executor.map(lambda _: db_operation(), range(20)))
+
+        # 验证所有请求都成功完成
+        self.assertTrue(all(results))
+
+class TestDatabaseTransaction(TransactionTestCase):
+    """数据库事务测试"""
+
+    def setUp(self):
+        """测试初始化"""
+        super().setUp()
+        self.test_table = 'test_transaction'
+        # 创建测试表
+        with connection.cursor() as cursor:
+            cursor.execute(f'''
+                CREATE TABLE IF NOT EXISTS {self.test_table} (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    value INT NOT NULL
+                )
+            ''')
+
+    def tearDown(self):
+        """测试清理"""
+        super().tearDown()
+        # 删除测试表
+        with connection.cursor() as cursor:
+            cursor.execute(f'DROP TABLE IF EXISTS {self.test_table}')
+
+    def test_successful_transaction(self):
+        """测试成功的事务"""
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    # 插入测试数据
+                    cursor.execute(f'INSERT INTO {self.test_table} (value) VALUES (1)')
+                    cursor.execute(f'INSERT INTO {self.test_table} (value) VALUES (2)')
+
+            # 验证数据已正确提交
+            with connection.cursor() as cursor:
+                cursor.execute(f'SELECT COUNT(*) FROM {self.test_table}')
+                count = cursor.fetchone()[0]
+                self.assertEqual(count, 2)
+        except Exception as e:
+            self.fail(f"事务执行失败: {str(e)}")
+
+    def test_failed_transaction(self):
+        """测试失败的事务"""
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    # 插入第一条数据
+                    cursor.execute(f'INSERT INTO {self.test_table} (value) VALUES (1)')
+                    # 故意制造错误
+                    cursor.execute('SELECT * FROM nonexistent_table')
+        except Exception:
+            pass  # 预期会抛出异常
+
+        # 验证数据已回滚
+        with connection.cursor() as cursor:
+            cursor.execute(f'SELECT COUNT(*) FROM {self.test_table}')
+            count = cursor.fetchone()[0]
+            self.assertEqual(count, 0)
+
+    def test_nested_transaction(self):
+        """测试嵌套事务"""
+        try:
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(f'INSERT INTO {self.test_table} (value) VALUES (1)')
+
+                    try:
+                        with transaction.atomic():
+                            cursor.execute(f'INSERT INTO {self.test_table} (value) VALUES (2)')
+                            raise ValueError('测试回滚')
+                    except ValueError:
+                        pass  # 内部事务应该回滚
+
+                    cursor.execute(f'INSERT INTO {self.test_table} (value) VALUES (3)')
+
+            # 验证外部事务的数据正确提交，内部事务的数据被回滚
+            with connection.cursor() as cursor:
+                cursor.execute(f'SELECT COUNT(*) FROM {self.test_table}')
+                count = cursor.fetchone()[0]
+                self.assertEqual(count, 2)  # 应该只有两条记录（1和3）
+        except Exception as e:
+            self.fail(f"事务执行失败: {str(e)}")
+
+    def test_transaction_isolation(self):
+        """测试事务隔离性"""
+        from django.db import connections
+        
+        # 创建一个新的数据库连接
+        new_connection = connections.create_connection('default')
+        try:
+            # 在主连接中开启事务并插入数据
+            with transaction.atomic():
+                with connection.cursor() as cursor:
+                    cursor.execute(f'INSERT INTO {self.test_table} (value) VALUES (1)')
+                    
+                    # 在新连接中查询，不应该看到未提交的数据
+                    with new_connection.cursor() as cursor2:
+                        cursor2.execute(f'SELECT COUNT(*) FROM {self.test_table}')
+                        count = cursor2.fetchone()[0]
+                        self.assertEqual(count, 0)  # 在新连接中不应该看到未提交的数据
+        finally:
+            new_connection.close()
 
 class TestDatabaseConnectionPool:
     """TC-DB-001: 数据库连接池测试"""
@@ -32,7 +181,6 @@ class TestDatabaseConnectionPool:
 
     def test_connection_timeout(self):
         """测试连接超时处理"""
-        from django.db.utils import OperationalError
         import socket
         
         # 使用一个不存在的主机来测试超时

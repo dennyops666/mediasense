@@ -46,17 +46,20 @@ class AsyncAPIClient(APIClient):
 
     async def _handle_response(self, response):
         """处理响应"""
-        if isinstance(response, Response):
-            content = await sync_to_async(JSONRenderer().render)(response.data)
-            http_response = HttpResponse(
-                content=content,
-                status=response.status_code,
-                content_type='application/json'
-            )
-            http_response.headers = getattr(response, 'headers', {})
-            http_response._resource_closers = []
-            return http_response
-        return response
+        try:
+            if response.status_code == 404:
+                response.data = {
+                    'error': 'Not Found',
+                    'detail': 'The requested resource was not found on this server.'
+                }
+            return response
+        except Exception as e:
+            print(f"Response handling error: {str(e)}")
+            response.data = {
+                'error': str(e),
+                'detail': 'Response handling failed'
+            }
+            return response
 
     async def request(self, method, path, data=None, format=None, content_type=None, follow=False, secure=False, **extra):
         """发送请求"""
@@ -73,6 +76,12 @@ class AsyncAPIClient(APIClient):
             if format == 'json' and data is not None:
                 data = await self._encode_json_data(data)
 
+            # 处理路径
+            if not path.startswith('/'):
+                path = f'/{path}'
+            if not path.startswith('/v1/'):
+                path = f'/v1{path}'
+
             # 调用父类的 request 方法
             response = await sync_to_async(super().request)(
                 method=method,
@@ -84,12 +93,32 @@ class AsyncAPIClient(APIClient):
                 **{**extra, **request_headers}
             )
 
+            # 保存请求信息到响应对象
+            response.request = {
+                'REQUEST_METHOD': method,
+                'PATH_INFO': path,
+                'data': data,
+                **request_headers
+            }
+
+            # 打印调试信息
+            print(f"Request method: {method}")
+            print(f"Request path: {path}")
+            print(f"Request data: {data}")
+            print(f"Request headers: {request_headers}")
+            print(f"Response status: {response.status_code}")
+            print(f"Response content: {response.content}")
+
             return await self._handle_response(response)
         except Exception as e:
-            return HttpResponse(
-                content=json.dumps({'error': str(e)}),
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                content_type='application/json'
+            print(f"Request error: {str(e)}")
+            error_response = {
+                'error': str(e),
+                'detail': 'Request failed'
+            }
+            return Response(
+                error_response,
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
     async def get(self, path, data=None, follow=False, **extra):

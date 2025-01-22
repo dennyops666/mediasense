@@ -163,7 +163,10 @@ class NewsArticleSerializer(serializers.ModelSerializer):
 
     def validate_url(self, value):
         """验证URL唯一性."""
-        if NewsArticle.objects.filter(url=value).exists():
+        qs = NewsArticle.objects.filter(url=value)
+        if self.instance:
+            qs = qs.exclude(pk=self.instance.pk)
+        if qs.exists():
             raise serializers.ValidationError('该URL已存在')
         return value
 
@@ -204,14 +207,30 @@ class NewsArticleUpdateSerializer(NewsArticleSerializer):
 
         # 已发布的文章只能变为已归档
         if self.instance.status == NewsArticle.Status.PUBLISHED:
-            if value != NewsArticle.Status.ARCHIVED:
+            if value != NewsArticle.Status.ARCHIVED and value != self.instance.status:
                 raise serializers.ValidationError('已发布的文章只能变更为已归档状态')
 
         # 已归档的文章不能再变更状态
         if self.instance.status == NewsArticle.Status.ARCHIVED:
-            raise serializers.ValidationError('已归档的文章不能变更状态')
+            if value != self.instance.status:
+                raise serializers.ValidationError('已归档的文章不能变更状态')
 
         return value
+
+    def validate(self, attrs):
+        """验证更新数据."""
+        # 如果只更新分类，不需要验证状态
+        if len(attrs) == 1 and 'category' in attrs:
+            category = attrs['category']
+            if not category.is_active:
+                raise serializers.ValidationError('所选分类已禁用')
+            return attrs
+
+        # 如果包含状态字段，验证状态变更
+        if 'status' in attrs:
+            self.validate_status(attrs['status'])
+
+        return attrs
 
 
 class NewsArticleReviewSerializer(serializers.ModelSerializer):

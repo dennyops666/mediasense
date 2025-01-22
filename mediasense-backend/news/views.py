@@ -15,7 +15,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
 
-from custom_auth.permissions import ActionBasedPermission, IsAdmin, IsStaffOrAdmin
+from custom_auth.permissions import ActionBasedPermission
 from .models import (
     NewsArticle,
     NewsCategory,
@@ -54,6 +54,52 @@ class NewsViewSet(viewsets.ModelViewSet):
         serializer = NewsCategorySerializer(categories, many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['put'])
+    def bulk_update(self, request):
+        """批量更新新闻文章."""
+        data = request.data
+        ids = data.get('ids', [])
+        status_value = data.get('status')
+        
+        if not ids or not status_value:
+            return Response(
+                {'error': '缺少必要的参数'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            updated = NewsArticle.objects.filter(id__in=ids).update(
+                status=status_value,
+                updated_at=timezone.now()
+            )
+            return Response({'updated': updated})
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=False, methods=['post'])
+    def bulk_delete(self, request):
+        """批量删除新闻文章."""
+        data = request.data
+        ids = data.get('ids', [])
+        
+        if not ids:
+            return Response(
+                {'error': '缺少必要的参数'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        try:
+            deleted = NewsArticle.objects.filter(id__in=ids).delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            return Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 class NewsCategoryViewSet(viewsets.ModelViewSet):
     """新闻分类管理视图集."""
@@ -64,10 +110,10 @@ class NewsCategoryViewSet(viewsets.ModelViewSet):
     action_permissions = {
         'list': [permissions.AllowAny],
         'retrieve': [permissions.AllowAny],
-        'create': [IsStaffOrAdmin],
-        'update': [IsStaffOrAdmin],
-        'partial_update': [IsStaffOrAdmin],
-        'destroy': [IsStaffOrAdmin],
+        'create': [permissions.IsAdminUser],
+        'update': [permissions.IsAdminUser],
+        'partial_update': [permissions.IsAdminUser],
+        'destroy': [permissions.IsAdminUser],
     }
 
     def get_queryset(self):
@@ -75,12 +121,12 @@ class NewsCategoryViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(is_active=True)
 
     def perform_create(self, serializer):
-        """创建分类时设置创建者."""
-        serializer.save(creator=self.request.user)
+        """创建分类."""
+        serializer.save()
 
     def perform_update(self, serializer):
-        """更新分类时设置更新者."""
-        serializer.save(updater=self.request.user)
+        """更新分类."""
+        serializer.save()
 
     def get_serializer_class(self):
         """根据不同的动作返回不同的序列化器"""
@@ -184,6 +230,31 @@ class NewsCategoryViewSet(viewsets.ModelViewSet):
         except Exception as e:
             return Response({"message": "排序更新失败", "errors": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=['get'])
+    def statistics(self, request, pk=None):
+        """获取分类统计信息"""
+        category = self.get_object()
+        articles = category.articles.all()
+        
+        total_news = articles.count()
+        published_news = articles.filter(status='published').count()
+        latest_news = articles.order_by('-publish_time')[:5]
+        
+        news_by_status = {
+            'draft': articles.filter(status='draft').count(),
+            'published': published_news,
+            'archived': articles.filter(status='archived').count()
+        }
+        
+        data = {
+            'total_news': total_news,
+            'published_news': published_news,
+            'news_by_status': news_by_status,
+            'latest_news': NewsArticleSerializer(latest_news, many=True).data
+        }
+        
+        return Response(data)
+
 
 class NewsArticleViewSet(viewsets.ModelViewSet):
     """新闻文章视图集."""
@@ -224,12 +295,22 @@ class NewsArticleViewSet(viewsets.ModelViewSet):
         if tag:
             queryset = queryset.filter(tags__contains=[tag])
 
-        # 普通用户只能看到已发布的文章
+        # 普通用户只能看到已发布的文章,且仅在list操作时过滤
         user = self.request.user
-        if not (user.is_authenticated and user.user_type in ['admin', 'staff']):
+        if not (user and user.is_authenticated and user.user_type in ['admin', 'staff']) and self.action == 'list':
             queryset = queryset.filter(status=NewsArticle.Status.PUBLISHED)
 
         return queryset
+
+    def get_serializer_class(self):
+        """根据不同的动作返回不同的序列化器."""
+        if self.action == 'create':
+            return NewsArticleCreateSerializer
+        elif self.action in ['update', 'partial_update']:
+            return NewsArticleUpdateSerializer
+        elif self.action == 'review':
+            return NewsArticleReviewSerializer
+        return self.serializer_class
 
     def get_permissions(self):
         """根据不同的动作返回不同的权限类.
@@ -241,7 +322,7 @@ class NewsArticleViewSet(viewsets.ModelViewSet):
         """
         self.permission_classes = [ActionBasedPermission]
         self.action_permissions = {
-            IsStaffOrAdmin: [
+            permissions.IsAdminUser: [
                 'create',
                 'update',
                 'partial_update',
@@ -250,21 +331,11 @@ class NewsArticleViewSet(viewsets.ModelViewSet):
                 'import_articles',
                 'export_articles',
                 'bulk_update',
-                'bulk_delete',
+                'bulk_delete'
             ],
-            IsAdmin: ['review'],
+            permissions.AllowAny: ['list', 'retrieve']
         }
         return super().get_permissions()
-
-    def get_serializer_class(self):
-        """根据不同的动作返回不同的序列化器."""
-        if self.action == 'create':
-            return NewsArticleCreateSerializer
-        elif self.action in ['update', 'partial_update']:
-            return NewsArticleUpdateSerializer
-        elif self.action == 'review':
-            return NewsArticleReviewSerializer
-        return self.serializer_class
 
     @action(detail=True, methods=['post'])
     def submit_review(self, request, pk=None):
@@ -369,6 +440,11 @@ class NewsArticleViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         """更新文章时进行额外处理."""
+        # 如果只更新分类，直接保存
+        if len(serializer.validated_data) == 1 and 'category' in serializer.validated_data:
+            serializer.save()
+            return
+
         # 如果状态从草稿改为待审核，清空审核相关信息
         if (
             serializer.instance.status == NewsArticle.Status.DRAFT
@@ -476,13 +552,3 @@ class NewsArticleViewSet(viewsets.ModelViewSet):
             return Response({"message": f"成功删除 {count} 篇文章"}, status=status.HTTP_204_NO_CONTENT)
         except Exception as e:
             return Response({"message": f"删除失败: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
-
-
-class CategoryViewSet(viewsets.ModelViewSet):
-    """新闻分类管理视图集."""
-
-    queryset = NewsCategory.objects.all()
-    serializer_class = NewsCategorySerializer
-    permission_classes = [permissions.IsAuthenticated]
-    filter_backends = [filters.SearchFilter]
-    search_fields = ['name']

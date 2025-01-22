@@ -6,8 +6,11 @@ import pytest
 import asyncio
 import json
 import os
+from httpx import AsyncClient
+import uuid
 
-from .test_ai import AsyncAPIClient
+from .factories import UserFactory
+from .async_client import AsyncAPIClient
 
 User = get_user_model()
 
@@ -18,13 +21,13 @@ class BaseTestCase(TestCase):
         self.client = Client()
         # 创建测试用户
         self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
+            username=f'testuser_{uuid.uuid4().hex[:8]}',
+            email=f'test_{uuid.uuid4().hex[:8]}@example.com',
             password='testpass123'
         )
         self.admin_user = User.objects.create_superuser(
-            username='test_admin',
-            email='admin@example.com',
+            username=f'test_admin_{uuid.uuid4().hex[:8]}',
+            email=f'admin_{uuid.uuid4().hex[:8]}@example.com',
             password='admin123'
         )
 
@@ -39,13 +42,13 @@ class BaseAPITestCase(APITestCase):
         self.test_password = 'testpass123'  # 设置测试密码
         # 创建测试用户
         self.user = User.objects.create_user(
-            username='testuser',
-            email='test@example.com',
+            username=f'testuser_{uuid.uuid4().hex[:8]}',
+            email=f'test_{uuid.uuid4().hex[:8]}@example.com',
             password=self.test_password
         )
         self.admin_user = User.objects.create_superuser(
-            username='test_admin',
-            email='admin@example.com',
+            username=f'test_admin_{uuid.uuid4().hex[:8]}',
+            email=f'admin_{uuid.uuid4().hex[:8]}@example.com',
             password='admin123'
         )
         # 生成测试token

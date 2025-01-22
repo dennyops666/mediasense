@@ -45,33 +45,33 @@ class AsyncFactoryMixin:
         """异步批量创建实例"""
         return await sync_to_async(cls.create_batch)(size, **kwargs)
 
-class NewsCategoryFactory(DjangoModelFactory):
+class NewsCategoryFactory(DjangoModelFactory, AsyncFactoryMixin):
     """新闻分类工厂类"""
 
     class Meta:
         model = NewsCategory
+        django_get_or_create = ('name',)
 
-    name = factory.Sequence(lambda n: f'Category {n}')
-    description = factory.Faker('text')
-    created_by = factory.SubFactory(UserFactory)
-    created_at = factory.LazyFunction(timezone.now)
-    updated_at = factory.LazyFunction(timezone.now)
+    name = factory.Sequence(lambda n: f'测试分类{n}')
+    description = factory.LazyAttribute(lambda obj: f'这是{obj.name}的描述')
+    is_active = True
+    level = 1
 
-class NewsArticleFactory(DjangoModelFactory):
+class NewsArticleFactory(DjangoModelFactory, AsyncFactoryMixin):
     """新闻文章工厂类"""
 
     class Meta:
         model = NewsArticle
 
-    title = factory.Sequence(lambda n: f'Article {n}')
-    content = factory.Faker('text')
-    source = factory.Sequence(lambda n: f'Source {n}')
-    url = factory.Sequence(lambda n: f'http://example.com/news/{n}')
+    title = factory.Sequence(lambda n: f'测试新闻{n}')
+    content = factory.LazyAttribute(lambda obj: f'这是{obj.title}的内容')
+    url = factory.LazyAttribute(lambda obj: f'https://example.com/news/{obj.title}')
+    source = '测试来源'
+    summary = factory.LazyAttribute(lambda obj: f'这是{obj.title}的摘要')
+    author = '测试作者'
     category = factory.SubFactory(NewsCategoryFactory)
     status = 'draft'
-    created_by = factory.SubFactory(UserFactory)
-    created_at = factory.LazyFunction(timezone.now)
-    updated_at = factory.LazyFunction(timezone.now)
+    publish_time = factory.LazyFunction(timezone.now)
 
 class SystemMetricsFactory(AsyncFactoryMixin, DjangoModelFactory):
     """系统指标工厂类"""
