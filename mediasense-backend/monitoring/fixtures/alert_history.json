@@ -6,11 +6,11 @@
             "rule": 1,
             "status": "resolved",
             "metric_value": 92.5,
-            "triggered_at": "2024-01-13T01:00:00Z",
-            "resolved_at": "2024-01-13T01:30:00Z",
-            "acknowledged_at": "2024-01-13T01:15:00Z",
-            "acknowledged_by": 1,
-            "note": "CPU使用率过高，已通过重启部分非关键服务解决"
+            "triggered_at": "2025-01-22T02:28:54Z",
+            "resolved_at": "2025-01-22T02:28:54Z",
+            "acknowledged_at": null,
+            "acknowledged_by": null,
+            "resolution_notes": "CPU usage returned to normal after service optimization"
         }
     },
     {
@@ -19,12 +19,12 @@
         "fields": {
             "rule": 2,
             "status": "active",
-            "metric_value": 2500.0,
-            "triggered_at": "2024-01-13T02:00:00Z",
+            "metric_value": 450.2,
+            "triggered_at": "2025-01-22T02:28:54Z",
             "resolved_at": null,
             "acknowledged_at": null,
             "acknowledged_by": null,
-            "note": ""
+            "resolution_notes": null
         }
     },
     {
@@ -33,12 +33,12 @@
         "fields": {
             "rule": 3,
             "status": "acknowledged",
-            "metric_value": 91.2,
-            "triggered_at": "2024-01-13T03:00:00Z",
+            "metric_value": 95.8,
+            "triggered_at": "2025-01-22T02:28:54Z",
             "resolved_at": null,
-            "acknowledged_at": "2024-01-13T03:10:00Z",
+            "acknowledged_at": "2025-01-22T02:28:54Z",
             "acknowledged_by": 1,
-            "note": "已安排清理临时文件和日志"
+            "resolution_notes": "Investigating disk space usage"
         }
     },
     {
@@ -48,11 +48,11 @@
             "rule": 5,
             "status": "resolved",
             "metric_value": 12.5,
-            "triggered_at": "2024-01-13T04:00:00Z",
-            "resolved_at": "2024-01-13T04:45:00Z",
-            "acknowledged_at": "2024-01-13T04:15:00Z",
+            "triggered_at": "2025-01-22T02:28:54Z",
+            "resolved_at": "2025-01-22T02:28:54Z",
+            "acknowledged_at": "2025-01-22T02:28:54Z",
             "acknowledged_by": 1,
-            "note": "新闻处理服务异常，已重启服务恢复正常"
+            "resolution_notes": "新闻处理服务异常，已重启服务恢复正常"
         }
     }
 ] 

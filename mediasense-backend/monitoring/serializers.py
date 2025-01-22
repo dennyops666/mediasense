@@ -130,7 +130,7 @@ class AlertRuleSerializer(serializers.ModelSerializer):
             "duration",
             "alert_level",
             "alert_level_display",
-            "is_active",
+            "is_enabled",
             "created_by",
             "created_at",
             "updated_at",

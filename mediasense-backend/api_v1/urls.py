@@ -14,5 +14,5 @@ urlpatterns = [
     path(f"{API_VERSION}/search/", include("news_search.urls")),
     path(f"{API_VERSION}/crawler/", include("crawler.urls")),
     path(f"{API_VERSION}/ai/", include("ai_service.urls")),
-    # path(f"{API_VERSION}/monitoring/", include("monitoring.urls", namespace="monitoring")),
+    path(f"{API_VERSION}/monitoring/", include("monitoring.urls", namespace="monitoring")),
 ]

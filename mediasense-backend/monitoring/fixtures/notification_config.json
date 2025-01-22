@@ -1,59 +1,52 @@
 [
     {
-        "model": "monitoring.alertnotificationconfig",
+        "model": "monitoring.notificationconfig",
         "pk": 1,
         "fields": {
             "user": 1,
             "notification_type": "email",
-            "name": "管理员邮件通知",
             "config": {
                 "email": "admin@example.com",
-                "subject_template": "[{alert_level}] {rule_name} 告警通知",
-                "body_template": "告警详情：\n规则：{rule_name}\n描述：{rule_description}\n当前值：{metric_value}\n触发时间：{triggered_at}\n\n请及时处理！"
+                "template": "Alert: {alert_type} - Value: {value}"
             },
             "alert_levels": ["warning", "critical"],
-            "is_active": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
-        "model": "monitoring.alertnotificationconfig",
+        "model": "monitoring.notificationconfig",
         "pk": 2,
         "fields": {
             "user": 1,
             "notification_type": "webhook",
-            "name": "Webhook通知",
             "config": {
-                "url": "http://localhost:8000/api/webhook/alert",
+                "url": "https://webhook.example.com/alerts",
                 "method": "POST",
                 "headers": {
                     "Content-Type": "application/json",
-                    "Authorization": "Bearer your-token-here"
+                    "Authorization": "Bearer token123"
                 }
             },
             "alert_levels": ["critical"],
-            "is_active": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
-        "model": "monitoring.alertnotificationconfig",
+        "model": "monitoring.notificationconfig",
         "pk": 3,
         "fields": {
-            "user": 1,
+            "user": 2,
             "notification_type": "dingtalk",
-            "name": "钉钉机器人通知",
             "config": {
-                "webhook": "https://oapi.dingtalk.com/robot/send?access_token=your-token-here",
-                "secret": "your-secret-here",
-                "message_template": "### {rule_name} 告警通知\n**级别**：{alert_level}\n**描述**：{rule_description}\n**当前值**：{metric_value}\n**触发时间**：{triggered_at}"
+                "webhook": "https://oapi.dingtalk.com/robot/send?access_token=xxx",
+                "secret": "SEC000000000000000000000",
+                "template": "【系统告警】\n告警类型：{alert_type}\n当前值：{value}\n触发时间：{time}"
             },
             "alert_levels": ["warning", "critical"],
-            "is_active": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     }
 ] 

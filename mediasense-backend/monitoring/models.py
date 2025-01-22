@@ -330,20 +330,19 @@ class ErrorLog(models.Model):
     stack_trace = models.TextField("堆栈跟踪", null=True, blank=True)
     severity = models.CharField("严重程度", max_length=10, choices=SEVERITY_CHOICES, default='ERROR')
     source = models.CharField("错误来源", max_length=100)
-    timestamp = models.DateTimeField("发生时间", default=timezone.now)
-    resolved = models.BooleanField("是否已解决", default=False)
-    resolution_notes = models.TextField("解决说明", blank=True)
-    resolved_at = models.DateTimeField("解决时间", null=True, blank=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="error_logs", verbose_name="创建者"
+    )
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
     updated_at = models.DateTimeField("更新时间", auto_now=True)
 
     class Meta:
         verbose_name = "错误日志"
         verbose_name_plural = verbose_name
-        ordering = ["-timestamp"]
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["-timestamp"], name="error_log_timestamp_idx"),
-            models.Index(fields=["severity", "-timestamp"], name="error_log_severity_idx"),
+            models.Index(fields=["-created_at"], name="error_log_created_at_idx"),
+            models.Index(fields=["severity", "-created_at"], name="error_log_severity_idx"),
         ]
 
     def __str__(self):

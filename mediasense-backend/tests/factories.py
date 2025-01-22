@@ -50,13 +50,14 @@ class SystemMetricsFactory(AsyncFactoryMixin, DjangoModelFactory):
     class Meta:
         model = SystemMetrics
 
-    metric_type = SystemMetrics.MetricType.CPU
+    metric_type = 'cpu'
     value = factory.Faker('pyfloat', min_value=0, max_value=100)
     timestamp = factory.LazyFunction(timezone.now)
     metadata = factory.Dict({
         'host': factory.Sequence(lambda n: f'server-{n}'),
         'core': 'all'
     })
+    created_by = factory.SubFactory(UserFactory)
 
 class AlertRuleFactory(DjangoModelFactory):
     """告警规则工厂类"""
@@ -66,11 +67,11 @@ class AlertRuleFactory(DjangoModelFactory):
 
     name = factory.Sequence(lambda n: f'Rule {n}')
     description = factory.Faker('text')
-    metric_type = AlertRule.MetricType.CPU
-    operator = AlertRule.Operator.GT
+    metric_type = 'cpu'
+    operator = 'gt'
     threshold = 90.0
     duration = 5
-    alert_level = AlertRule.AlertLevel.WARNING
+    alert_level = 'warning'
     is_enabled = True
     created_by = factory.SubFactory(UserFactory)
 
@@ -86,7 +87,7 @@ class AlertHistoryFactory(DjangoModelFactory):
         model = AlertHistory
 
     rule = factory.SubFactory(AlertRuleFactory)
-    status = AlertHistory.Status.ACTIVE
+    status = 'active'
     metric_value = factory.Faker('pyfloat', min_value=0, max_value=100)
     note = factory.Faker('sentence')
     created_by = factory.SubFactory(UserFactory)
@@ -104,8 +105,8 @@ class MonitoringVisualizationFactory(DjangoModelFactory):
 
     name = factory.Sequence(lambda n: f'Visualization {n}')
     description = factory.Faker('text')
-    chart_type = MonitoringVisualization.ChartType.LINE
-    metric_type = MonitoringVisualization.MetricType.CPU
+    chart_type = 'line'
+    metric_type = 'cpu'
     time_range = 60
     interval = 60
     aggregation_method = 'avg'
@@ -130,7 +131,7 @@ class ErrorLogFactory(DjangoModelFactory):
     message = factory.Faker('sentence')
     source = factory.Faker('word')
     stack_trace = factory.Faker('text')
-    created_by = factory.SubFactory(UserFactory)
+    timestamp = factory.LazyFunction(timezone.now)
 
     @classmethod
     async def acreate(cls, **kwargs):
@@ -146,7 +147,7 @@ class DashboardFactory(AsyncFactoryMixin, DjangoModelFactory):
 
     name = factory.Sequence(lambda n: f'Dashboard {n}')
     description = factory.Faker('text', max_nb_chars=200)
-    layout_type = Dashboard.LayoutType.GRID
+    layout_type = 'grid'
     layout = factory.Dict({
         'widgets': [],
         'settings': {'columns': 12, 'margin': 10, 'responsive': True}
@@ -162,7 +163,7 @@ class DashboardWidgetFactory(AsyncFactoryMixin, DjangoModelFactory):
 
     dashboard = factory.SubFactory(DashboardFactory)
     name = factory.Sequence(lambda n: f'Widget {n}')
-    widget_type = DashboardWidget.WidgetType.CHART
+    widget_type = 'chart'
     visualization = factory.SubFactory(MonitoringVisualizationFactory)
     config = factory.Dict({
         'metric_type': 'cpu',
@@ -184,7 +185,7 @@ class AlertNotificationConfigFactory(AsyncFactoryMixin, DjangoModelFactory):
         model = AlertNotificationConfig
 
     name = factory.Sequence(lambda n: f'Notification Config {n}')
-    notification_type = AlertNotificationConfig.NotificationType.EMAIL
+    notification_type = 'email'
     config = factory.Dict({
         'email': factory.Faker('email'),
         'template': 'default',

@@ -3,97 +3,75 @@
         "model": "monitoring.monitoringvisualization",
         "pk": 1,
         "fields": {
-            "name": "CPU使用率监控",
-            "description": "系统CPU使用率趋势图",
+            "name": "CPU使用率",
+            "description": "系统CPU使用率趋势",
             "chart_type": "line",
             "metric_type": "cpu",
-            "time_range": 60,
-            "interval": 60,
-            "aggregation_method": "avg",
-            "warning_threshold": 80.0,
-            "critical_threshold": 90.0,
-            "is_active": 1,
-            "refresh_interval": 30,
-            "created_by": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "time_range": 1440,
+            "warning_threshold": 80,
+            "critical_threshold": 90,
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
         "model": "monitoring.monitoringvisualization",
         "pk": 2,
         "fields": {
-            "name": "内存使用监控",
-            "description": "系统内存使用率监控",
-            "chart_type": "gauge",
+            "name": "内存使用率",
+            "description": "系统内存使用率趋势",
+            "chart_type": "line",
             "metric_type": "memory",
-            "time_range": 60,
-            "interval": 60,
-            "aggregation_method": "avg",
-            "warning_threshold": 85.0,
-            "critical_threshold": 95.0,
-            "is_active": 1,
-            "refresh_interval": 30,
-            "created_by": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "time_range": 1440,
+            "warning_threshold": 80,
+            "critical_threshold": 90,
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
         "model": "monitoring.monitoringvisualization",
         "pk": 3,
         "fields": {
-            "name": "磁盘使用率监控",
-            "description": "系统磁盘使用率监控",
-            "chart_type": "pie",
+            "name": "磁盘使用率",
+            "description": "系统磁盘使用率趋势",
+            "chart_type": "line",
             "metric_type": "disk",
-            "time_range": 60,
-            "interval": 300,
-            "aggregation_method": "avg",
-            "warning_threshold": 85.0,
-            "critical_threshold": 95.0,
-            "is_active": 1,
-            "refresh_interval": 300,
-            "created_by": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "time_range": 1440,
+            "warning_threshold": 80,
+            "critical_threshold": 90,
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
         "model": "monitoring.monitoringvisualization",
         "pk": 4,
         "fields": {
-            "name": "网络流量监控",
-            "description": "系统网络流量监控",
+            "name": "网络流量",
+            "description": "系统网络流量趋势",
             "chart_type": "line",
             "metric_type": "network",
-            "time_range": 60,
-            "interval": 60,
-            "aggregation_method": "avg",
-            "warning_threshold": null,
-            "critical_threshold": null,
-            "is_active": 1,
-            "refresh_interval": 30,
-            "created_by": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "time_range": 1440,
+            "warning_threshold": 80,
+            "critical_threshold": 90,
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
         "model": "monitoring.alertrule",
         "pk": 1,
         "fields": {
-            "name": "CPU告警规则",
-            "description": "CPU使用率超限告警",
+            "name": "CPU使用率告警",
+            "description": "当CPU使用率超过阈值时触发告警",
             "metric_type": "cpu",
             "operator": "gt",
-            "threshold": 90.0,
-            "duration": 5,
+            "threshold": 90,
             "alert_level": "critical",
-            "is_active": 1,
-            "created_by": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "is_active": true,
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
@@ -101,16 +79,14 @@
         "pk": 2,
         "fields": {
             "name": "API响应时间告警",
-            "description": "API响应时间超时告警",
+            "description": "当API响应时间超过阈值时触发告警",
             "metric_type": "api_latency",
             "operator": "gt",
-            "threshold": 2000.0,
-            "duration": 3,
+            "threshold": 1000,
             "alert_level": "warning",
-            "is_active": 1,
-            "created_by": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "is_active": true,
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
@@ -118,33 +94,29 @@
         "pk": 3,
         "fields": {
             "name": "磁盘空间告警",
-            "description": "磁盘空间不足告警",
+            "description": "当磁盘使用率超过阈值时触发告警",
             "metric_type": "disk",
             "operator": "gt",
-            "threshold": 90.0,
-            "duration": 10,
+            "threshold": 90,
             "alert_level": "critical",
-            "is_active": 1,
-            "created_by": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "is_active": true,
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
         "model": "monitoring.alertrule",
         "pk": 4,
         "fields": {
-            "name": "内存使用告警",
-            "description": "内存使用率超限告警",
+            "name": "内存使用率告警",
+            "description": "当内存使用率超过阈值时触发告警",
             "metric_type": "memory",
             "operator": "gt",
-            "threshold": 90.0,
-            "duration": 5,
+            "threshold": 90,
             "alert_level": "critical",
-            "is_active": 1,
-            "created_by": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "is_active": true,
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
@@ -153,11 +125,8 @@
         "fields": {
             "name": "系统概览",
             "description": "系统整体运行状态监控",
-            "layout_type": "GRID",
-            "is_default": 1,
-            "created_by": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
@@ -165,21 +134,15 @@
         "pk": 1,
         "fields": {
             "dashboard": 1,
-            "name": "CPU监控",
-            "widget_type": "PERFORMANCE_TREND",
-            "config": {
-                "visualization_id": 1,
-                "refresh_interval": 30
-            },
+            "visualization": 1,
             "position": {
                 "x": 0,
                 "y": 0,
                 "w": 6,
                 "h": 4
             },
-            "is_visible": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
@@ -187,21 +150,15 @@
         "pk": 2,
         "fields": {
             "dashboard": 1,
-            "name": "内存监控",
-            "widget_type": "PERFORMANCE_TREND",
-            "config": {
-                "visualization_id": 2,
-                "refresh_interval": 30
-            },
+            "visualization": 2,
             "position": {
                 "x": 6,
                 "y": 0,
                 "w": 6,
                 "h": 4
             },
-            "is_visible": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     },
     {
@@ -209,43 +166,15 @@
         "pk": 3,
         "fields": {
             "dashboard": 1,
-            "name": "磁盘监控",
-            "widget_type": "PERFORMANCE_TREND",
-            "config": {
-                "visualization_id": 3,
-                "refresh_interval": 300
-            },
+            "visualization": 3,
             "position": {
                 "x": 0,
                 "y": 4,
                 "w": 6,
                 "h": 4
             },
-            "is_visible": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
-        }
-    },
-    {
-        "model": "monitoring.dashboardwidget",
-        "pk": 4,
-        "fields": {
-            "dashboard": 1,
-            "name": "网络监控",
-            "widget_type": "PERFORMANCE_TREND",
-            "config": {
-                "visualization_id": 4,
-                "refresh_interval": 30
-            },
-            "position": {
-                "x": 6,
-                "y": 4,
-                "w": 6,
-                "h": 4
-            },
-            "is_visible": 1,
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "created_at": "2025-01-22T02:28:54Z",
+            "updated_at": "2025-01-22T02:28:54Z"
         }
     }
 ] 
