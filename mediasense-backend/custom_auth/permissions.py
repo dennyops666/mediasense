@@ -1,50 +1,6 @@
 from rest_framework import permissions
 
 
-class IsAdmin(permissions.BasePermission):
-    """
-    管理员权限
-    只允许管理员访问
-    """
-
-    def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.user_type == "admin")
-
-
-class IsStaffOrAdmin(permissions.BasePermission):
-    """
-    工作人员或管理员权限
-    允许工作人员和管理员访问
-    """
-
-    def has_permission(self, request, view):
-        return bool(request.user and request.user.is_authenticated and request.user.user_type in ["admin", "staff"])
-
-
-class IsSelfOrAdmin(permissions.BasePermission):
-    """
-    本人或管理员权限
-    只允许用户操作自己的数据，管理员可以操作所有数据
-    """
-
-    def has_object_permission(self, request, view, obj):
-        return bool(
-            request.user
-            and request.user.is_authenticated
-            and (request.user.id == obj.id or request.user.user_type == "admin")
-        )
-
-
-class ReadOnly(permissions.BasePermission):
-    """
-    只读权限
-    只允许安全的HTTP方法（GET, HEAD, OPTIONS）
-    """
-
-    def has_permission(self, request, view):
-        return bool(request.method in permissions.SAFE_METHODS)
-
-
 class ActionBasedPermission(permissions.BasePermission):
     """
     基于动作的权限
@@ -54,14 +10,41 @@ class ActionBasedPermission(permissions.BasePermission):
     def __init__(self, action_permissions=None):
         self.action_permissions = action_permissions or {}
 
-    def has_permission(self, request, view):
-        for klass, actions in self.action_permissions.items():
+    def get_permission_classes(self, view):
+        """获取当前动作的权限类列表"""
+        if not self.action_permissions:
+            return []
+
+        permission_classes = []
+        for permission_class, actions in self.action_permissions.items():
             if view.action in actions:
-                return klass().has_permission(request, view)
-        return True
+                permission_classes.append(permission_class)
+        return permission_classes
+
+    def has_permission(self, request, view):
+        """检查权限"""
+        permission_classes = self.get_permission_classes(view)
+        
+        # 如果没有找到对应的权限类，默认允许访问
+        if not permission_classes:
+            return True
+
+        # 任一权限类通过即可
+        return any(
+            permission_class().has_permission(request, view)
+            for permission_class in permission_classes
+        )
 
     def has_object_permission(self, request, view, obj):
-        for klass, actions in self.action_permissions.items():
-            if view.action in actions:
-                return klass().has_object_permission(request, view, obj)
-        return True
+        """检查对象权限"""
+        permission_classes = self.get_permission_classes(view)
+        
+        # 如果没有找到对应的权限类，默认允许访问
+        if not permission_classes:
+            return True
+
+        # 任一权限类通过即可
+        return any(
+            permission_class().has_object_permission(request, view, obj)
+            for permission_class in permission_classes
+        )

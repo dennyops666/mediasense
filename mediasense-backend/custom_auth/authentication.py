@@ -1,47 +1,96 @@
 import logging
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
+from rest_framework_simplejwt.token_blacklist.models import OutstandingToken, BlacklistedToken
+from rest_framework.exceptions import AuthenticationFailed
 
 logger = logging.getLogger(__name__)
 
 class CustomJWTAuthentication(JWTAuthentication):
-    """自定义 JWT 认证后端，增加黑名单检查"""
+    """自定义JWT认证"""
 
     def get_validated_token(self, raw_token):
-        """验证 token 并检查黑名单"""
-        token = super().get_validated_token(raw_token)
-        
-        # 检查 token 是否在黑名单中
-        jti = token.get('jti')
-        logger.debug(f"Checking token with JTI: {jti}")
-        
-        if jti:
-            try:
-                outstanding_token = OutstandingToken.objects.get(jti=jti)
-                logger.debug(f"Found outstanding token: {outstanding_token}")
-                
-                if BlacklistedToken.objects.filter(token=outstanding_token).exists():
-                    logger.debug(f"Token is blacklisted")
-                    raise InvalidToken('Token is blacklisted')
-                    
-            except OutstandingToken.DoesNotExist:
-                # 如果找不到 outstanding token,创建一个新的
-                logger.debug(f"Creating new outstanding token")
-                outstanding_token = OutstandingToken.objects.create(
-                    user_id=token['user_id'],
-                    jti=jti,
-                    token=raw_token.decode(),
-                    created_at=token.current_time,
-                    expires_at=token.current_time + token.lifetime
-                )
-        
-        return token
+        """验证token"""
+        try:
+            # 验证token
+            token = super().get_validated_token(raw_token)
+            
+            # 检查token是否在黑名单中
+            jti = token.get('jti')
+            if jti:
+                try:
+                    outstanding_token = OutstandingToken.objects.get(jti=jti)
+                    if BlacklistedToken.objects.filter(token=outstanding_token).exists():
+                        logger.warning(f"Token {jti} is blacklisted")
+                        raise AuthenticationFailed(
+                            detail={"message": "令牌已被注销"},
+                            code="token_blacklisted"
+                        )
+                except OutstandingToken.DoesNotExist:
+                    logger.warning(f"Token {jti} not found in outstanding tokens")
+                    raise AuthenticationFailed(
+                        detail={"message": "无效的令牌"},
+                        code="token_invalid"
+                    )
+            
+            return token
+        except InvalidToken as e:
+            logger.error(f"Invalid token error: {str(e)}")
+            raise AuthenticationFailed(
+                detail={"message": "无效的令牌"},
+                code="token_invalid"
+            )
+        except TokenError as e:
+            logger.error(f"Token error: {str(e)}")
+            raise AuthenticationFailed(
+                detail={"message": "令牌已过期"},
+                code="token_expired"
+            )
+        except AuthenticationFailed as e:
+            raise e
+        except Exception as e:
+            logger.error(f"Token validation error: {str(e)}")
+            raise AuthenticationFailed(
+                detail={"message": "认证失败"},
+                code="authentication_failed"
+            )
 
     def authenticate(self, request):
         """认证请求"""
         try:
-            return super().authenticate(request)
-        except InvalidToken as e:
-            logger.debug(f"Token validation failed: {str(e)}")
-            raise 
+            header = self.get_header(request)
+            if header is None:
+                logger.warning("No auth header found")
+                raise AuthenticationFailed(
+                    detail={"message": "未提供认证令牌"},
+                    code="no_auth_token"
+                )
+
+            raw_token = self.get_raw_token(header)
+            if raw_token is None:
+                logger.warning("No raw token found in header")
+                raise AuthenticationFailed(
+                    detail={"message": "无效的令牌格式"},
+                    code="invalid_token_format"
+                )
+
+            validated_token = self.get_validated_token(raw_token)
+            user = self.get_user(validated_token)
+            
+            if not user.is_active:
+                logger.warning(f"User {user.username} is disabled")
+                raise AuthenticationFailed(
+                    detail={"message": "用户账号已被禁用"},
+                    code="user_disabled"
+                )
+            
+            return user, validated_token
+        
+        except AuthenticationFailed as e:
+            raise e
+        except Exception as e:
+            logger.error(f"Authentication error: {str(e)}")
+            raise AuthenticationFailed(
+                detail={"message": "认证失败"},
+                code="authentication_failed"
+            ) 
