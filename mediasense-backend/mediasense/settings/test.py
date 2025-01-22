@@ -159,3 +159,14 @@ SIMPLE_JWT = {
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
 }
+
+# Elasticsearch配置
+ELASTICSEARCH_HOSTS = ['http://localhost:9200']
+ELASTICSEARCH_INDEX_NAMES = {
+    'news_search.documents.NewsArticleDocument': 'test_news_articles'
+}
+ELASTICSEARCH_DSL = {
+    'default': {
+        'hosts': ELASTICSEARCH_HOSTS
+    },
+}

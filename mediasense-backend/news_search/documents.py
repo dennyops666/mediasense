@@ -6,7 +6,24 @@ from news.models import NewsArticle
 
 @registry.register_document
 class NewsArticleDocument(Document):
-    """新闻文章的 ElasticSearch 文档"""
+    """新闻文章文档"""
+
+    title = fields.TextField(
+        fields={
+            'raw': fields.KeywordField(),
+            'suggest': fields.CompletionField(),
+        }
+    )
+    content = fields.TextField()
+    summary = fields.TextField()
+    source = fields.KeywordField()
+    author = fields.KeywordField()
+    url = fields.KeywordField()
+    status = fields.KeywordField()
+    sentiment_score = fields.FloatField()
+    publish_time = fields.DateField()
+    created_at = fields.DateField()
+    updated_at = fields.DateField()
 
     # 分类信息
     category = fields.ObjectField(
@@ -28,46 +45,28 @@ class NewsArticleDocument(Document):
     )
 
     # 使用自定义分析器的文本字段
-    title_suggest = fields.CompletionField(
-        analyzer='standard',
-        search_analyzer='standard',
-        preserve_separators=True,
-        preserve_position_increments=True,
-        max_input_length=50
-    )  # 用于搜索建议
     content_analyzed = fields.TextField(analyzer='html_strip')  # 用于全文搜索
 
     class Index:
-        name = "news_articles"
+        name = 'news_articles'
         settings = {
-            "number_of_shards": 1,
-            "number_of_replicas": 0,
-            "analysis": {
-                "analyzer": {
-                    "html_strip": {
-                        "tokenizer": "standard",
-                        "filter": ["lowercase", "stop", "snowball"],
-                        "char_filter": ["html_strip"],
+            'number_of_shards': 1,
+            'number_of_replicas': 0,
+            'analysis': {
+                'analyzer': {
+                    'html_strip': {
+                        'tokenizer': 'standard',
+                        'filter': ['lowercase', 'stop', 'snowball'],
+                        'char_filter': ['html_strip']
                     }
                 }
-            },
+            }
         }
 
     class Django:
         model = NewsArticle
         fields = [
-            "id",
-            "title",
-            "content",
-            "summary",
-            "source",
-            "author",
-            "url",
-            "status",
-            "sentiment_score",
-            "publish_time",
-            "created_at",
-            "updated_at",
+            'id',
         ]
 
     def prepare_category(self, instance):

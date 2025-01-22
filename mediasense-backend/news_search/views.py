@@ -2,6 +2,11 @@ from rest_framework import status, viewsets
 from rest_framework.decorators import action
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
+from elasticsearch_dsl import Search
+from elasticsearch_dsl.query import MultiMatch, Bool
+from django.conf import settings
+from elasticsearch import Elasticsearch
+import json
 
 from .serializers import (
     HotArticleQuerySerializer,
@@ -13,6 +18,8 @@ from .serializers import (
 )
 from .services import NewsSearchService
 import logging
+from news.models import NewsArticle
+from .documents import NewsArticleDocument
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +38,10 @@ class NewsSearchViewSet(viewsets.ViewSet):
         if self.action in ["cache_stats", "invalidate_cache", "warm_cache"]:
             return [IsAdminUser()]
         return super().get_permissions()
+
+    def get_client(self):
+        """获取Elasticsearch客户端"""
+        return Elasticsearch(hosts=settings.ELASTICSEARCH_HOSTS)
 
     @action(detail=False, methods=["get"])
     def cache_stats(self, request):
@@ -82,85 +93,129 @@ class NewsSearchViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"])
     def search(self, request):
-        """
-        搜索文章
-        ---
-        请求参数:
-            - query: 搜索关键词
-            - category: 分类ID（可选）
-            - status: 文章状态（可选）
-            - page: 页码，默认1
-            - size: 每页大小，默认10
-        """
-        # 验证请求参数
-        query_serializer = SearchQuerySerializer(data=request.query_params)
-        query_serializer.is_valid(raise_exception=True)
+        """搜索新闻"""
+        query = request.query_params.get('query', '')
+        page = int(request.query_params.get('page', 1))
+        size = int(request.query_params.get('size', 10))
+        sort = request.query_params.get('sort', '-publish_time')
+        highlight = request.query_params.get('highlight', 'false').lower() == 'true'
 
-        # 构建过滤条件
-        filters = {}
-        if "category" in query_serializer.validated_data:
-            filters["category"] = query_serializer.validated_data["category"]
-        if "status" in query_serializer.validated_data:
-            filters["status"] = query_serializer.validated_data["status"]
-        if "time_range" in query_serializer.validated_data:
-            filters["time_range"] = query_serializer.validated_data["time_range"]
-        if "sentiment" in query_serializer.validated_data:
-            filters["sentiment"] = query_serializer.validated_data["sentiment"]
-        if "tags" in query_serializer.validated_data:
-            filters["tags"] = query_serializer.validated_data["tags"]
-        if "sort" in query_serializer.validated_data:
-            filters["sort"] = query_serializer.validated_data["sort"]
+        # 创建搜索对象
+        s = Search(using=self.get_client(), index='news_articles')
 
-        try:
-            # 执行搜索
-            result = self.search_service.search_articles(
-                query=query_serializer.validated_data["query"],
-                filters=filters,
-                page=query_serializer.validated_data.get("page", 1),
-                size=query_serializer.validated_data.get("size", 10),
+        # 构建查询
+        if query:
+            s = s.query(MultiMatch(
+                query=query,
+                fields=['title^2', 'content', 'summary']
+            ))
+
+        # 添加过滤
+        if 'status' in request.query_params:
+            s = s.filter('term', status=request.query_params['status'])
+
+        if 'time_range' in request.query_params:
+            try:
+                time_range = json.loads(request.query_params['time_range'])
+                if isinstance(time_range, dict):
+                    range_filter = {}
+                    if 'start' in time_range:
+                        range_filter['gte'] = time_range['start']
+                    if 'end' in time_range:
+                        range_filter['lte'] = time_range['end']
+                    if range_filter:
+                        s = s.filter('range', publish_time=range_filter)
+            except json.JSONDecodeError:
+                logger.warning("Invalid time_range format")
+
+        # 添加排序
+        if sort == 'relevance':
+            s = s.sort('_score')
+        else:
+            s = s.sort(sort)
+
+        # 添加分页
+        start = (page - 1) * size
+        s = s[start:start + size]
+
+        # 添加高亮
+        if highlight:
+            s = s.highlight_options(
+                pre_tags=['<em>'],
+                post_tags=['</em>'],
+                number_of_fragments=0
             )
+            s = s.highlight('title', 'content')
 
-            # 序列化结果
-            response_serializer = SearchResponseSerializer(result)
-            return Response(response_serializer.data)
+        # 执行搜索
+        response = s.execute()
 
-        except Exception as e:
-            logger.error(f"搜索失败: {str(e)}", exc_info=True)
-            return Response(
-                {"message": "搜索失败", "errors": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        # 处理结果
+        results = []
+        for hit in response:
+            result = {
+                'id': hit.meta.id,
+                'title': hit.title,
+                'content': hit.content,
+                'summary': hit.summary,
+                'source': hit.source,
+                'author': hit.author,
+                'url': hit.url,
+                'status': hit.status,
+                'publish_time': hit.publish_time,
+                'score': hit.meta.score
+            }
+
+            # 添加高亮结果
+            if highlight and hasattr(hit.meta, 'highlight'):
+                if hasattr(hit.meta.highlight, 'title'):
+                    result['title_highlight'] = hit.meta.highlight.title[0]
+                if hasattr(hit.meta.highlight, 'content'):
+                    result['content_highlight'] = hit.meta.highlight.content[0]
+
+            results.append(result)
+
+        return Response({
+            'total': response.hits.total.value,
+            'page': page,
+            'size': size,
+            'results': results
+        })
 
     @action(detail=False, methods=["get"])
     def suggest(self, request):
-        """
-        获取搜索建议
-        ---
-        请求参数:
-            - prefix: 标题前缀
-            - size: 建议数量，默认5
-        """
-        # 验证请求参数
-        query_serializer = SuggestQuerySerializer(data=request.query_params)
-        query_serializer.is_valid(raise_exception=True)
+        """搜索建议"""
+        prefix = request.query_params.get('prefix', '')
+        size = int(request.query_params.get('size', 5))
 
-        try:
-            # 获取建议
-            suggestions = self.search_service.suggest_titles(
-                prefix=query_serializer.validated_data["prefix"],
-                size=query_serializer.validated_data.get("size", 5)
-            )
+        if not prefix:
+            return Response([])
 
-            # 序列化结果
-            response_serializer = SuggestResultSerializer(suggestions, many=True)
-            return Response(response_serializer.data)
+        # 创建搜索对象
+        s = Search(using=self.get_client(), index='news_articles')
+        
+        # 使用标题字段的前缀匹配查询
+        s = s.query('match_phrase_prefix',
+            title={
+                'query': prefix,
+                'max_expansions': 10,
+                'slop': 2
+            }
+        )
+        s = s[:size]
 
-        except Exception as e:
-            logger.error(f"获取搜索建议失败: {str(e)}", exc_info=True)
-            return Response(
-                {"message": "获取搜索建议失败", "errors": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        # 执行查询
+        response = s.execute()
+
+        # 处理结果
+        suggestions = []
+        for hit in response:
+            suggestions.append({
+                'title': hit.title,
+                'score': hit.meta.score
+            })
+
+        return Response(suggestions)
 
     @action(detail=False, methods=["get"])
     def hot(self, request):

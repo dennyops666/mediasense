@@ -5,26 +5,21 @@ from news.models import NewsArticle
 from .models import SearchSuggestion
 
 
-class NewsSearchSerializer(serializers.ModelSerializer):
-    """
-    新闻搜索结果序列化器
-    """
-
-    category_name = serializers.CharField(source="category.name", read_only=True)
-
-    class Meta:
-        model = NewsArticle
-        fields = [
-            "id",
-            "title",
-            "summary",
-            "source",
-            "category_name",
-            "author",
-            "publish_time",
-            "keywords",
-            "sentiment_score",
-        ]
+class NewsSearchSerializer(serializers.Serializer):
+    """新闻搜索序列化器"""
+    id = serializers.IntegerField()
+    title = serializers.CharField()
+    content = serializers.CharField()
+    summary = serializers.CharField()
+    source = serializers.CharField()
+    author = serializers.CharField()
+    url = serializers.CharField()
+    status = serializers.CharField()
+    sentiment_score = serializers.FloatField()
+    publish_time = serializers.DateTimeField()
+    created_at = serializers.DateTimeField()
+    updated_at = serializers.DateTimeField()
+    highlight = serializers.DictField(required=False)
 
 
 class SearchSuggestionSerializer(serializers.ModelSerializer):
@@ -138,3 +133,9 @@ class HotArticleSerializer(serializers.Serializer):
     url = serializers.URLField()
     publish_time = serializers.DateTimeField()
     sentiment_score = serializers.FloatField()
+
+
+class NewsSuggestionSerializer(serializers.Serializer):
+    """新闻搜索建议序列化器"""
+    text = serializers.CharField()
+    score = serializers.FloatField()

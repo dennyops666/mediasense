@@ -11,6 +11,7 @@ from news_search.documents import NewsArticleDocument
 from django_elasticsearch_dsl.registries import registry
 from elasticsearch_dsl.connections import connections
 from django.utils import timezone
+import json
 
 pytestmark = pytest.mark.django_db
 
@@ -95,7 +96,7 @@ class TestNewsSearch:
 
     def test_basic_keyword_search(self, authenticated_client, test_news_data):
         """测试基础关键词搜索"""
-        url = reverse('news-search-search')
+        url = reverse('news-search:news-search-search')
         response = authenticated_client.get(url, {'query': 'Test News'})
         
         assert response.status_code == status.HTTP_200_OK
@@ -104,14 +105,15 @@ class TestNewsSearch:
 
     def test_advanced_filter_search(self, authenticated_client, test_news_data):
         """测试高级过滤搜索"""
-        url = reverse('news-search-search')
+        url = reverse('news-search:news-search-search')
+        time_range = {
+            'start': '2024-01-01',
+            'end': '2025-12-31'
+        }
         filters = {
             'query': 'Test',
             'status': 'published',
-            'time_range': {
-                'start': '2024-01-01',
-                'end': '2025-12-31'
-            }
+            'time_range': json.dumps(time_range)
         }
         response = authenticated_client.get(url, filters)
         
@@ -122,7 +124,7 @@ class TestNewsSearch:
 
     def test_pagination(self, authenticated_client, test_news_data):
         """测试分页获取结果"""
-        url = reverse('news-search-search')
+        url = reverse('news-search:news-search-search')
         # 第一页
         response1 = authenticated_client.get(url, {
             'query': 'Test',
@@ -148,7 +150,7 @@ class TestNewsSearch:
 
     def test_result_sorting(self, authenticated_client, test_news_data):
         """测试结果排序功能"""
-        url = reverse('news-search-search')
+        url = reverse('news-search:news-search-search')
         
         # 按时间降序
         response = authenticated_client.get(url, {
@@ -199,7 +201,7 @@ class TestNewsSearch:
         es_client.indices.refresh(index='news_articles')
         
         # 测试获取搜索建议
-        url = reverse('news-search-suggest')
+        url = reverse('news-search:news-search-suggest')
         response = authenticated_client.get(url, {'prefix': 'P'})
         
         assert response.status_code == status.HTTP_200_OK
@@ -234,7 +236,7 @@ class TestNewsSearch:
 
     def test_search_result_highlighting(self, authenticated_client, test_news_data):
         """测试搜索结果高亮"""
-        url = reverse('news-search-search')
+        url = reverse('news-search:news-search-search')
         response = authenticated_client.get(url, {
             'query': 'Test News',
             'highlight': 'true'
