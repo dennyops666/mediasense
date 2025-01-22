@@ -1,37 +1,23 @@
-import os
-import django
-from django.test.runner import DiscoverRunner
 import pytest
+from django.test.runner import DiscoverRunner
 
 class PytestTestRunner(DiscoverRunner):
-    """使用 pytest 运行测试的测试运行器"""
+    """Runs pytest to discover and run tests."""
+
+    def __init__(self, **kwargs):
+        self.pytest_args = []
+        super().__init__(**kwargs)
 
     def run_tests(self, test_labels, extra_tests=None, **kwargs):
-        """运行测试"""
-        os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mediasense.settings.test')
-        django.setup()
-        
-        # 构建 pytest 参数
-        pytest_args = []
-        
-        # 添加测试标签
-        if test_labels:
-            # 将点号分隔的路径转换为文件路径
-            test_paths = []
-            for label in test_labels:
-                if '.' in label:
-                    # 将模块路径转换为文件路径
-                    path = label.replace('.', '/')
-                    if not path.endswith('.py'):
-                        path += '.py'
-                    test_paths.append(path)
-                else:
-                    test_paths.append(label)
-            pytest_args.extend(test_paths)
-        
-        # 添加详细输出
-        if self.verbosity > 1:
-            pytest_args.append('-v')
-        
-        # 运行测试
-        return pytest.main(pytest_args) 
+        """Run pytest and return the exitcode.
+
+        Args:
+            test_labels: Tests to run.
+            extra_tests: Extra tests to run.
+            kwargs: Extra arguments.
+
+        Returns:
+            Test run exit code.
+        """
+        self.pytest_args.extend(test_labels)
+        return pytest.main(self.pytest_args) 

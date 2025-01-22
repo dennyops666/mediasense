@@ -9,7 +9,7 @@ from django.db.models import (
 from django.http import HttpResponse
 from django.utils import timezone
 
-from rest_framework import filters, permissions, status, viewsets
+from rest_framework import filters, permissions, status, viewsets, serializers
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
@@ -58,21 +58,77 @@ class NewsViewSet(viewsets.ModelViewSet):
     def bulk_update(self, request):
         """批量更新新闻文章."""
         data = request.data
-        ids = data.get('ids', [])
-        status_value = data.get('status')
+        print('Request data:', data)
+        print('Request data type:', type(data))
         
-        if not ids or not status_value:
+        # 如果是QueryDict,获取items列表
+        if hasattr(data, 'getlist'):
+            items = data.getlist('items', [])
+        else:
+            items = data.get('items', [])
+            
+        print('Items:', items)
+        print('Items type:', type(items))
+        
+        if not items:
             return Response(
                 {'error': '缺少必要的参数'},
                 status=status.HTTP_400_BAD_REQUEST
             )
         
+        # 解析每个item字符串为字典
+        parsed_items = []
+        for item in items:
+            if isinstance(item, str):
+                try:
+                    # 移除单引号,替换为双引号
+                    item = item.replace("'", '"')
+                    import json
+                    parsed_item = json.loads(item)
+                    parsed_items.append(parsed_item)
+                except json.JSONDecodeError:
+                    return Response(
+                        {'error': f'无效的JSON格式: {item}'},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            else:
+                parsed_items.append(item)
+                
+        print('Parsed items:', parsed_items)
+        
+        # 验证每个item的格式
+        for item in parsed_items:
+            if not isinstance(item, dict):
+                return Response(
+                    {'error': '每个item必须是一个字典'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if 'id' not in item:
+                return Response(
+                    {'error': '每个item必须包含id字段'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if 'status' not in item:
+                return Response(
+                    {'error': '每个item必须包含status字段'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            if item['status'] not in ['draft', 'pending', 'published', 'rejected']:
+                return Response(
+                    {'error': f'无效的状态值: {item["status"]}'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
         try:
-            updated = NewsArticle.objects.filter(id__in=ids).update(
-                status=status_value,
-                updated_at=timezone.now()
-            )
-            return Response({'updated': updated})
+            updated = 0
+            for item in parsed_items:
+                news_id = item['id']
+                status_value = item['status']
+                updated += NewsArticle.objects.filter(id=news_id).update(
+                    status=status_value,
+                    updated_at=timezone.now()
+                )
+            return Response({'updated': updated}, status=status.HTTP_200_OK)
         except Exception as e:
             return Response(
                 {'error': str(e)},
@@ -127,6 +183,12 @@ class NewsCategoryViewSet(viewsets.ModelViewSet):
     def perform_update(self, serializer):
         """更新分类."""
         serializer.save()
+
+    def perform_destroy(self, instance):
+        """删除分类前检查是否有关联文章."""
+        if instance.articles.exists():
+            raise serializers.ValidationError('该分类下存在文章，无法删除')
+        instance.delete()
 
     def get_serializer_class(self):
         """根据不同的动作返回不同的序列化器"""
@@ -236,24 +298,13 @@ class NewsCategoryViewSet(viewsets.ModelViewSet):
         category = self.get_object()
         articles = category.articles.all()
         
-        total_news = articles.count()
-        published_news = articles.filter(status='published').count()
-        latest_news = articles.order_by('-publish_time')[:5]
+        total_articles = articles.count()
+        published_articles = articles.filter(status='published').count()
         
-        news_by_status = {
-            'draft': articles.filter(status='draft').count(),
-            'published': published_news,
-            'archived': articles.filter(status='archived').count()
-        }
-        
-        data = {
-            'total_news': total_news,
-            'published_news': published_news,
-            'news_by_status': news_by_status,
-            'latest_news': NewsArticleSerializer(latest_news, many=True).data
-        }
-        
-        return Response(data)
+        return Response({
+            'total_articles': total_articles,
+            'published_articles': published_articles
+        })
 
 
 class NewsArticleViewSet(viewsets.ModelViewSet):

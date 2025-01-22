@@ -28,7 +28,7 @@ class AsyncAPIClient(APIClient):
         """强制认证"""
         if user:
             self._credentials = {
-                'HTTP_AUTHORIZATION': f'Token {token or "dummy"}',
+                'HTTP_AUTHORIZATION': f'Bearer {token or "dummy"}',
                 'user': user
             }
             self.handler._force_user = user
@@ -78,9 +78,7 @@ class AsyncAPIClient(APIClient):
 
             # 处理路径
             if not path.startswith('/'):
-                path = f'/{path}'
-            if not path.startswith('/v1/'):
-                path = f'/v1{path}'
+                path = '/' + path
 
             # 调用父类的 request 方法
             response = await sync_to_async(super().request)(
@@ -102,12 +100,16 @@ class AsyncAPIClient(APIClient):
             }
 
             # 打印调试信息
+            print(f"Request URL: {path}")
+            if data:
+                print(f"Request data: {data}")
             print(f"Request method: {method}")
             print(f"Request path: {path}")
             print(f"Request data: {data}")
             print(f"Request headers: {request_headers}")
             print(f"Response status: {response.status_code}")
-            print(f"Response content: {response.content}")
+            if response.status_code != 204:  # 204 No Content 不会有响应内容
+                print(f"Response content: {response.content}")
 
             return await self._handle_response(response)
         except Exception as e:
