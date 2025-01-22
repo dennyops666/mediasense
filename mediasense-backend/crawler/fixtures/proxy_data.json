@@ -10,9 +10,9 @@
             "speed": 100,
             "success_rate": 0.98,
             "status": 1,
-            "last_check_time": "2024-01-13T00:00:00Z",
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "last_check_time": "2025-01-22T10:54:34Z",
+            "created_at": "2025-01-22T10:54:34Z",
+            "updated_at": "2025-01-22T10:54:34Z"
         }
     },
     {
@@ -26,9 +26,9 @@
             "speed": 150,
             "success_rate": 0.95,
             "status": 1,
-            "last_check_time": "2024-01-13T00:00:00Z",
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "last_check_time": "2025-01-22T10:54:34Z",
+            "created_at": "2025-01-22T10:54:34Z",
+            "updated_at": "2025-01-22T10:54:34Z"
         }
     },
     {
@@ -42,9 +42,9 @@
             "speed": 200,
             "success_rate": 0.92,
             "status": 1,
-            "last_check_time": "2024-01-13T00:00:00Z",
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "last_check_time": "2025-01-22T10:54:34Z",
+            "created_at": "2025-01-22T10:54:34Z",
+            "updated_at": "2025-01-22T10:54:34Z"
         }
     },
     {
@@ -58,9 +58,9 @@
             "speed": 120,
             "success_rate": 0.96,
             "status": 1,
-            "last_check_time": "2024-01-13T00:00:00Z",
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "last_check_time": "2025-01-22T10:54:34Z",
+            "created_at": "2025-01-22T10:54:34Z",
+            "updated_at": "2025-01-22T10:54:34Z"
         }
     },
     {
@@ -74,9 +74,9 @@
             "speed": 180,
             "success_rate": 0.94,
             "status": 1,
-            "last_check_time": "2024-01-13T00:00:00Z",
-            "created_at": "2024-01-13T00:00:00Z",
-            "updated_at": "2024-01-13T00:00:00Z"
+            "last_check_time": "2025-01-22T10:54:34Z",
+            "created_at": "2025-01-22T10:54:34Z",
+            "updated_at": "2025-01-22T10:54:34Z"
         }
     }
 ] 

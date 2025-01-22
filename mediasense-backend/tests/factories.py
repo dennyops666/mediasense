@@ -9,6 +9,7 @@ from monitoring.models import (
     MonitoringVisualization, ErrorLog, Dashboard, DashboardWidget, AlertNotificationConfig
 )
 from crawler.models import CrawlerConfig, CrawlerTask
+from news.models import NewsArticle, NewsCategory
 
 User = get_user_model()
 
@@ -43,6 +44,34 @@ class AsyncFactoryMixin:
     async def acreate_batch(cls, size, **kwargs):
         """异步批量创建实例"""
         return await sync_to_async(cls.create_batch)(size, **kwargs)
+
+class NewsCategoryFactory(DjangoModelFactory):
+    """新闻分类工厂类"""
+
+    class Meta:
+        model = NewsCategory
+
+    name = factory.Sequence(lambda n: f'Category {n}')
+    description = factory.Faker('text')
+    created_by = factory.SubFactory(UserFactory)
+    created_at = factory.LazyFunction(timezone.now)
+    updated_at = factory.LazyFunction(timezone.now)
+
+class NewsArticleFactory(DjangoModelFactory):
+    """新闻文章工厂类"""
+
+    class Meta:
+        model = NewsArticle
+
+    title = factory.Sequence(lambda n: f'Article {n}')
+    content = factory.Faker('text')
+    source = factory.Sequence(lambda n: f'Source {n}')
+    url = factory.Sequence(lambda n: f'http://example.com/news/{n}')
+    category = factory.SubFactory(NewsCategoryFactory)
+    status = 'draft'
+    created_by = factory.SubFactory(UserFactory)
+    created_at = factory.LazyFunction(timezone.now)
+    updated_at = factory.LazyFunction(timezone.now)
 
 class SystemMetricsFactory(AsyncFactoryMixin, DjangoModelFactory):
     """系统指标工厂类"""

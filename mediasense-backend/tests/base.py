@@ -2,7 +2,7 @@ import pytest
 from django.test import TestCase
 from rest_framework.test import APITestCase
 from monitoring.async_client import AsyncAPIClient
-from users.factories import UserFactory
+from tests.factories import UserFactory
 
 class BaseTestCase(APITestCase):
     """基础测试类"""
