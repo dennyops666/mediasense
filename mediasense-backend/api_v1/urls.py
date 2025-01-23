@@ -5,4 +5,5 @@ app_name = "api"
 urlpatterns = [
     path("auth/", include("custom_auth.urls", namespace="custom_auth")),
     path("news/", include("news.urls", namespace="news")),
+    path("monitoring/", include("monitoring.urls", namespace="monitoring")),
 ]
