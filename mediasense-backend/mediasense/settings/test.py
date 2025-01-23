@@ -170,3 +170,14 @@ ELASTICSEARCH_DSL = {
         'hosts': ELASTICSEARCH_HOSTS
     },
 }
+
+# OpenAI配置
+OPENAI_API_KEY = env('OPENAI_API_KEY')  # 从环境变量获取API密钥
+OPENAI_API_BASE = env('OPENAI_API_BASE')  # OpenAI API代理地址
+OPENAI_MODEL = env('OPENAI_MODEL')  # 使用的模型
+OPENAI_MAX_TOKENS = int(env('OPENAI_MAX_TOKENS'))  # 最大token数
+OPENAI_TEMPERATURE = float(env('OPENAI_TEMPERATURE'))  # 温度参数
+OPENAI_TIMEOUT = 30  # API请求超时时间（秒）
+OPENAI_RATE_LIMIT = 60  # 每分钟最大请求次数
+OPENAI_RATE_LIMIT_WINDOW = 60  # 速率限制窗口（秒）
+OPENAI_CACHE_TTL = 3600  # 缓存过期时间（秒）

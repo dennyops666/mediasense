@@ -456,15 +456,27 @@ class TestAITextAnalysis(TransactionTestCase):
     @pytest.mark.asyncio
     async def test_analysis_with_rules(self):
         """测试带规则的分析"""
+        # 清理所有规则
+        await sync_to_async(AnalysisRule.objects.all().delete)()
+        
+        # 创建测试新闻
+        news = await sync_to_async(NewsArticle.objects.create)(
+            title="Test News",
+            content="This is a test news article with positive sentiment.",
+            url=f"http://example.com/test-news-{uuid.uuid4()}"
+        )
+
         # 创建分析规则
         rule = await sync_to_async(AnalysisRule.objects.create)(
             name="Test Rule",
             description="Test Description",
             rule_type="SENTIMENT",
-            conditions={
+            parameters={
                 "keywords": ["positive", "negative"],
                 "threshold": 0.5
             },
+            system_prompt="You are a sentiment analysis expert.",
+            user_prompt_template="Analyze the sentiment of: {content}",
             is_active=True
         )
 
@@ -475,7 +487,7 @@ class TestAITextAnalysis(TransactionTestCase):
         }
 
         # 创建请求
-        request = self._create_request(method='POST', data=data, path='/api/v1/ai/analyze/')
+        request = self._create_request(method='POST', data=data, path=f'/api/ai/{news.id}/analyze/')
         
         # 发送请求
         response = await self._get_response(request)
@@ -483,14 +495,35 @@ class TestAITextAnalysis(TransactionTestCase):
         # 验证响应
         self.assertEqual(response.status_code, 200)
         result = response.data
-        self.assertIn('sentiment', result)
-        self.assertIn('score', result)
-        self.assertIn('rule_matched', result)
+        print(f"\nResponse data: {result}")
+        print(f"Rule ID: {rule.id}")
+        self.assertEqual(result['message'], '规则分析完成')
+        self.assertIn('data', result)
+        
+        # 验证规则分析结果
+        rule_result = result['data'][rule.id]
+        self.assertTrue(rule_result['success'])
+        self.assertIn('data', rule_result)
+        self.assertIn('content', rule_result['data'])
+        self.assertIn('rule_id', rule_result['data'])
+        self.assertEqual(rule_result['data']['rule_id'], rule.id)
+        self.assertEqual(rule_result['data']['rule_name'], rule.name)
         
         # 验证分析结果是否被保存
-        analysis_result = await sync_to_async(AnalysisResult.objects.filter(rule=rule).first)()
+        analysis_result = await sync_to_async(AnalysisResult.objects.filter(
+            news=news,
+            analysis_type=rule.rule_type
+        ).first)()
         self.assertIsNotNone(analysis_result)
-        self.assertEqual(analysis_result.result['text'], data['text'])
+        
+        # 验证分析结果的内容
+        result_data = json.loads(analysis_result.result)
+        self.assertEqual(result_data['rule_id'], rule.id)
+        self.assertEqual(result_data['rule_name'], rule.name)
+
+        # 清理测试数据
+        await sync_to_async(news.delete)()
+        await sync_to_async(rule.delete)()
 
     def _create_request(self, method='GET', data=None, path=None):
         """创建测试请求"""
@@ -519,8 +552,12 @@ class TestAITextAnalysis(TransactionTestCase):
         if 'batch' not in request.path:
             path_parts = request.path.strip('/').split('/')
             for i, part in enumerate(path_parts):
-                if part in ['sentiment', 'keywords', 'summary', 'result']:
-                    news_id = int(path_parts[i+1])
+                if part in ['sentiment', 'keywords', 'summary', 'result', 'analyze']:
+                    if i - 1 >= 0:  # 检查前一个部分是否是news_id
+                        try:
+                            news_id = int(path_parts[i-1])
+                        except (ValueError, IndexError):
+                            pass
                     break
         
         # 根据请求路径确定要调用的方法
@@ -534,6 +571,8 @@ class TestAITextAnalysis(TransactionTestCase):
             response = await view.batch_analyze(request)
         elif 'result' in request.path:
             response = await view.analysis_result(request, pk=news_id)
+        elif 'analyze' in request.path:
+            response = await view.analyze_with_rules(request, pk=news_id)
         else:
             raise ValueError(f"Unknown request path: {request.path}")
             
