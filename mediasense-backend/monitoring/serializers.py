@@ -232,7 +232,7 @@ class AlertNotificationConfigSerializer(serializers.ModelSerializer):
 
     def validate_config(self, value):
         """验证配置信息"""
-        notification_type = self.initial_data.get("notification_type")
+        notification_type = self.initial_data.get("notification_type", "").lower()
         if notification_type == "email":
             if "email" not in value:
                 raise serializers.ValidationError("邮件通知配置必须包含email字段")
@@ -251,9 +251,9 @@ class AlertNotificationConfigSerializer(serializers.ModelSerializer):
         """验证告警级别"""
         valid_levels = ["info", "warning", "error", "critical"]
         for level in value:
-            if level not in valid_levels:
+            if level.lower() not in valid_levels:
                 raise serializers.ValidationError(f"无效的告警级别: {level}")
-        return value
+        return [level.lower() for level in value]
 
 
 class DashboardWidgetSerializer(serializers.ModelSerializer):

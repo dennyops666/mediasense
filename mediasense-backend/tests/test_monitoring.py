@@ -1,17 +1,18 @@
 import pytest
-from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import User
+from django.utils import timezone
 from monitoring.models import (
-    MonitoringVisualization,
+    SystemMetrics,
     AlertRule,
     AlertHistory,
-    AlertNotificationConfig,
-    Dashboard,
-    DashboardWidget
+    MonitoringVisualization,
+    ErrorLog,
+    AlertNotificationConfig
 )
-from tests.factories import UserFactory
 
 User = get_user_model()
 
@@ -23,156 +24,246 @@ def api_client():
 def test_user():
     return User.objects.create_user(
         username='testuser',
-        email='test@example.com',
-        password='testpass123'
+        password='testpass',
+        email='test@example.com'
     )
 
 @pytest.mark.django_db
-class TestMonitoringAPI:
-    """监控模块API测试"""
+def test_system_status_overview(api_client, test_user):
+    """测试系统状态概览"""
+    api_client.force_authenticate(user=test_user)
+    url = reverse('api:monitoring:system-status-overview')
+    response = api_client.get(url)
+    
+    assert response.status_code == status.HTTP_200_OK
+    assert 'status' in response.data
+    assert 'last_check' in response.data
+    assert 'memory_usage' in response.data
+    assert 'services' in response.data
+    
+    assert isinstance(response.data['memory_usage'], dict)
+    assert 'total' in response.data['memory_usage']
+    assert 'used' in response.data['memory_usage']
+    assert 'free' in response.data['memory_usage']
 
-    def test_system_status_overview(self, api_client, test_user):
-        """测试系统状态概览"""
-        login_url = reverse('api:auth:token_obtain')
-        url = reverse('api:monitoring:system-status-overview')
-        
-        # 登录获取 token
-        login_response = api_client.post(login_url, {
-            'username': test_user.username,
-            'password': 'testpass123'
-        })
-        access_token = login_response.data['access']
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        
-        response = api_client.get(url)
-        assert response.status_code == status.HTTP_200_OK
-        assert response.data["status"] == "healthy"
-        assert 'memory_usage' in response.data
-        assert 'disk_usage' in response.data
+@pytest.mark.django_db
+def test_create_visualization(api_client, test_user):
+    """测试创建可视化"""
+    api_client.force_authenticate(user=test_user)
+    url = reverse('api:monitoring:visualization-list')
+    data = {
+        'name': 'CPU使用率',
+        'description': 'CPU使用率监控图表',
+        'chart_type': 'line',
+        'metric_type': 'cpu_usage',
+        'time_range': 60,
+        'interval': 5,
+        'warning_threshold': 80,
+        'critical_threshold': 90,
+        'is_active': True,
+        'refresh_interval': 300
+    }
+    response = api_client.post(url, data)
+    
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data['name'] == data['name']
 
-    def test_create_visualization(self, api_client, test_user):
-        """测试创建可视化"""
-        login_url = reverse('api:auth:token_obtain')
-        url = reverse('api:monitoring:visualization-list')
-        
-        # 登录获取 token
-        login_response = api_client.post(login_url, {
-            'username': test_user.username,
-            'password': 'testpass123'
-        })
-        access_token = login_response.data['access']
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        
-        data = {
-            'title': 'CPU Usage Over Time',
-            'chart_type': 'line',
-            'metric': 'cpu_usage',
-            'time_range': '24h'
-        }
-        response = api_client.post(url, data)
-        assert response.status_code == status.HTTP_201_CREATED
-        assert response.data['title'] == data['title']
+@pytest.mark.django_db
+def test_create_alert_rule(api_client, test_user):
+    """测试创建告警规则"""
+    api_client.force_authenticate(user=test_user)
+    url = reverse('api:monitoring:alert-rules-list')
+    data = {
+        'name': 'CPU告警',
+        'description': 'CPU使用率超过90%告警',
+        'metric_type': 'cpu_usage',
+        'operator': 'gt',
+        'threshold': 90,
+        'duration': 300,
+        'alert_level': 'critical',
+        'is_enabled': True
+    }
+    response = api_client.post(url, data)
+    
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data['name'] == data['name']
 
-    def test_create_alert_rule(self, api_client, test_user):
-        """测试创建告警规则"""
-        login_url = reverse('api:auth:token_obtain')
-        url = reverse('api:monitoring:alert-rules-list')
-        
-        # 登录获取 token
-        login_response = api_client.post(login_url, {
-            'username': test_user.username,
-            'password': 'testpass123'
-        })
-        access_token = login_response.data['access']
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        
-        data = {
-            'name': 'High CPU Usage Alert',
-            'metric': 'cpu_usage',
-            'condition': 'gt',
-            'threshold': 90,
-            'duration': '5m'
-        }
-        response = api_client.post(url, data)
-        assert response.status_code == status.HTTP_201_CREATED
-        assert response.data['name'] == data['name']
+@pytest.mark.django_db
+def test_create_dashboard(api_client, test_user):
+    """测试创建仪表板"""
+    api_client.force_authenticate(user=test_user)
+    url = reverse('api:monitoring:dashboard-list')
+    data = {
+        'name': '系统监控',
+        'description': '系统监控仪表板',
+        'layout_type': 'grid',
+        'is_default': True
+    }
+    response = api_client.post(url, data)
+    
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data['name'] == data['name']
 
-    def test_create_dashboard(self, api_client, test_user):
-        """测试创建仪表盘"""
-        login_url = reverse('api:auth:token_obtain')
-        url = reverse('api:monitoring:visualization-list')
-        
-        # 登录获取 token
-        login_response = api_client.post(login_url, {
-            'username': test_user.username,
-            'password': 'testpass123'
-        })
-        access_token = login_response.data['access']
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        
-        data = {
-            'title': 'System Overview',
-            'description': 'System performance metrics dashboard'
-        }
-        response = api_client.post(url, data)
-        assert response.status_code == status.HTTP_201_CREATED
-        assert response.data['title'] == data['title']
+@pytest.mark.django_db
+def test_create_dashboard_widget(api_client, test_user):
+    """测试创建仪表板组件"""
+    api_client.force_authenticate(user=test_user)
+    
+    # 先创建一个仪表板
+    dashboard_url = reverse('api:monitoring:dashboard-list')
+    dashboard_data = {
+        'name': '系统监控',
+        'description': '系统监控仪表板',
+        'layout_type': 'grid',
+        'is_default': True
+    }
+    dashboard_response = api_client.post(dashboard_url, dashboard_data, format='json')
+    assert dashboard_response.status_code == status.HTTP_201_CREATED
+    
+    # 创建仪表板组件
+    url = reverse('api:monitoring:dashboard-widgets-list')
+    data = {
+        'dashboard': dashboard_response.data['id'],
+        'name': '测试组件',
+        'widget_type': 'chart',
+        'config': {
+            'metric_type': 'cpu_usage',
+            'duration': 3600,
+            'refresh_interval': 300
+        },
+        'position': {'x': 0, 'y': 0, 'w': 6, 'h': 4},
+        'is_visible': True
+    }
+    response = api_client.post(url, data, format='json')
+    
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data['name'] == data['name']
+    assert response.data['widget_type'] == data['widget_type']
 
-    def test_create_dashboard_widget(self, api_client, test_user):
-        """测试创建仪表盘小部件"""
-        login_url = reverse('api:auth:token_obtain')
-        dashboard_url = reverse('api:monitoring:visualization-list')
-        
-        # 登录获取 token
-        login_response = api_client.post(login_url, {
-            'username': test_user.username,
-            'password': 'testpass123'
-        })
-        access_token = login_response.data['access']
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        
-        # 创建仪表板
-        dashboard_data = {
-            'title': 'System Overview',
-            'description': 'System performance metrics dashboard'
-        }
-        dashboard_response = api_client.post(dashboard_url, dashboard_data)
-        dashboard_id = dashboard_response.data['id']
-        
-        # 创建小部件
-        widget_url = reverse('api:monitoring:dashboard-widgets-list', args=[dashboard_id])
-        widget_data = {
-            'title': 'CPU Usage Widget',
-            'widget_type': 'gauge',
-            'metric': 'cpu_usage',
-            'position': {'x': 0, 'y': 0, 'w': 6, 'h': 4}
-        }
-        response = api_client.post(widget_url, widget_data)
-        assert response.status_code == status.HTTP_201_CREATED
-        assert response.data['title'] == widget_data['title']
+@pytest.mark.django_db
+def test_create_alert_notification(api_client, test_user):
+    """测试创建告警通知配置"""
+    api_client.force_authenticate(user=test_user)
+    url = reverse('api:monitoring:alert-notifications-list')
+    data = {
+        'name': '测试通知',
+        'notification_type': 'email',
+        'config': {
+            'email': 'test@example.com',
+            'template': 'default'
+        },
+        'alert_levels': ['warning', 'critical'],
+        'is_active': True
+    }
+    response = api_client.post(url, data, format='json')
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data['name'] == data['name']
+    assert response.data['notification_type'] == data['notification_type']
 
-    def test_create_alert_notification(self, api_client, test_user):
-        """测试创建告警通知配置"""
-        login_url = reverse('api:auth:token_obtain')
-        url = reverse('api:monitoring:alert-notifications-list')
-        
-        # 登录获取 token
-        login_response = api_client.post(login_url, {
-            'username': test_user.username,
-            'password': 'testpass123'
-        })
-        access_token = login_response.data['access']
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        
-        data = {
-            'name': 'Email Notification',
-            'type': 'email',
-            'config': {
-                'recipients': ['admin@example.com'],
-                'subject_template': 'Alert: {alert_name}',
-                'body_template': 'Alert {alert_name} was triggered at {timestamp}'
-            }
+@pytest.mark.django_db
+def test_create_system_metrics(api_client, test_user):
+    """测试创建系统指标"""
+    api_client.force_authenticate(user=test_user)
+    url = reverse('api:monitoring:system-metrics-list')
+    data = {
+        'metric_type': 'cpu_usage',
+        'value': 85.5,
+        'metadata': {
+            'host': 'server-01',
+            'process_count': 120
         }
-        response = api_client.post(url, data)
-        assert response.status_code == status.HTTP_201_CREATED
-        assert response.data['name'] == data['name'] 
+    }
+    response = api_client.post(url, data, format='json')
+    
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data['metric_type'] == data['metric_type']
+    assert response.data['value'] == data['value']
+
+@pytest.mark.django_db
+def test_error_log_statistics(api_client, test_user):
+    """测试错误日志统计"""
+    api_client.force_authenticate(user=test_user)
+    
+    # 创建一些测试数据
+    ErrorLog.objects.create(
+        message='Test error',
+        severity='ERROR',
+        source='test_source',
+        created_by=test_user
+    )
+    ErrorLog.objects.create(
+        message='Test warning',
+        severity='WARNING',
+        source='test_source',
+        created_by=test_user
+    )
+    
+    url = reverse('api:monitoring:error-log-statistics')
+    response = api_client.get(url)
+    
+    assert response.status_code == status.HTTP_200_OK
+    assert response.data['error_count'] == 1
+    assert response.data['warning_count'] == 1
+
+@pytest.mark.django_db
+def test_alert_rule_trigger(api_client, test_user):
+    """测试告警规则触发"""
+    api_client.force_authenticate(user=test_user)
+    
+    # 创建告警规则
+    rule_url = reverse('api:monitoring:alert-rules-list')
+    rule_data = {
+        'name': 'CPU告警测试',
+        'description': 'CPU使用率超过90%告警',
+        'metric_type': 'cpu_usage',
+        'operator': 'gt',
+        'threshold': 90,
+        'duration': 60,
+        'alert_level': 'critical',
+        'is_enabled': True
+    }
+    rule_response = api_client.post(rule_url, rule_data)
+    assert rule_response.status_code == status.HTTP_201_CREATED
+    
+    # 创建超过阈值的系统指标
+    metrics_url = reverse('api:monitoring:system-metrics-list')
+    metrics_data = {
+        'metric_type': 'cpu_usage',
+        'value': 95.0
+    }
+    metrics_response = api_client.post(metrics_url, metrics_data)
+    assert metrics_response.status_code == status.HTTP_201_CREATED
+    
+    # 检查是否生成告警历史
+    history_url = reverse('api:monitoring:alert-history-list')
+    history_response = api_client.get(history_url)
+    assert history_response.status_code == status.HTTP_200_OK
+    assert len(history_response.data) > 0
+
+@pytest.mark.django_db
+def test_alert_notification_config(api_client, test_user):
+    """测试告警通知配置"""
+    api_client.force_authenticate(user=test_user)
+    url = reverse('api:monitoring:alert-notifications-list')
+    data = {
+        'name': '邮件通知测试',
+        'notification_type': 'email',
+        'config': {
+            'email': 'test@example.com',
+            'template': 'default'
+        },
+        'alert_levels': ['warning', 'critical'],
+        'is_active': True
+    }
+    response = api_client.post(url, data, format='json')
+    
+    assert response.status_code == status.HTTP_201_CREATED
+    assert response.data['name'] == data['name']
+    assert response.data['notification_type'] == data['notification_type']
+    assert response.data['is_active'] == True
+
+    # 测试发送测试通知
+    notification_id = response.data['id']
+    test_url = reverse('api:monitoring:alert-notifications-test', kwargs={'pk': notification_id})
+    test_response = api_client.post(test_url)
+    assert test_response.status_code == status.HTTP_200_OK

@@ -164,25 +164,37 @@ class NewsViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=['post'])
+    def bulk_create(self, request):
+        """批量创建新闻文章."""
+        data = request.data
+        if isinstance(data, dict):
+            data = [data]
+        serializer = NewsArticleCreateSerializer(data=data, many=True)
+        if not serializer.is_valid():
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        serializer.save()
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
+
 
 class NewsCategoryViewSet(viewsets.ModelViewSet):
     """新闻分类管理视图集."""
 
     queryset = NewsCategory.objects.all()
     serializer_class = NewsCategorySerializer
-    permission_classes = [ActionBasedPermission]
-    action_permissions = {
-        'list': [permissions.AllowAny],
-        'retrieve': [permissions.AllowAny],
-        'create': [permissions.IsAdminUser],
-        'update': [permissions.IsAdminUser],
-        'partial_update': [permissions.IsAdminUser],
-        'destroy': [permissions.IsAdminUser],
-    }
+    permission_classes = [permissions.IsAuthenticated]
+    
+    def get_permissions(self):
+        """根据不同的动作返回不同的权限."""
+        if self.action in ['list', 'retrieve']:
+            permission_classes = [permissions.AllowAny]
+        else:
+            permission_classes = [permissions.IsAuthenticated]
+        return [permission() for permission in permission_classes]
 
     def get_queryset(self):
         """获取分类查询集."""
-        return self.queryset.filter(is_active=True)
+        return self.queryset
 
     def perform_create(self, serializer):
         """创建分类."""

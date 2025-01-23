@@ -17,18 +17,15 @@ class MonitoringVisualization(models.Model):
         PIE = "pie", "饼图"
 
     class MetricType(models.TextChoices):
-        CPU = "cpu", "CPU使用率"
-        MEMORY = "memory", "内存使用率"
-        DISK = "disk", "磁盘使用率"
-        NETWORK = "network", "网络流量"
-        API_LATENCY = "api_latency", "API响应时间"
-        ERROR_RATE = "error_rate", "错误率"
-        REQUEST_COUNT = "request_count", "请求数"
-        TASK_COUNT = "task_count", "任务数"
+        CPU_USAGE = "cpu_usage", "CPU使用率"
+        MEMORY_USAGE = "memory_usage", "内存使用率"
+        DISK_USAGE = "disk_usage", "磁盘使用率"
+        NETWORK_IN = "network_in", "网络入流量"
+        NETWORK_OUT = "network_out", "网络出流量"
 
     name = models.CharField("图表名称", max_length=100)
     description = models.TextField("图表描述", blank=True)
-    chart_type = models.CharField("图表类型", max_length=20, choices=ChartType.choices, default=ChartType.LINE)
+    chart_type = models.CharField("图表类型", max_length=20, choices=ChartType.choices)
     metric_type = models.CharField("指标类型", max_length=20, choices=MetricType.choices)
     time_range = models.IntegerField("时间范围(分钟)", default=60, help_text="统计最近n分钟的数据")
     interval = models.IntegerField("统计间隔(秒)", default=60, help_text="数据聚合的时间间隔")
@@ -40,8 +37,8 @@ class MonitoringVisualization(models.Model):
     )
     warning_threshold = models.FloatField("警告阈值", null=True, blank=True, help_text="超过此值显示警告")
     critical_threshold = models.FloatField("严重阈值", null=True, blank=True, help_text="超过此值显示严重警告")
-    is_active = models.IntegerField("是否启用", default=1)
-    refresh_interval = models.IntegerField("刷新间隔(秒)", default=30, help_text="数据自动刷新的间隔")
+    is_active = models.BooleanField("是否启用", default=True)
+    refresh_interval = models.IntegerField("刷新间隔(秒)", default=300, help_text="数据自动刷新的间隔")
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="monitoring_visualizations", verbose_name="创建者"
     )
@@ -84,14 +81,11 @@ class AlertRule(models.Model):
         CRITICAL = "critical", "严重"
 
     class MetricType(models.TextChoices):
-        CPU = "cpu", "CPU使用率"
-        MEMORY = "memory", "内存使用率"
-        DISK = "disk", "磁盘使用率"
-        NETWORK = "network", "网络流量"
-        API_LATENCY = "api_latency", "API响应时间"
-        ERROR_RATE = "error_rate", "错误率"
-        REQUEST_COUNT = "request_count", "请求数"
-        TASK_COUNT = "task_count", "任务数"
+        CPU_USAGE = "cpu_usage", "CPU使用率"
+        MEMORY_USAGE = "memory_usage", "内存使用率"
+        DISK_USAGE = "disk_usage", "磁盘使用率"
+        NETWORK_IN = "network_in", "网络入流量"
+        NETWORK_OUT = "network_out", "网络出流量"
 
     class Operator(models.TextChoices):
         GT = "gt", "大于"
@@ -106,7 +100,7 @@ class AlertRule(models.Model):
     metric_type = models.CharField("监控指标", max_length=20, choices=MetricType.choices)
     operator = models.CharField("比较运算符", max_length=10, choices=Operator.choices)
     threshold = models.FloatField("阈值")
-    duration = models.IntegerField("持续时间(分钟)", default=5, help_text="指标超过阈值持续n分钟后触发告警")
+    duration = models.IntegerField("持续时间(秒)", default=300, help_text="指标超过阈值持续n分钟后触发告警")
     alert_level = models.CharField("告警级别", max_length=20, choices=AlertLevel.choices, default=AlertLevel.WARNING)
     is_enabled = models.BooleanField("是否启用", default=True)
     created_by = models.ForeignKey(
@@ -215,7 +209,7 @@ class Dashboard(models.Model):
     class LayoutType(models.TextChoices):
         GRID = "grid", "网格布局"
         FLEX = "flex", "弹性布局"
-        FREE = "free", "自由布局"
+        FIXED = "fixed", "固定布局"
     
     name = models.CharField("仪表盘名称", max_length=100)
     description = models.TextField("仪表盘描述", blank=True)
@@ -282,14 +276,11 @@ class SystemMetrics(models.Model):
     """系统指标模型"""
 
     class MetricType(models.TextChoices):
-        CPU = "cpu", "CPU使用率"
-        MEMORY = "memory", "内存使用率"
-        DISK = "disk", "磁盘使用率"
-        NETWORK = "network", "网络流量"
-        API_LATENCY = "api_latency", "API响应时间"
-        ERROR_RATE = "error_rate", "错误率"
-        REQUEST_COUNT = "request_count", "请求数"
-        TASK_COUNT = "task_count", "任务数"
+        CPU_USAGE = "cpu_usage", "CPU使用率"
+        MEMORY_USAGE = "memory_usage", "内存使用率"
+        DISK_USAGE = "disk_usage", "磁盘使用率"
+        NETWORK_IN = "network_in", "网络入流量"
+        NETWORK_OUT = "network_out", "网络出流量"
 
     metric_type = models.CharField("指标类型", max_length=20, choices=MetricType.choices)
     value = models.FloatField("指标值")

@@ -56,6 +56,15 @@ class UserViewSet(viewsets.ModelViewSet):
     authentication_classes = [JWTAuthentication]
     permission_classes = [IsAuthenticated]
 
+    def handle_exception(self, exc):
+        """处理异常"""
+        if isinstance(exc, (InvalidToken, TokenError)):
+            return Response(
+                {"message": "认证失败"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        return super().handle_exception(exc)
+
     def get_permissions(self):
         """根据不同的操作设置权限"""
         if self.action in ['list', 'create', 'destroy']:
@@ -73,6 +82,11 @@ class UserViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["get"])
     def me(self, request):
         """获取当前用户信息"""
+        if not request.user.is_authenticated:
+            return Response(
+                {"message": "认证失败"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
         serializer = self.get_serializer(request.user)
         return Response(serializer.data)
 
