@@ -85,17 +85,8 @@ MIDDLEWARE = [
 # 使用Redis缓存
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': 'redis://127.0.0.1:6379/1',
-        'OPTIONS': {
-            'db': 1,
-            'socket_connect_timeout': 5,
-            'socket_timeout': 5,
-            'retry_on_timeout': True,
-            'max_connections': 100,
-        },
-        'KEY_PREFIX': 'test',
-        'TIMEOUT': 300,
+        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+        'LOCATION': 'unique-snowflake',
     }
 }
 
@@ -161,15 +152,8 @@ SIMPLE_JWT = {
 }
 
 # Elasticsearch配置
-ELASTICSEARCH_HOSTS = ['http://localhost:9200']
-ELASTICSEARCH_INDEX_NAMES = {
-    'news_search.documents.NewsArticleDocument': 'test_news_articles'
-}
-ELASTICSEARCH_DSL = {
-    'default': {
-        'hosts': ELASTICSEARCH_HOSTS
-    },
-}
+ELASTICSEARCH_HOSTS = [env('ELASTICSEARCH_HOST', default='http://localhost:9200')]
+ELASTICSEARCH_INDEX_PREFIX = 'test_'
 
 # OpenAI配置
 OPENAI_API_KEY = env('OPENAI_API_KEY')  # 从环境变量获取API密钥
@@ -181,3 +165,11 @@ OPENAI_TIMEOUT = 30  # API请求超时时间（秒）
 OPENAI_RATE_LIMIT = 60  # 每分钟最大请求次数
 OPENAI_RATE_LIMIT_WINDOW = 60  # 速率限制窗口（秒）
 OPENAI_CACHE_TTL = 3600  # 缓存过期时间（秒）
+
+# 媒体文件配置
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media_test')
+MEDIA_URL = '/media/'
+
+# 静态文件配置
+STATIC_ROOT = os.path.join(BASE_DIR, 'static_test')
+STATIC_URL = '/static/'

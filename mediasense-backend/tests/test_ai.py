@@ -15,6 +15,19 @@ import uuid
 import pytest
 from django.conf import settings
 from django.utils import timezone
+from django.urls import reverse
+from rest_framework import status
+from rest_framework.test import APIClient
+from django.contrib.auth import get_user_model
+from news.models import NewsCategory
+from ai_service.models import (
+    BatchAnalysisTask,
+    AnalysisSchedule,
+    AnalysisNotification,
+    AnalysisRule
+)
+
+User = get_user_model()
 
 class TestAITextAnalysis(TransactionTestCase):
     """AI文本分析服务测试"""
@@ -577,3 +590,311 @@ class TestAITextAnalysis(TransactionTestCase):
             raise ValueError(f"Unknown request path: {request.path}")
             
         return response 
+
+@pytest.fixture
+def api_client():
+    return APIClient()
+
+@pytest.fixture
+def test_user():
+    return User.objects.create_user(
+        username='testuser',
+        email='test@example.com',
+        password='testpass123'
+    )
+
+@pytest.fixture
+def test_category(db):
+    category = NewsCategory.objects.create(
+        name='测试分类',
+        description='测试分类描述'
+    )
+    return category
+
+@pytest.fixture
+def test_article(db, test_category):
+    article = NewsArticle.objects.create(
+        title='测试新闻标题',
+        content='测试新闻内容',
+        category=test_category,
+        source='测试来源',
+        author='测试作者'
+    )
+    return article
+
+@pytest.fixture
+def default_rule():
+    """创建默认分析规则"""
+    rule = AnalysisRule.objects.create(
+        name="默认规则",
+        rule_type="sentiment",
+        system_prompt="你是一个情感分析助手",
+        user_prompt_template="请分析以下文本的情感倾向：{content}",
+        parameters={
+            'temperature': 0.7,
+            'max_tokens': 100
+        },
+        is_active=1
+    )
+    return rule
+
+@pytest.fixture
+def test_rule():
+    """创建测试分析规则"""
+    rule = AnalysisRule.objects.create(
+        name="测试规则",
+        rule_type="sentiment",
+        system_prompt="你是一个情感分析助手",
+        user_prompt_template="请分析以下文本的情感倾向：{content}",
+        parameters={
+            'temperature': 0.7,
+            'max_tokens': 100
+        },
+        is_active=1
+    )
+    return rule
+
+@pytest.mark.django_db
+class TestAIServiceAPI(TransactionTestCase):
+    """AI服务API测试"""
+
+    async def asyncSetUp(self):
+        """异步设置"""
+        # 创建测试用户
+        self.user = await sync_to_async(User.objects.create_user)(
+            username='testuser',
+            password='testpass',
+            email='test@example.com'
+        )
+        
+        # 创建测试分类
+        self.category = await sync_to_async(NewsCategory.objects.create)(
+            name='Test Category',
+            is_active=1
+        )
+        
+        # 创建测试文章
+        self.article = await sync_to_async(NewsArticle.objects.create)(
+            title='Test Article',
+            content='Test content for analysis',
+            category=self.category,
+            created_by=self.user
+        )
+        
+        # 创建测试规则
+        self.rule = await sync_to_async(AnalysisRule.objects.create)(
+            name='Test Rule',
+            rule_type='sentiment',
+            user_prompt_template='Analyze the sentiment of: {title} {content}',
+            created_by=self.user
+        )
+        
+        # 设置API客户端
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def setUp(self):
+        """同步设置"""
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.asyncSetUp())
+
+    def tearDown(self):
+        # 清理测试数据
+        User.objects.all().delete()
+        NewsCategory.objects.all().delete()
+        NewsArticle.objects.all().delete()
+        AnalysisRule.objects.all().delete()
+        AnalysisResult.objects.all().delete()
+        BatchAnalysisTask.objects.all().delete()
+        AnalysisSchedule.objects.all().delete()
+        AnalysisNotification.objects.all().delete()
+
+    async def test_analyze_article(self):
+        """测试文章分析"""
+        # 创建测试数据
+        url = reverse('api:ai_service:ai-analyze-article')
+        data = {
+            'article_id': self.article.id,
+            'analysis_types': ['sentiment']
+        }
+        
+        # 模拟AI服务
+        with patch('ai_service.views.AIService') as mock_ai_service:
+            # 创建一个模拟的AI服务实例
+            mock_instance = AsyncMock()
+            mock_instance.analyze_sentiment = AsyncMock(return_value={'sentiment': 'positive'})
+            mock_instance._check_rate_limit = AsyncMock()
+            mock_instance._get_cached_result = AsyncMock(return_value=None)  # 返回None表示没有缓存
+            mock_instance._cache_result = AsyncMock()  # 模拟缓存操作
+            mock_ai_service.return_value = mock_instance
+            
+            # 发送请求
+            response = await sync_to_async(self.client.post)(url, data, format='json')
+            
+            # 验证响应
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertIn('data', response.data)
+            self.assertIn('sentiment', response.data['data'])
+
+    async def test_get_analysis_result(self):
+        """测试获取分析结果"""
+        # 创建分析结果
+        result = await sync_to_async(AnalysisResult.objects.create)(
+            news=self.article,
+            analysis_type='sentiment',
+            result={'sentiment': 'positive'},
+            created_by=self.user
+        )
+        
+        # 获取分析结果
+        url = reverse('api:ai_service:ai-get-analysis-result', args=[result.id])
+        response = await sync_to_async(self.client.get)(url)
+        
+        # 验证响应
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['analysis_result'] == {'sentiment': 'positive'}
+
+    async def test_create_analysis_rule(self):
+        """测试创建分析规则"""
+        url = reverse('api:ai_service:rules-list')
+        data = {
+            'name': 'Test Rule',
+            'rule_type': 'sentiment',
+            'system_prompt': 'You are a sentiment analysis assistant.',
+            'user_prompt_template': 'Analyze the sentiment of: {title} {content}',
+            'is_active': 1
+        }
+        
+        # 确保用户已认证
+        self.client.force_authenticate(user=self.user)
+        
+        # 发送请求
+        response = await sync_to_async(self.client.post)(url, data, format='json')
+        print(f"Create rule response: {response.data}")
+        
+        # 验证响应
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(response.data['name'], data['name'])
+        self.assertEqual(response.data['rule_type'], data['rule_type'])
+        self.assertEqual(response.data['system_prompt'], data['system_prompt'])
+        self.assertEqual(response.data['user_prompt_template'], data['user_prompt_template'])
+
+    async def test_update_analysis_rule(self):
+        """测试更新分析规则"""
+        url = reverse('api:ai_service:rules-detail', args=[self.rule.id])
+        
+        data = {
+            'name': 'Updated Rule',
+            'system_prompt': 'Updated system prompt'
+        }
+        response = await sync_to_async(self.client.patch)(url, data, format='json')
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['name'] == data['name']
+
+    def test_create_batch_task(self):
+        url = reverse('api:ai_service:batch-tasks-list')
+        
+        data = {
+            'name': 'Test Batch Task',
+            'rule': self.rule.id,
+            'news_ids': [self.article.id],
+            'analysis_types': ['sentiment']
+        }
+        response = self.client.post(url, data, format='json')
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['name'] == data['name']
+        assert response.data['news_ids'] == data['news_ids']
+        assert response.data['analysis_types'] == data['analysis_types']
+
+    def test_batch_task_control(self):
+        # 创建批处理任务
+        task = BatchAnalysisTask.objects.create(
+            name='Test Task',
+            rule=self.rule,
+            status='pending',
+            total_count=0,
+            processed=0,
+            success=0,
+            failed=0,
+            config={
+                'news_ids': [self.article.id],
+                'analysis_types': ['sentiment']
+            }
+        )
+        
+        # 暂停任务
+        control_url = reverse('api:ai_service:batch-tasks-control', args=[task.id])
+        response = self.client.post(control_url, {'action': 'cancel'}, format='json')
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == 'cancelled'
+        
+        # 重试任务
+        response = self.client.post(control_url, {'action': 'retry'}, format='json')
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == 'pending'
+
+    def test_create_analysis_schedule(self):
+        url = reverse('api:ai_service:schedules-list')
+        
+        data = {
+            'name': 'Test Schedule',
+            'schedule_type': 'cron',
+            'cron_expression': '0 0 * * *',
+            'analysis_types': ['sentiment'],
+            'time_window': 1440,
+            'rule_ids': [self.rule.id],
+            'categories': [self.category.id],
+            'is_active': 1
+        }
+        response = self.client.post(url, data, format='json')
+        print(f"Response data: {response.data}")  # 打印响应数据
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['name'] == data['name']
+        assert response.data['schedule_type'] == data['schedule_type']
+        assert response.data['cron_expression'] == data['cron_expression']
+
+    async def test_notification_management(self):
+        """测试通知管理功能"""
+        # 测试订阅
+        url = reverse('api:ai_service:ai-notification-management')
+        data = {
+            'action': 'subscribe',
+            'email_enabled': 1,
+            'websocket_enabled': 1,
+            'notify_on_complete': 1,
+            'notify_on_error': 1,
+            'notify_on_batch': 1,
+            'notify_on_schedule': 1
+        }
+        response = await sync_to_async(self.client.post)(url, data, format='json')
+        print(f"Subscribe response: {response.data}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['email_enabled'])
+        
+        # 创建一个测试通知
+        notification = await sync_to_async(AnalysisNotification.objects.create)(
+            user=self.user,
+            title="Test Notification",
+            content="Test Message",
+            notification_type="batch_complete",
+            is_read=False
+        )
+        
+        # 测试标记通知为已读
+        data = {
+            'action': 'mark_read',
+            'notification_id': notification.id
+        }
+        response = await sync_to_async(self.client.post)(url, data, format='json')
+        print(f"Mark read response: {response.data}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertTrue(response.data['is_read'])
+        
+        # 测试取消订阅
+        data = {
+            'action': 'unsubscribe'
+        }
+        response = await sync_to_async(self.client.post)(url, data, format='json')
+        print(f"Unsubscribe response: {response.data}")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data['status'], 'success')

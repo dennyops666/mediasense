@@ -6,6 +6,29 @@ from django.conf import settings
 from django.db import migrations, models
 
 
+def create_default_rule(apps, schema_editor):
+    """创建默认分析规则"""
+    AnalysisRule = apps.get_model('ai_service', 'AnalysisRule')
+    default_rule = AnalysisRule.objects.create(
+        name="默认规则",
+        rule_type="sentiment",
+        system_prompt="你是一个情感分析助手",
+        user_prompt_template="请分析以下文本的情感倾向：{content}",
+        parameters={
+            'temperature': 0.7,
+            'max_tokens': 100
+        },
+        is_active=1
+    )
+    return default_rule
+
+
+def delete_default_rule(apps, schema_editor):
+    """删除默认分析规则"""
+    AnalysisRule = apps.get_model('ai_service', 'AnalysisRule')
+    AnalysisRule.objects.filter(name="默认规则").delete()
+
+
 class Migration(migrations.Migration):
 
     initial = True
@@ -61,7 +84,7 @@ class Migration(migrations.Migration):
                         default=dict, help_text="如temperature、max_tokens等参数", verbose_name="分析参数"
                     ),
                 ),
-                ("is_active", models.BooleanField(default=True, verbose_name="是否启用")),
+                ("is_active", models.IntegerField(default=1, verbose_name="是否启用")),
                 ("created_at", models.DateTimeField(default=django.utils.timezone.now, verbose_name="创建时间")),
                 ("updated_at", models.DateTimeField(auto_now=True, verbose_name="更新时间")),
                 ("description", models.TextField(blank=True, verbose_name="规则描述")),
@@ -82,6 +105,7 @@ class Migration(migrations.Migration):
                 "ordering": ["-created_at"],
             },
         ),
+        migrations.RunPython(create_default_rule, delete_default_rule),
         migrations.CreateModel(
             name="AnalysisSchedule",
             fields=[

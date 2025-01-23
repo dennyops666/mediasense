@@ -6,6 +6,9 @@ from crawler.models import CrawlerConfig, CrawlerTask
 from .factories import UserFactory, CrawlerConfigFactory, CrawlerTaskFactory
 from unittest.mock import patch, Mock
 import json
+from django.contrib.auth import get_user_model
+
+User = get_user_model()
 
 pytestmark = pytest.mark.django_db
 
@@ -21,6 +24,45 @@ def admin_user():
 def authenticated_client(api_client, admin_user):
     api_client.force_authenticate(user=admin_user)
     return api_client
+
+@pytest.fixture
+def test_user(db):
+    user = User.objects.create_user(
+        username='testuser',
+        password='testpass123',
+        email='test@example.com'
+    )
+    return user
+
+@pytest.fixture
+def test_config(db):
+    """创建测试用的爬虫配置"""
+    config = CrawlerConfig.objects.create(
+        name='Test Config',
+        source_url='http://example.com',
+        crawler_type=3,  # 网页类型
+        config_data={
+            'article_selector': 'article',
+            'title_selector': 'h1',
+            'content_selector': '.content'
+        },
+        interval=60,
+        status=1,  # 启用状态
+        is_active=True  # 确保配置处于激活状态
+    )
+    return config
+
+@pytest.fixture
+def test_task(test_config):
+    """创建测试用的爬虫任务"""
+    task = CrawlerTask.objects.create(
+        config=test_config,
+        task_id='test-task-id',
+        status=CrawlerTask.Status.PENDING,
+        result={},
+        error_message=''
+    )
+    return task
 
 class TestCrawlerManagement:
     """TC-CRAWLER-001: 爬虫配置管理测试"""
@@ -249,3 +291,200 @@ class TestCrawlerManagement:
                 assert len(task.result['items']) == 2
                 assert task.result['items'][0]['title'] == '测试新闻1'
                 assert task.result['items'][1]['title'] == '测试新闻2' 
+
+@pytest.mark.django_db
+class TestCrawlerAPI:
+    """爬虫模块API测试"""
+
+    def test_create_crawler_config(self, api_client, test_user):
+        login_url = reverse('api:auth:token_obtain')
+        url = reverse('api:crawler:crawler-config-list')
+        
+        # 登录获取 token
+        login_response = api_client.post(login_url, {
+            'username': test_user.username,
+            'password': 'testpass123'
+        })
+        access_token = login_response.data['access']
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        
+        data = {
+            'name': 'New Crawler Config',
+            'website': 'http://example.com',
+            'crawl_rules': {
+                'article_selector': 'article',
+                'title_selector': 'h1',
+                'content_selector': '.content'
+            },
+            'schedule': '0 0 * * *'
+        }
+        response = api_client.post(url, data, format="json")
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['name'] == data['name']
+
+    def test_update_crawler_config(self, api_client, test_user, test_config):
+        login_url = reverse('api:auth:token_obtain')
+        url = reverse('api:crawler:crawler-config-detail', args=[test_config.id])
+        
+        # 登录获取 token
+        login_response = api_client.post(login_url, {
+            'username': test_user.username,
+            'password': 'testpass123'
+        })
+        access_token = login_response.data['access']
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        
+        data = {
+            'name': 'Updated Config',
+            'crawl_rules': {
+                'article_selector': 'div.article',
+                'title_selector': '.title',
+                'content_selector': '.body'
+            }
+        }
+        response = api_client.patch(url, data, format="json")
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['name'] == data['name']
+
+    def test_crawler_config_control(self, api_client, test_user, test_config):
+        login_url = reverse('api:auth:token_obtain')
+        enable_url = reverse('api:crawler:crawler-config-enable', args=[test_config.id])
+        disable_url = reverse('api:crawler:crawler-config-disable', args=[test_config.id])
+        
+        # 登录获取 token
+        login_response = api_client.post(login_url, {
+            'username': test_user.username,
+            'password': 'testpass123'
+        })
+        access_token = login_response.data['access']
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        
+        # 启用爬虫配置
+        response = api_client.post(enable_url)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['is_active'] is True
+        
+        # 禁用爬虫配置
+        response = api_client.post(disable_url)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['is_active'] is False
+
+    def test_test_crawler_config(self, api_client, test_user, test_config):
+        login_url = reverse('api:auth:token_obtain')
+        url = reverse('api:crawler:crawler-config-test', args=[test_config.id])
+        
+        # 登录获取 token
+        login_response = api_client.post(login_url, {
+            'username': test_user.username,
+            'password': 'testpass123'
+        })
+        access_token = login_response.data['access']
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        
+        response = api_client.post(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert 'test_results' in response.data
+
+    def test_crawler_task_management(self, api_client, test_user, test_config):
+        login_url = reverse('api:auth:token_obtain')
+        url = reverse('api:crawler:crawler-task-list')
+        
+        # 登录获取 token
+        login_response = api_client.post(login_url, {
+            'username': test_user.username,
+            'password': 'testpass123'
+        })
+        access_token = login_response.data['access']
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        
+        # 创建爬虫任务
+        data = {
+            'config': test_config.id,
+            'priority': 'high'
+        }
+        response = api_client.post(url, data, format="json")
+        assert response.status_code == status.HTTP_201_CREATED
+        assert response.data['status'] == 'pending'
+
+    def test_retry_crawler_task(self, api_client, test_user, test_config):
+        login_url = reverse('api:auth:token_obtain')
+        
+        # 登录获取 token
+        login_response = api_client.post(login_url, {
+            'username': test_user.username,
+            'password': 'testpass123'
+        })
+        access_token = login_response.data['access']
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        
+        # 创建失败的爬虫任务
+        task = CrawlerTask.objects.create(
+            config=test_config,
+            task_id='test-task-id',
+            status=CrawlerTask.Status.ERROR,
+            error_message='Test error'
+        )
+        
+        # 重试任务
+        url = reverse('api:crawler:crawler-task-retry', args=[task.id])
+        response = api_client.post(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['status'] == CrawlerTask.Status.PENDING
+
+    def test_bulk_crawler_operations(self, api_client, test_user):
+        login_url = reverse('api:auth:token_obtain')
+        url = reverse('api:crawler:crawler-config-list')
+        
+        # 登录获取 token
+        login_response = api_client.post(login_url, {
+            'username': test_user.username,
+            'password': 'testpass123'
+        })
+        access_token = login_response.data['access']
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        
+        # 批量创建爬虫配置
+        data = [
+            {
+                'name': 'Bulk Config 1',
+                'website': 'http://example1.com',
+                'crawl_rules': {
+                    'article_selector': 'article',
+                    'title_selector': 'h1',
+                    'content_selector': '.content'
+                },
+                'schedule': '0 0 * * *'
+            },
+            {
+                'name': 'Bulk Config 2',
+                'website': 'http://example2.com',
+                'crawl_rules': {
+                    'article_selector': 'article',
+                    'title_selector': 'h1',
+                    'content_selector': '.content'
+                },
+                'schedule': '0 0 * * *'
+            }
+        ]
+        response = api_client.post(url, data, format='json')
+        assert response.status_code == status.HTTP_201_CREATED
+        assert len(response.data) == 2
+
+    def test_crawler_statistics(self, api_client, test_user, test_config):
+        login_url = reverse('api:auth:token_obtain')
+        url = reverse('api:crawler:crawler-config-stats')
+        
+        # 登录获取 token
+        login_response = api_client.post(login_url, {
+            'username': test_user.username,
+            'password': 'testpass123'
+        })
+        access_token = login_response.data['access']
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert 'total_configs' in response.data
+        assert 'active_configs' in response.data
+        assert 'total_tasks' in response.data
+        assert 'task_status_counts' in response.data 

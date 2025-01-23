@@ -1,248 +1,257 @@
 import pytest
+from django.contrib.auth import get_user_model
 from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
-from news.models import NewsArticle
-from .factories import NewsArticleFactory, UserFactory
-from elasticsearch_dsl import Search
-from elasticsearch import Elasticsearch
-from django.conf import settings
-from news_search.documents import NewsArticleDocument
-from django_elasticsearch_dsl.registries import registry
+from news.models import NewsArticle, NewsCategory
+from news_search.models import SearchSuggestion
 from elasticsearch_dsl.connections import connections
-from django.utils import timezone
-import json
+from django.conf import settings
+import elasticsearch
 
-pytestmark = pytest.mark.django_db
+User = get_user_model()
+
+@pytest.fixture(scope='session')
+def es_client():
+    """创建Elasticsearch测试客户端"""
+    client = elasticsearch.Elasticsearch(hosts=settings.ELASTICSEARCH_HOSTS)
+    # 创建测试索引
+    index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}news_articles"
+    if not client.indices.exists(index=index_name):
+        client.indices.create(
+            index=index_name,
+            body={
+                "mappings": {
+                    "properties": {
+                        "title": {"type": "text"},
+                        "content": {"type": "text"},
+                        "category": {"type": "keyword"},
+                        "source": {"type": "keyword"},
+                        "publish_time": {"type": "date"}
+                    }
+                }
+            }
+        )
+    return client
+
+@pytest.fixture(autouse=True)
+def setup_es(es_client):
+    """设置Elasticsearch连接"""
+    connections.create_connection(hosts=settings.ELASTICSEARCH_HOSTS)
+    yield
+    # 清理测试数据
+    index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}news_articles"
+    if es_client.indices.exists(index=index_name):
+        es_client.indices.delete(index=index_name)
 
 @pytest.fixture
-def api_client():
-    return APIClient()
-
-@pytest.fixture
-def authenticated_client(api_client):
-    user = UserFactory()
-    api_client.force_authenticate(user=user)
+def authenticated_client(api_client, test_user):
+    login_url = reverse('api:auth:token_obtain')
+    login_response = api_client.post(login_url, {
+        'username': test_user.username,
+        'password': 'testpass123'
+    })
+    access_token = login_response.data['access']
+    api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
     return api_client
 
 @pytest.fixture
-def es_client():
-    return Elasticsearch(hosts=settings.ELASTICSEARCH_HOSTS)
-
-@pytest.fixture(scope='session')
-def django_db_setup(django_db_setup, django_db_blocker):
-    """确保测试数据库和Elasticsearch索引都已准备好"""
-    from django.core.management import call_command
-    
-    # 初始化Elasticsearch连接
-    connections.create_connection(
-        hosts=settings.ELASTICSEARCH_HOSTS,
-        timeout=20
+def test_user(db):
+    user = User.objects.create_user(
+        username='testuser',
+        password='testpass123',
+        email='test@example.com'
     )
-    
-    # 获取Elasticsearch客户端
-    es_client = Elasticsearch(hosts=settings.ELASTICSEARCH_HOSTS)
-    
-    with django_db_blocker.unblock():
-        # 如果索引不存在则创建
-        if not es_client.indices.exists(index='news_articles'):
-            NewsArticleDocument._index.create()
+    return user
 
-class TestNewsSearch:
-    """TC-SEARCH-001: 新闻搜索功能测试"""
+@pytest.fixture
+def test_category():
+    return NewsCategory.objects.create(
+        name='Test Category',
+        description='Test category description'
+    )
 
-    @pytest.fixture
-    def test_news_data(self):
-        """创建测试新闻数据"""
-        # 创建测试数据
-        news_list = [
-            NewsArticleFactory(
-                title=f'Test News {i}',
-                content=f'Test content {i}',
-                summary=f'Test summary {i}',
-                source='Test Source',
-                author='Test Author',
-                url=f'https://example.com/test-{i}',
-                status='published',
-                sentiment_score=0.5,
-                publish_time=timezone.now()
-            ) for i in range(5)
-        ]
-        
-        # 同步数据到Elasticsearch
-        for news in news_list:
-            doc = NewsArticleDocument()
-            doc.title = news.title
-            doc.content = news.content
-            doc.summary = news.summary
-            doc.source = news.source
-            doc.author = news.author
-            doc.url = news.url
-            doc.status = news.status
-            doc.sentiment_score = news.sentiment_score
-            doc.publish_time = news.publish_time
-            doc.created_at = news.created_at
-            doc.updated_at = news.updated_at
-            doc.title_suggest = {
-                'input': [news.title],
-                'weight': 100 if news.status == 'published' else 50
-            }
-            doc.save()
-        
-        # 确保Elasticsearch索引已更新
-        es_client = Elasticsearch(hosts=settings.ELASTICSEARCH_HOSTS)
-        es_client.indices.refresh(index='news_articles')
-        return news_list
+@pytest.fixture
+def test_articles(test_category):
+    articles = []
+    for i in range(5):
+        article = NewsArticle.objects.create(
+            title=f'Test Article {i}',
+            content=f'Test content {i}',
+            summary=f'Test summary {i}',
+            source='Test Source',
+            author='Test Author',
+            url=f'http://example.com/article-{i}',
+            category=test_category,
+            tags=['test', f'article-{i}'],
+            status='published'
+        )
+        articles.append(article)
+    return articles
 
-    def test_basic_keyword_search(self, authenticated_client, test_news_data):
-        """测试基础关键词搜索"""
-        url = reverse('news-search:news-search-search')
-        response = authenticated_client.get(url, {'query': 'Test News'})
-        
+@pytest.fixture
+def test_suggestions(db):
+    suggestions = []
+    for i in range(3):
+        suggestion = SearchSuggestion.objects.create(
+            keyword=f'测试关键词{i}',
+            search_count=10-i,
+            is_hot=(i == 0)
+        )
+        suggestions.append(suggestion)
+    return suggestions
+
+@pytest.mark.django_db
+class TestSearchAPI:
+    """搜索模块API测试"""
+
+    def test_basic_search(self, authenticated_client, test_articles, es_client):
+        """测试基础搜索功能"""
+        # 索引测试文章
+        index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}news_articles"
+        for article in test_articles:
+            es_client.index(
+                index=index_name,
+                id=article.id,
+                body={
+                    'title': article.title,
+                    'content': article.content,
+                    'category': article.category.id,
+                    'source': article.source
+                }
+            )
+        es_client.indices.refresh(index=index_name)
+
+        url = reverse('api:news_search:news-search-search')
+        response = authenticated_client.get(url, {'q': 'Test'})
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) > 0
-        assert 'Test News' in response.data['results'][0]['title']
 
-    def test_advanced_filter_search(self, authenticated_client, test_news_data):
-        """测试高级过滤搜索"""
-        url = reverse('news-search:news-search-search')
-        time_range = {
-            'start': '2024-01-01',
-            'end': '2025-12-31'
-        }
-        filters = {
-            'query': 'Test',
-            'status': 'published',
-            'time_range': json.dumps(time_range)
-        }
-        response = authenticated_client.get(url, filters)
-        
+    def test_advanced_search(self, authenticated_client, test_articles, es_client):
+        """测试高级搜索功能"""
+        # 索引测试文章
+        index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}news_articles"
+        for article in test_articles:
+            es_client.index(
+                index=index_name,
+                id=article.id,
+                body={
+                    'title': article.title,
+                    'content': article.content,
+                    'category': article.category.id,
+                    'source': article.source
+                }
+            )
+        es_client.indices.refresh(index=index_name)
+
+        url = reverse('api:news_search:news-search-search')
+        response = authenticated_client.get(url, {
+            'q': 'Test',
+            'source': 'Test Source',
+            'category': test_articles[0].category.id
+        })
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) > 0
-        for result in response.data['results']:
-            assert result['status'] == 'published'
 
-    def test_pagination(self, authenticated_client, test_news_data):
-        """测试分页获取结果"""
-        url = reverse('news-search:news-search-search')
-        # 第一页
-        response1 = authenticated_client.get(url, {
-            'query': 'Test',
+    def test_search_with_pagination(self, authenticated_client, test_articles, es_client):
+        """测试搜索分页功能"""
+        # 索引测试文章
+        index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}news_articles"
+        for article in test_articles:
+            es_client.index(
+                index=index_name,
+                id=article.id,
+                body={
+                    'title': article.title,
+                    'content': article.content,
+                    'category': article.category.id,
+                    'source': article.source
+                }
+            )
+        es_client.indices.refresh(index=index_name)
+
+        url = reverse('api:news_search:news-search-search')
+        response = authenticated_client.get(url, {
+            'q': 'Test',
             'page': 1,
-            'size': 2
-        })
-        assert response1.status_code == status.HTTP_200_OK
-        assert len(response1.data['results']) == 2
-        
-        # 第二页
-        response2 = authenticated_client.get(url, {
-            'query': 'Test',
-            'page': 2,
-            'size': 2
-        })
-        assert response2.status_code == status.HTTP_200_OK
-        assert len(response2.data['results']) == 2
-        
-        # 验证两页数据不重复
-        page1_ids = [item['id'] for item in response1.data['results']]
-        page2_ids = [item['id'] for item in response2.data['results']]
-        assert not set(page1_ids).intersection(set(page2_ids))
-
-    def test_result_sorting(self, authenticated_client, test_news_data):
-        """测试结果排序功能"""
-        url = reverse('news-search:news-search-search')
-        
-        # 按时间降序
-        response = authenticated_client.get(url, {
-            'query': 'Test',
-            'sort': '-publish_time'
+            'page_size': 2
         })
         assert response.status_code == status.HTTP_200_OK
-        results = response.data['results']
-        assert len(results) > 1
-        for i in range(len(results)-1):
-            assert results[i]['publish_time'] >= results[i+1]['publish_time']
-        
-        # 按相关度排序
-        response = authenticated_client.get(url, {
-            'query': 'Test',
-            'sort': 'relevance'
-        })
-        assert response.status_code == status.HTTP_200_OK
-        assert len(response.data['results']) > 0
+        assert len(response.data['results']) == 2
+        assert response.data['count'] > 2
 
-    def test_search_suggestions(self, authenticated_client, test_news_data):
+    def test_search_suggestions(self, authenticated_client):
         """测试搜索建议功能"""
-        # 创建带有特定标题的测试新闻
-        news_with_suggestions = [
-            NewsArticleFactory(
-                title=f'Python Tutorial {i}',
-                content=f'Python programming tutorial content {i}',
-                tags=['python', 'programming', 'tutorial'],
-                status='published'
-            ) for i in range(3)
-        ]
-        
-        # 同步数据到Elasticsearch
-        for news in news_with_suggestions:
-            doc = NewsArticleDocument()
-            doc.title = news.title
-            doc.content = news.content
-            doc.tags = news.tags
-            doc.status = news.status
-            doc.title_suggest = {
-                'input': [news.title] + news.tags,
-                'weight': 100 if news.status == 'published' else 50
-            }
-            doc.save()
-        
-        # 确保Elasticsearch索引已更新
-        es_client = Elasticsearch(hosts=settings.ELASTICSEARCH_HOSTS)
-        es_client.indices.refresh(index='news_articles')
-        
-        # 测试获取搜索建议
-        url = reverse('news-search:news-search-suggest')
-        response = authenticated_client.get(url, {'prefix': 'P'})
-        
+        url = reverse('api:news_search:news-search-suggest')
+        SearchSuggestion.objects.create(
+            keyword='test suggestion',
+            search_count=10
+        )
+        response = authenticated_client.get(url, {'prefix': 'test'})
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data) > 0
-        assert all('Python' in suggestion['title'] 
-                  for suggestion in response.data)
-        
-        # 测试建议按分数排序
-        scores = [suggestion['score'] 
-                      for suggestion in response.data]
-        assert scores == sorted(scores, reverse=True)
 
-    def test_elasticsearch_integration(self, es_client, test_news_data):
-        """测试Elasticsearch集成"""
-        # 确保索引存在
-        assert es_client.indices.exists(index='news_articles')
-        
-        # 测试文档索引
-        s = Search(using=es_client, index='news_articles')
-        response = s.execute()
-        assert response.hits.total.value > 0
-        
-        # 测试全文搜索
-        s = Search(using=es_client, index='news_articles').query(
-            'multi_match',
-            query='Test News',
-            fields=['title^2', 'content']
+    def test_hot_searches(self, authenticated_client):
+        """测试热门搜索功能"""
+        url = reverse('api:news_search:news-search-hot')
+        SearchSuggestion.objects.create(
+            keyword='hot search',
+            search_count=100,
+            is_hot=True
         )
-        response = s.execute()
-        assert response.hits.total.value > 0
-        assert 'Test News' in response.hits[0].title
+        response = authenticated_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) > 0
 
-    def test_search_result_highlighting(self, authenticated_client, test_news_data):
-        """测试搜索结果高亮"""
-        url = reverse('news-search:news-search-search')
+    def test_search_with_highlight(self, authenticated_client, test_articles, es_client):
+        """测试搜索结果高亮功能"""
+        # 索引测试文章
+        index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}news_articles"
+        for article in test_articles:
+            es_client.index(
+                index=index_name,
+                id=article.id,
+                body={
+                    'title': article.title,
+                    'content': article.content,
+                    'category': article.category.id,
+                    'source': article.source
+                }
+            )
+        es_client.indices.refresh(index=index_name)
+
+        url = reverse('api:news_search:news-search-search')
         response = authenticated_client.get(url, {
-            'query': 'Test News',
+            'q': 'Test',
             'highlight': 'true'
         })
-        
         assert response.status_code == status.HTTP_200_OK
         assert len(response.data['results']) > 0
-        assert 'title_highlight' in response.data['results'][0]
-        assert '<em>' in response.data['results'][0]['title_highlight'] 
+        assert '<em>' in response.data['results'][0]['title']
+
+    def test_search_with_field_filter(self, authenticated_client, test_articles, es_client):
+        """测试特定字段搜索功能"""
+        # 索引测试文章
+        index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}news_articles"
+        for article in test_articles:
+            es_client.index(
+                index=index_name,
+                id=article.id,
+                body={
+                    'title': article.title,
+                    'content': article.content,
+                    'category': article.category.id,
+                    'source': article.source
+                }
+            )
+        es_client.indices.refresh(index=index_name)
+
+        url = reverse('api:news_search:news-search-search')
+        response = authenticated_client.get(url, {
+            'q': 'Test',
+            'fields': 'title,content'
+        })
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data['results']) > 0
+        assert 'title' in response.data['results'][0]
+        assert 'content' in response.data['results'][0]

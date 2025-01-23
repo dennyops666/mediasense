@@ -22,12 +22,10 @@ router.register('system-status', SystemStatusViewSet, basename='system-status')
 urlpatterns = [
     path('system-status/overview/', SystemStatusViewSet.as_view({'get': 'overview'}), name='system-status-overview'),
     path('system-status/health/', SystemStatusViewSet.as_view({'get': 'health'}), name='system-status-health'),
-    path('system-status/performance/', SystemStatusViewSet.as_view({'get': 'performance'}), name='system-performance'),
     
     path('alert-rules/<int:pk>/enable/', AlertRuleViewSet.as_view({'post': 'enable'}), name='alert-rule-enable'),
     path('alert-rules/<int:pk>/disable/', AlertRuleViewSet.as_view({'post': 'disable'}), name='alert-rule-disable'),
     
-    path('alert-history/<int:pk>/notify/', AlertHistoryViewSet.as_view({'post': 'notify'}), name='alert-history-notify'),
     path('alert-history/<int:pk>/acknowledge/', AlertHistoryViewSet.as_view({'post': 'acknowledge'}), name='alert-history-acknowledge'),
     path('alert-history/<int:pk>/resolve/', AlertHistoryViewSet.as_view({'post': 'resolve'}), name='alert-history-resolve'),
     

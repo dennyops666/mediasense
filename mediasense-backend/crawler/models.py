@@ -29,6 +29,7 @@ class CrawlerConfig(models.Model):
         ),
         default=0,
     )
+    is_active = models.BooleanField("是否激活", default=False)
     last_run_time = models.DateTimeField("上次运行时间", null=True, blank=True)
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
     updated_at = models.DateTimeField("更新时间", auto_now=True)
@@ -39,10 +40,19 @@ class CrawlerConfig(models.Model):
         ordering = ["-updated_at"]
         indexes = [
             models.Index(fields=["status", "-updated_at"]),
+            models.Index(fields=["is_active", "-updated_at"]),
         ]
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        # 同步status和is_active状态
+        if self.status == 1:
+            self.is_active = True
+        else:
+            self.is_active = False
+        super().save(*args, **kwargs)
 
 
 class CrawlerTask(models.Model):
@@ -65,6 +75,7 @@ class CrawlerTask(models.Model):
     result = models.JSONField(null=True, blank=True, verbose_name='执行结果')
     error_message = models.TextField(null=True, blank=True, verbose_name='错误信息')
     retry_count = models.IntegerField(default=0, verbose_name='重试次数')
+    is_test = models.BooleanField(default=False, verbose_name='是否测试任务')
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
     updated_at = models.DateTimeField("更新时间", auto_now=True)
 
@@ -75,10 +86,38 @@ class CrawlerTask(models.Model):
         indexes = [
             models.Index(fields=["config", "-start_time"]),
             models.Index(fields=["status", "-start_time"]),
+            models.Index(fields=["is_test", "-start_time"]),
         ]
 
     def __str__(self):
         return f"{self.config.name} - {self.task_id}"
+
+    def start(self):
+        """开始任务"""
+        self.status = self.Status.RUNNING
+        self.start_time = timezone.now()
+        self.save()
+
+    def complete(self, result=None):
+        """完成任务"""
+        self.status = self.Status.COMPLETED
+        self.end_time = timezone.now()
+        if result:
+            self.result = result
+        self.save()
+
+    def fail(self, error_message):
+        """任务失败"""
+        self.status = self.Status.ERROR
+        self.end_time = timezone.now()
+        self.error_message = error_message
+        self.save()
+
+    def cancel(self):
+        """取消任务"""
+        self.status = self.Status.CANCELLED
+        self.end_time = timezone.now()
+        self.save()
 
 
 class ProxyPool(models.Model):

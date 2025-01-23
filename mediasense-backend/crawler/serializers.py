@@ -13,12 +13,12 @@ class CrawlerConfigSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CrawlerConfig
-        fields = [
+        fields = (
             'id', 'name', 'description', 'source_url', 'crawler_type',
-            'config_data', 'headers', 'interval', 'status', 'last_run_time',
+            'config_data', 'headers', 'interval', 'status', 'is_active',
             'created_at', 'updated_at', 'total_tasks', 'total_items', 'success_rate'
-        ]
-        read_only_fields = ['last_run_time', 'created_at', 'updated_at']
+        )
+        read_only_fields = ('id', 'created_at', 'updated_at')
 
     def validate_interval(self, value):
         """验证抓取间隔"""
@@ -47,6 +47,33 @@ class CrawlerConfigSerializer(serializers.ModelSerializer):
         return round(success / total * 100, 2)
 
 
+class CrawlerConfigBulkSerializer(serializers.ListSerializer):
+    """爬虫配置批量操作序列化器"""
+
+    child = CrawlerConfigSerializer()
+
+    def create(self, validated_data):
+        configs = [CrawlerConfig(**item) for item in validated_data]
+        return CrawlerConfig.objects.bulk_create(configs)
+
+    def update(self, instances, validated_data):
+        instance_hash = {index: instance for index, instance in enumerate(instances)}
+
+        result = [
+            self.child.update(instance_hash[index], attrs)
+            for index, attrs in enumerate(validated_data)
+        ]
+
+        writable_fields = [
+            field for field in self.child.Meta.fields
+            if field not in self.child.Meta.read_only_fields
+        ]
+
+        CrawlerConfig.objects.bulk_update(result, writable_fields)
+
+        return result
+
+
 class CrawlerTaskSerializer(serializers.ModelSerializer):
     """
     爬虫任务序列化器
@@ -56,11 +83,15 @@ class CrawlerTaskSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = CrawlerTask
-        fields = [
-            'id', 'config', 'config_name', 'status', 'start_time', 'end_time',
-            'result', 'error_message', 'created_at', 'updated_at', 'items_count'
-        ]
-        read_only_fields = ['created_at', 'updated_at']
+        fields = (
+            'id', 'config', 'task_id', 'status', 'result',
+            'error_message', 'start_time', 'end_time', 'is_test',
+            'created_at', 'updated_at', 'config_name', 'items_count'
+        )
+        read_only_fields = (
+            'id', 'task_id', 'status', 'result', 'error_message',
+            'start_time', 'end_time', 'created_at', 'updated_at'
+        )
 
     def get_items_count(self, obj):
         """获取抓取数量"""
@@ -72,6 +103,29 @@ class CrawlerTaskDetailSerializer(CrawlerTaskSerializer):
 
     config = CrawlerConfigSerializer(read_only=True)
 
-    class Meta(CrawlerTaskSerializer.Meta):
-        fields = CrawlerTaskSerializer.Meta.fields + ['result']
-        read_only_fields = fields
+
+class CrawlerTaskBulkSerializer(serializers.ListSerializer):
+    """爬虫任务批量操作序列化器"""
+
+    child = CrawlerTaskSerializer()
+
+    def create(self, validated_data):
+        tasks = [CrawlerTask(**item) for item in validated_data]
+        return CrawlerTask.objects.bulk_create(tasks)
+
+    def update(self, instances, validated_data):
+        instance_hash = {index: instance for index, instance in enumerate(instances)}
+
+        result = [
+            self.child.update(instance_hash[index], attrs)
+            for index, attrs in enumerate(validated_data)
+        ]
+
+        writable_fields = [
+            field for field in self.child.Meta.fields
+            if field not in self.child.Meta.read_only_fields
+        ]
+
+        CrawlerTask.objects.bulk_update(result, writable_fields)
+
+        return result

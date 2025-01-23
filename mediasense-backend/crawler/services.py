@@ -233,31 +233,54 @@ class CrawlerService:
     @staticmethod
     def _parse_rss(content):
         """解析RSS内容"""
-        feed = feedparser.parse(content)
-        items = []
-        
-        for entry in feed.entries:
-            item = {
-                'title': entry.title,
-                'link': entry.link,
-                'description': entry.get('description', ''),
-                'pub_date': entry.get('published', ''),
-                'author': entry.get('author', ''),
-                'category': [tag.term for tag in entry.get('tags', [])],
-                'guid': entry.get('id', '')
-            }
+        try:
+            logger.info("开始解析RSS内容")
+            feed = feedparser.parse(content)
             
-            # 提取图片URL
-            if 'media_content' in entry:
-                item['image_url'] = entry.media_content[0]['url']
-            elif 'enclosures' in entry and entry.enclosures:
-                item['image_url'] = entry.enclosures[0].get('href', '')
-            else:
-                item['image_url'] = ''
+            if feed.bozo:  # 检查是否有解析错误
+                logger.error(f"RSS解析错误: {feed.bozo_exception}")
+                return []
                 
-            items.append(item)
+            if not hasattr(feed, 'entries'):
+                logger.error("RSS源没有entries属性")
+                return []
+                
+            items = []
+            for entry in feed.entries:
+                try:
+                    # 提取必要字段
+                    item = {
+                        'title': entry.get('title', '').strip(),
+                        'link': entry.get('link', '').strip(),
+                        'description': entry.get('description', '').strip(),
+                        'pub_date': entry.get('published', entry.get('pubDate', '')),
+                        'author': entry.get('author', '').strip(),
+                        'source': feed.feed.get('title', '未知来源'),
+                        'category': [tag.term for tag in entry.get('tags', [])] if hasattr(entry, 'tags') else [],
+                        'guid': entry.get('id', entry.get('guid', '')).strip()
+                    }
+                    
+                    # 提取图片URL
+                    if 'media_content' in entry:
+                        media_urls = [media['url'] for media in entry.media_content if 'url' in media]
+                        item['images'] = media_urls
+                    elif 'enclosures' in entry:
+                        image_urls = [enc['href'] for enc in entry.enclosures if enc.get('type', '').startswith('image/')]
+                        item['images'] = image_urls
+                        
+                    logger.debug(f"解析RSS条目: {item}")
+                    items.append(item)
+                    
+                except Exception as e:
+                    logger.error(f"处理RSS条目时出错: {str(e)}", exc_info=True)
+                    continue
+                    
+            logger.info(f"RSS解析完成，共获取{len(items)}条数据")
+            return items
             
-        return items
+        except Exception as e:
+            logger.error(f"RSS解析失败: {str(e)}", exc_info=True)
+            return []
         
     @staticmethod
     def _parse_api(data: dict) -> List[dict]:
@@ -406,74 +429,81 @@ class CrawlerService:
 
     @staticmethod
     def _clean_text(text: str) -> str:
-        """清洗文本内容"""
+        """清理文本内容"""
         if not text:
-            return ''
+            return ""
+            
         # 移除HTML标签
         text = re.sub(r'<[^>]+>', '', text)
-        # 移除多余空白字符
+        # 移除多余的空白字符
         text = re.sub(r'\s+', ' ', text)
         # 移除特殊字符
         text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
         return text.strip()
-    
+
     @staticmethod
     def _filter_item(item: Dict) -> bool:
-        """过滤新闻文章"""
-        # 只检查标题和URL是否存在
-        if not item.get('title') or not item.get('url'):
+        """过滤新闻条目"""
+        logger.debug(f"开始过滤新闻条目: {item}")
+        
+        # 检查必要字段
+        if not item.get('title') or not item.get('link'):
+            logger.warning(f"缺少必要字段: title={item.get('title')}, link={item.get('link')}")
             return False
             
         # 检查标题长度
-        if len(item.get('title', '')) > 200:
+        if len(item['title']) < 2:
+            logger.warning(f"标题长度不足: {item['title']}")
             return False
             
+        # 检查链接格式
+        if not item['link'].startswith(('http://', 'https://')):
+            logger.warning(f"链接格式错误: {item['link']}")
+            return False
+            
+        logger.info(f"通过过滤: title={item['title']}, link={item['link']}")
         return True
 
     @staticmethod
     def _parse_datetime(date_str: str) -> Optional[datetime.datetime]:
-        """
-        解析多种格式的时间字符串
-        """
+        """解析日期时间字符串"""
         if not date_str:
-            return datetime.datetime.now()
-
-        # 尝试解析时间戳（新浪新闻格式）
-        if date_str.isdigit():
-            return datetime.datetime.fromtimestamp(int(date_str))
+            return None
             
-        # 尝试解析标准格式（网易新闻格式：2025-01-21 18:17:24）
         try:
-            return datetime.datetime.strptime(date_str, '%Y-%m-%d %H:%M:%S')
-        except:
-            pass
-
-        # 尝试解析斜杠格式（凤凰新闻格式：2018/08/16 07:49:43）
-        try:
-            return datetime.datetime.strptime(date_str, '%Y/%m/%d %H:%M:%S')
-        except:
-            pass
-
-        # 尝试其他常见格式
-        formats = [
-            '%Y-%m-%d',
-            '%Y/%m/%d',
-            '%Y-%m-%d %H:%M',
-            '%Y/%m/%d %H:%M',
-            '%Y-%m-%dT%H:%M:%S',
-            '%Y-%m-%dT%H:%M:%SZ',
-            '%Y-%m-%dT%H:%M:%S.%f',
-            '%Y-%m-%dT%H:%M:%S.%fZ',
-        ]
-
-        for fmt in formats:
-            try:
-                return datetime.datetime.strptime(date_str, fmt)
-            except:
-                continue
-
-        logger.error(f"无法解析时间字符串: {date_str}")
-        return datetime.datetime.now()
+            # 尝试直接解析
+            dt = parse_datetime(date_str)
+            if dt:
+                return dt
+                
+            # 尝试常见的日期格式
+            formats = [
+                '%Y-%m-%d %H:%M:%S',
+                '%Y-%m-%d %H:%M',
+                '%Y-%m-%d',
+                '%Y年%m月%d日 %H:%M:%S',
+                '%Y年%m月%d日 %H:%M',
+                '%Y年%m月%d日',
+                '%a, %d %b %Y %H:%M:%S %z',  # RSS常用格式
+                '%a, %d %b %Y %H:%M:%S %Z',
+                '%Y-%m-%dT%H:%M:%S%z',       # ISO格式
+                '%Y-%m-%dT%H:%M:%S.%f%z'
+            ]
+            
+            for fmt in formats:
+                try:
+                    dt = datetime.datetime.strptime(date_str, fmt)
+                    if not dt.tzinfo:
+                        dt = dt.replace(tzinfo=pytz.UTC)
+                    return dt
+                except ValueError:
+                    continue
+                    
+            return None
+            
+        except Exception as e:
+            logger.error(f"日期解析失败: {date_str}, 错误: {str(e)}")
+            return None
 
     @staticmethod
     def _get_system_time() -> datetime.datetime:
@@ -494,7 +524,7 @@ class CrawlerService:
 
         for item in items:
             title = item.get('title', '')
-            url = item.get('url', '')
+            url = item.get('url', '') or item.get('link', '')  # 同时支持url和link字段
             
             if not title or not url:
                 logger.warning(f"标题或URL为空，跳过: {title}")
@@ -511,12 +541,12 @@ class CrawlerService:
                 # 准备数据
                 data = {
                     'title': title,
-                    'content': item.get('content', ''),
-                    'summary': item.get('summary', ''),
+                    'content': item.get('content', '') or item.get('description', ''),  # 同时支持content和description字段
+                    'summary': item.get('summary', '') or item.get('description', ''),  # 同时支持summary和description字段
                     'source': source,
                     'author': item.get('author', ''),
                     'url': url,
-                    'publish_time': item.get('pub_date')
+                    'publish_time': item.get('pub_date') or item.get('pubDate', '')  # 同时支持pub_date和pubDate字段
                 }
                 
                 # 使用序列化器创建文章

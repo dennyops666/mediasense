@@ -179,35 +179,37 @@ LOGGING = {
     'disable_existing_loggers': False,
     'formatters': {
         'verbose': {
-            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
-            'style': '{',
+            'format': '[%(asctime)s: %(levelname)s/%(processName)s] %(message)s'
         },
         'simple': {
-            'format': '{levelname} {message}',
-            'style': '{',
+            'format': '%(levelname)s %(message)s'
         },
     },
     'handlers': {
-        'file': {
+        'console': {
+            'class': 'logging.StreamHandler',
             'level': 'DEBUG',
-            'class': 'logging.FileHandler',
-            'filename': os.path.join(BASE_DIR, 'logs/django.log'),
             'formatter': 'verbose',
         },
-        'console': {
-            'level': 'DEBUG',
-            'class': 'logging.StreamHandler',
-            'formatter': 'simple',
+        'celery': {
+            'class': 'logging.FileHandler',
+            'filename': 'logs/celery.log',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': 'logs/django.log',
+            'formatter': 'verbose',
         },
     },
     'loggers': {
         'django': {
-            'handlers': ['file', 'console'],
+            'handlers': ['console', 'file'],
             'level': 'INFO',
             'propagate': True,
         },
         'crawler': {
-            'handlers': ['file', 'console'],
+            'handlers': ['console', 'celery'],
             'level': 'DEBUG',
             'propagate': True,
         },

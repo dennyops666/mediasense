@@ -92,38 +92,63 @@ class BatchAnalysisTaskSerializer(serializers.ModelSerializer):
 
     duration = serializers.FloatField(read_only=True)
     success_rate = serializers.FloatField(read_only=True)
+    news_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True)
+    analysis_types = serializers.ListField(child=serializers.CharField(), write_only=True)
 
     class Meta:
         model = BatchAnalysisTask
         fields = [
             "id",
-            "created_by",
+            "name",
+            "rule",
             "news_ids",
             "analysis_types",
             "status",
-            "total_articles",
-            "processed_articles",
-            "success_articles",
+            "total_count",
+            "processed",
+            "success",
+            "failed",
             "error_message",
             "created_at",
             "started_at",
             "completed_at",
             "duration",
             "success_rate",
+            "created_by",
+            "config",
         ]
         read_only_fields = [
-            "created_by",
+            "id",
             "status",
-            "total_articles",
-            "processed_articles",
-            "success_articles",
+            "total_count",
+            "processed",
+            "success",
+            "failed",
             "error_message",
             "created_at",
             "started_at",
             "completed_at",
             "duration",
             "success_rate",
+            "created_by",
+            "config",
         ]
+
+    def create(self, validated_data):
+        news_ids = validated_data.pop('news_ids', [])
+        analysis_types = validated_data.pop('analysis_types', [])
+        validated_data['config'] = {
+            'news_ids': news_ids,
+            'analysis_types': analysis_types
+        }
+        return super().create(validated_data)
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if instance.config:
+            data['news_ids'] = instance.config.get('news_ids', [])
+            data['analysis_types'] = instance.config.get('analysis_types', [])
+        return data
 
 
 class BatchAnalysisResultSerializer(serializers.ModelSerializer):
@@ -239,6 +264,7 @@ class NotificationSubscriptionSerializer(serializers.ModelSerializer):
         model = NotificationSubscription
         fields = [
             "id",
+            "user",
             "email_enabled",
             "websocket_enabled",
             "notify_on_complete",
@@ -248,7 +274,13 @@ class NotificationSubscriptionSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
-        read_only_fields = ["id", "created_at", "updated_at"]
+        read_only_fields = ["id", "user", "created_at", "updated_at"]
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        if request and hasattr(request, 'user'):
+            validated_data['user'] = request.user
+        return super().create(validated_data)
 
 
 class AnalysisNotificationSerializer(serializers.ModelSerializer):

@@ -14,6 +14,7 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 from django_filters.rest_framework import DjangoFilterBackend
+from rest_framework.pagination import PageNumberPagination
 
 from custom_auth.permissions import ActionBasedPermission
 from .models import (
@@ -37,6 +38,12 @@ from .serializers import (
 from .filters import NewsFilter
 
 
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
 class NewsViewSet(viewsets.ModelViewSet):
     """新闻管理视图集."""
 
@@ -47,6 +54,7 @@ class NewsViewSet(viewsets.ModelViewSet):
     filterset_class = NewsFilter
     search_fields = ['title', 'content']
     ordering_fields = ['publish_time', 'created_at']
+    pagination_class = StandardResultsSetPagination
 
     @action(detail=False, methods=['get'])
     def categories(self, request):

@@ -62,6 +62,13 @@ class AnalysisResult(models.Model):
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
     is_valid = models.BooleanField(default=True, verbose_name="是否有效")
     error_message = models.TextField(blank=True, verbose_name="错误信息")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_analysis_results",
+        verbose_name="创建者"
+    )
 
     class Meta:
         verbose_name = "分析结果"
@@ -96,32 +103,72 @@ class BatchAnalysisTask(models.Model):
         ('pending', '等待中'),
         ('processing', '处理中'),
         ('completed', '已完成'),
-        ('failed', '失败')
+        ('failed', '失败'),
+        ('cancelled', '已取消')
     )
 
-    status = models.CharField('状态', max_length=20, choices=STATUS_CHOICES, default='pending')
-    total_count = models.IntegerField('总数', default=0)
-    processed = models.IntegerField('已处理', default=0)
-    success = models.IntegerField('成功数', default=0)
-    failed = models.IntegerField('失败数', default=0)
-    error_message = models.TextField('错误信息', null=True, blank=True)
-    created_at = models.DateTimeField('创建时间', auto_now_add=True)
-    completed_at = models.DateTimeField('完成时间', null=True, blank=True)
+    name = models.CharField(max_length=100, verbose_name="任务名称", default="批量分析任务")
+    rule = models.ForeignKey(
+        AnalysisRule, 
+        on_delete=models.SET_NULL, 
+        null=True,
+        blank=True,
+        related_name="batch_tasks", 
+        verbose_name="分析规则"
+    )
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending', verbose_name="任务状态")
+    total_count = models.IntegerField(default=0, verbose_name="总数量")
+    processed = models.IntegerField(default=0, verbose_name="已处理数量")
+    success = models.IntegerField(default=0, verbose_name="成功数量")
+    failed = models.IntegerField(default=0, verbose_name="失败数量")
+    error_message = models.TextField(blank=True, null=True, verbose_name="错误信息")
+    created_at = models.DateTimeField(default=timezone.now, verbose_name="创建时间")
+    started_at = models.DateTimeField(null=True, blank=True, verbose_name="开始时间")
+    completed_at = models.DateTimeField(null=True, blank=True, verbose_name="完成时间")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_batch_tasks",
+        verbose_name="创建者"
+    )
+    config = models.JSONField(default=dict, verbose_name="配置信息", help_text="包含news_ids和analysis_types等配置")
 
     class Meta:
-        db_table = 'ai_service_batchanalysistask'
-        verbose_name = '批量分析任务'
-        verbose_name_plural = verbose_name
+        verbose_name = "批量分析任务"
+        verbose_name_plural = "批量分析任务"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["rule"]),
+        ]
 
     def __str__(self):
-        return f'BatchAnalysisTask {self.id} ({self.status})'
+        return f"{self.name} ({self.get_status_display()})"
+
+    def save(self, *args, **kwargs):
+        if not self.name and self.rule:
+            # 如果没有提供名称，使用规则名称和时间戳生成默认名称
+            timestamp = timezone.now().strftime("%Y%m%d_%H%M%S")
+            self.name = f"{self.rule.name}_批量分析_{timestamp}"
+        
+        # 确保config字段包含必要的键
+        if not isinstance(self.config, dict):
+            self.config = {}
+        if 'news_ids' not in self.config:
+            self.config['news_ids'] = []
+        if 'analysis_types' not in self.config:
+            self.config['analysis_types'] = []
+        
+        super().save(*args, **kwargs)
 
     @property
     def duration(self):
         """任务持续时间(秒)"""
-        if not self.completed_at:
+        if not self.completed_at or not self.started_at:
             return None
-        return (self.completed_at - self.created_at).total_seconds()
+        return (self.completed_at - self.started_at).total_seconds()
 
     @property
     def success_rate(self):

@@ -1,4 +1,5 @@
 from django.contrib.auth import get_user_model
+from django.contrib.auth.password_validation import validate_password
 from django.utils import timezone
 from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
@@ -13,29 +14,67 @@ class UserSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = User
-        fields = ("id", "username", "email", "user_type", "date_joined", "last_login")
-        read_only_fields = ("id", "date_joined", "last_login")
+        fields = ('id', 'username', 'email', 'is_active', 'date_joined', 'last_login')
+        read_only_fields = ('id', 'date_joined', 'last_login')
 
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
-    """自定义令牌获取序列化器"""
+    """自定义令牌序列化器"""
 
-    def validate(self, attrs):
-        """验证用户凭据"""
-        # 先调用父类的验证方法获取token
-        data = super().validate(attrs)
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        # 添加自定义声明
+        token['username'] = user.username
+        token['email'] = user.email
+        token['is_staff'] = user.is_staff
+        return token
 
-        # 获取用户
-        user = self.user
 
-        # 检查用户是否被封禁
-        if not user.is_active:
-            raise AuthenticationFailed("账号已被封禁")
+class UserProfileSerializer(serializers.ModelSerializer):
+    """用户档案序列化器"""
 
-        # 更新最后登录时间
-        user.last_login = timezone.now()
-        user.save(update_fields=['last_login'])
+    class Meta:
+        model = User
+        fields = ('id', 'username', 'email', 'first_name', 'last_name', 'is_active')
+        read_only_fields = ('id', 'username', 'email', 'is_active')
 
-        # 返回用户信息和令牌
-        data['user'] = UserSerializer(user).data
-        return data
+
+class ChangePasswordSerializer(serializers.Serializer):
+    """修改密码序列化器"""
+
+    old_password = serializers.CharField(required=True)
+    new_password = serializers.CharField(required=True)
+
+    def validate_old_password(self, value):
+        user = self.context['request'].user
+        if not user.check_password(value):
+            raise serializers.ValidationError("旧密码不正确")
+        return value
+
+    def validate_new_password(self, value):
+        validate_password(value)
+        return value
+
+    def save(self, **kwargs):
+        user = self.context['request'].user
+        user.set_password(self.validated_data['new_password'])
+        user.save()
+        return user
+
+
+class ResetPasswordSerializer(serializers.Serializer):
+    """重置密码序列化器"""
+
+    email = serializers.EmailField(required=True)
+
+    def validate_email(self, value):
+        if not User.objects.filter(email=value).exists():
+            raise serializers.ValidationError("该邮箱未注册")
+        return value
+
+    def save(self, **kwargs):
+        email = self.validated_data['email']
+        user = User.objects.get(email=email)
+        # TODO: 发送重置密码邮件
+        return user

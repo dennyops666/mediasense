@@ -85,6 +85,15 @@ class NewsArticle(models.Model):
     review_time = models.DateTimeField(_("审核时间"), null=True, blank=True)
     review_comment = models.TextField(_("审核意见"), blank=True)
 
+    # 创建者
+    created_by = models.ForeignKey(
+        User,
+        verbose_name=_("创建者"),
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="created_articles",
+    )
+
     class Meta:
         verbose_name = _("新闻文章")
         verbose_name_plural = _("新闻文章")

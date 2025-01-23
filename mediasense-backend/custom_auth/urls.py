@@ -4,19 +4,24 @@ from rest_framework_simplejwt.views import TokenRefreshView, TokenVerifyView
 
 from .views import CustomTokenObtainPairView, UserViewSet
 
-# API路由
-router = DefaultRouter()
-router.register(r"users", UserViewSet)
-
 app_name = "custom_auth"
 
+# API路由
+router = DefaultRouter()
+router.register(r"users", UserViewSet, basename="users")
+
 urlpatterns = [
-    # 认证相关
+    # JWT认证相关
     path("token/", CustomTokenObtainPairView.as_view(), name="token_obtain"),
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("token/verify/", TokenVerifyView.as_view(), name="token_verify"),
-    # 获取当前用户信息
+    
+    # 用户相关
     path("me/", UserViewSet.as_view({"get": "me"}), name="users-me"),
-    # 用户管理相关（需要认证）
+    path("profile/", UserViewSet.as_view({"get": "profile", "put": "update_profile"}), name="users-profile"),
+    path("password/change/", UserViewSet.as_view({"post": "change_password"}), name="users-change-password"),
+    path("password/reset/", UserViewSet.as_view({"post": "reset_password"}), name="users-reset-password"),
+    
+    # 用户管理相关（需要管理员权限）
     path("", include(router.urls)),
 ]

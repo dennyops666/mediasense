@@ -12,6 +12,107 @@ from custom_auth.models import User
 
 User = get_user_model()
 
+@pytest.fixture
+def api_client():
+    return APIClient()
+
+@pytest.fixture
+def test_user():
+    return User.objects.create_user(
+        username='testuser',
+        email='test@example.com',
+        password='testpass123'
+    )
+
+@pytest.mark.django_db
+class TestAuthAPI:
+    """认证模块API测试"""
+
+    def test_login_success(self, api_client, test_user):
+        """测试用户登录成功"""
+        url = reverse('api:auth:token_obtain')
+        data = {
+            'username': test_user.username,
+            'password': 'testpass123'
+        }
+        response = api_client.post(url, data)
+        assert response.status_code == status.HTTP_200_OK
+        assert 'access' in response.data
+        assert 'refresh' in response.data
+
+    def test_login_invalid_credentials(self, api_client):
+        """测试无效凭证登录"""
+        url = reverse('api:auth:token_obtain')
+        data = {
+            'username': 'wronguser',
+            'password': 'wrongpass'
+        }
+        response = api_client.post(url, data)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_token_refresh(self, api_client, test_user):
+        """测试刷新令牌"""
+        login_url = reverse('api:auth:token_obtain')
+        refresh_url = reverse('api:auth:token_refresh')
+        
+        # 获取初始 token
+        login_response = api_client.post(login_url, {
+            'username': test_user.username,
+            'password': 'testpass123'
+        })
+        refresh_token = login_response.data['refresh']
+        
+        # 刷新 token
+        response = api_client.post(refresh_url, {'refresh': refresh_token})
+        assert response.status_code == status.HTTP_200_OK
+        assert 'access' in response.data
+
+    def test_token_verify(self, api_client, test_user):
+        """测试验证令牌"""
+        login_url = reverse('api:auth:token_obtain')
+        verify_url = reverse('api:auth:token_verify')
+        
+        # 获取 token
+        login_response = api_client.post(login_url, {
+            'username': test_user.username,
+            'password': 'testpass123'
+        })
+        access_token = login_response.data['access']
+        
+        # 验证 token
+        response = api_client.post(verify_url, {'token': access_token})
+        assert response.status_code == status.HTTP_200_OK
+
+    def test_invalid_token_verify(self, api_client):
+        """测试验证无效令牌"""
+        verify_url = reverse('api:auth:token_verify')
+        response = api_client.post(verify_url, {'token': 'invalid_token'})
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
+    def test_protected_api_with_token(self, api_client, test_user):
+        """测试使用令牌访问受保护的API"""
+        login_url = reverse('api:auth:token_obtain')
+        protected_url = reverse('api:auth:users-me')
+        
+        # 获取 token
+        login_response = api_client.post(login_url, {
+            'username': test_user.username,
+            'password': 'testpass123'
+        })
+        access_token = login_response.data['access']
+        
+        # 使用 token 访问受保护的 API
+        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
+        response = api_client.get(protected_url)
+        assert response.status_code == status.HTTP_200_OK
+        assert response.data['username'] == test_user.username
+
+    def test_protected_api_without_token(self, api_client, test_user):
+        """测试不使用令牌访问受保护的API"""
+        protected_url = reverse('api:auth:users-me')
+        response = api_client.get(protected_url)
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
+
 class TestUserLogin(BaseTestCase):
     """用户登录测试"""
 
