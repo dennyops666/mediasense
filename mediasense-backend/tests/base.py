@@ -61,6 +61,15 @@ class BaseAPITestCase(APITestCase):
         # 设置认证头
         self.client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.access_token}')
         self.async_client.credentials(HTTP_AUTHORIZATION=f'Bearer {self.access_token}')
+        
+        # 清理新闻数据
+        self.clean_news_data()
+
+    def clean_news_data(self):
+        """清理新闻相关数据"""
+        from news.models import NewsArticle, NewsCategory
+        NewsArticle.objects.all().delete()
+        NewsCategory.objects.all().delete()
 
     def _get_token(self, user):
         """获取用户token"""
@@ -77,8 +86,18 @@ class BaseAPITestCase(APITestCase):
 
     def tearDown(self):
         """测试后清理"""
+        # 清理认证信息
         self.client.credentials()
         self.async_client.credentials()
+        
+        # 清理测试数据
+        from news.models import NewsArticle, NewsCategory
+        NewsArticle.objects.all().delete()
+        NewsCategory.objects.all().delete()
+        
+        # 清理用户数据
+        from custom_auth.models import User
+        User.objects.exclude(username='admin').delete()
 
     def get_url(self, path):
         """获取完整的 URL 路径"""

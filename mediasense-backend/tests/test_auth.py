@@ -59,11 +59,17 @@ class TestJWTAuthentication(BaseTestCase):
     """JWT认证测试"""
 
     def setUp(self):
+        """测试前准备"""
         super().setUp()
         self.token_url = reverse('api:custom_auth:token_obtain')
         self.token_refresh_url = reverse('api:custom_auth:token_refresh')
         self.token_verify_url = reverse('api:custom_auth:token_verify')
         self.me_url = reverse('api:custom_auth:users-me')
+        self.protected_url = '/v1/auth/me/'
+
+    def clear_credentials(self):
+        """清除认证信息"""
+        self.client.credentials()
 
     def test_token_obtain_pair(self):
         """测试获取token对"""
@@ -124,10 +130,10 @@ class TestJWTAuthentication(BaseTestCase):
         self.assertEqual(response.data['username'], self.user.username)
 
     def test_protected_endpoint_no_token(self):
-        """测试不使用token访问受保护的端点"""
-        self.clear_credentials()  # 清除认证头
-        response = self.client.get(self.me_url)
-        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+        """测试无token访问受保护接口"""
+        self.clear_credentials()
+        response = self.client.get(self.protected_url)
+        self.assertEqual(response.status_code, 401)
 
     def test_protected_endpoint_expired_token(self):
         """测试使用过期token访问受保护的端点"""

@@ -28,8 +28,19 @@ def authenticated_client(api_client, admin_user):
 class TestNewsCRUD(BaseAPITestCase):
     """测试新闻 CRUD 操作"""
 
+    def setUp(self):
+        """测试前准备"""
+        super().setUp()
+        # 清理已有数据
+        NewsArticle.objects.all().delete()
+        NewsCategory.objects.all().delete()
+
     def test_create_news(self):
         """测试创建新闻"""
+        # 清理已有数据
+        NewsArticle.objects.all().delete()
+        NewsCategory.objects.all().delete()
+        
         category = NewsCategory.objects.create(name='测试分类')
         data = {
             'title': '测试新闻',
@@ -82,6 +93,10 @@ class TestNewsCRUD(BaseAPITestCase):
 
     def test_delete_news(self):
         """测试删除新闻"""
+        # 清理已有数据
+        NewsArticle.objects.all().delete()
+        NewsCategory.objects.all().delete()
+        
         category = NewsCategory.objects.create(name='测试分类')
         news = NewsArticle.objects.create(
             title='测试新闻',
@@ -207,8 +222,19 @@ class TestNewsCategory(BaseAPITestCase):
 class TestNewsViewSet(BaseAPITestCase):
     """测试新闻视图集"""
 
+    def setUp(self):
+        """测试前准备"""
+        super().setUp()
+        # 清理已有数据
+        NewsArticle.objects.all().delete()
+        NewsCategory.objects.all().delete()
+
     def test_list_news(self):
         """测试获取新闻列表"""
+        # 清理已有数据
+        NewsArticle.objects.all().delete()
+        NewsCategory.objects.all().delete()
+        
         category = NewsCategory.objects.create(name='测试分类')
         for i in range(3):
             NewsArticle.objects.create(
@@ -226,8 +252,11 @@ class TestNewsViewSet(BaseAPITestCase):
 
     def test_create_news(self):
         """测试创建新闻"""
-        category = NewsCategory.objects.create(name='测试分类')
+        # 清理已有数据
+        NewsArticle.objects.all().delete()
+        NewsCategory.objects.all().delete()
         
+        category = NewsCategory.objects.create(name='测试分类')
         data = {
             'title': '测试新闻',
             'content': '测试内容',
@@ -235,9 +264,7 @@ class TestNewsViewSet(BaseAPITestCase):
             'url': 'http://example.com/news/1',
             'status': 'draft'
         }
-        
         response = self.client.post(reverse('api:news:news-article-list'), data)
-        
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
         self.assertEqual(NewsArticle.objects.count(), 1)
         news = NewsArticle.objects.first()
@@ -285,6 +312,10 @@ class TestNewsViewSet(BaseAPITestCase):
 
     def test_delete_news(self):
         """测试删除新闻"""
+        # 清理已有数据
+        NewsArticle.objects.all().delete()
+        NewsCategory.objects.all().delete()
+        
         category = NewsCategory.objects.create(name='测试分类')
         news = NewsArticle.objects.create(
             title='测试新闻',
