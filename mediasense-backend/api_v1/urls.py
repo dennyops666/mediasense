@@ -8,4 +8,5 @@ urlpatterns = [
     path("monitoring/", include("monitoring.urls", namespace="monitoring")),
     path("crawler/", include("crawler.urls", namespace="crawler")),
     path("search/", include("news_search.urls", namespace="news_search")),
+    path("ai/", include("ai_service.urls", namespace="ai_service")),
 ]
