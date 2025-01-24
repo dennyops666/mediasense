@@ -131,7 +131,6 @@ class TestCrawlerManagement:
             # 创建任务
             task = CrawlerTask.objects.create(
                 config=config,
-                task_id=response.data['task_id'],
                 status=0  # 未开始状态
             )
             
@@ -146,8 +145,7 @@ class TestCrawlerManagement:
         config = CrawlerConfigFactory(status=1)  # 启用状态
         task = CrawlerTaskFactory(
             config=config,
-            status=1,  # 运行中状态
-            task_id='test_task_id'
+            status=1  # 运行中状态
         )
         
         # 调用禁用接口
@@ -273,7 +271,6 @@ class TestCrawlerManagement:
                 # 创建任务
                 task = CrawlerTask.objects.create(
                     config=config,
-                    task_id=response.data['task_id'],
                     status=2,  # 已完成状态
                     result={
                         'items': [
@@ -310,13 +307,19 @@ class TestCrawlerAPI:
         
         data = {
             'name': 'New Crawler Config',
-            'website': 'http://example.com',
-            'crawl_rules': {
+            'description': 'Test crawler config',
+            'source_url': 'http://example.com',
+            'crawler_type': 1,  # RSS类型
+            'config_data': {
                 'article_selector': 'article',
                 'title_selector': 'h1',
                 'content_selector': '.content'
             },
-            'schedule': '0 0 * * *'
+            'headers': {
+                'User-Agent': 'Mozilla/5.0'
+            },
+            'interval': 60,
+            'status': 1
         }
         response = api_client.post(url, data, format="json")
         assert response.status_code == status.HTTP_201_CREATED
@@ -397,14 +400,19 @@ class TestCrawlerAPI:
         access_token = login_response.data['access']
         api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
         
-        # 创建爬虫任务
+        # 创建任务
         data = {
             'config': test_config.id,
-            'priority': 'high'
+            'is_test': True
         }
         response = api_client.post(url, data, format="json")
         assert response.status_code == status.HTTP_201_CREATED
-        assert response.data['status'] == 'pending'
+        assert response.data['status'] == 0  # 未开始状态
+        
+        # 获取任务列表
+        response = api_client.get(url)
+        assert response.status_code == status.HTTP_200_OK
+        assert len(response.data) > 0
 
     def test_retry_crawler_task(self, api_client, test_user, test_config):
         login_url = reverse('api:auth:token_obtain')
@@ -433,7 +441,7 @@ class TestCrawlerAPI:
 
     def test_bulk_crawler_operations(self, api_client, test_user):
         login_url = reverse('api:auth:token_obtain')
-        url = reverse('api:crawler:crawler-config-list')
+        url = reverse('api:crawler:crawler-config-bulk-create')
         
         # 登录获取 token
         login_response = api_client.post(login_url, {
@@ -443,32 +451,26 @@ class TestCrawlerAPI:
         access_token = login_response.data['access']
         api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
         
-        # 批量创建爬虫配置
+        # 批量创建配置
         data = [
             {
-                'name': 'Bulk Config 1',
-                'website': 'http://example1.com',
-                'crawl_rules': {
+                'name': f'Bulk Config {i}',
+                'description': f'Test bulk config {i}',
+                'source_url': f'http://example{i}.com',
+                'crawler_type': 1,
+                'config_data': {
                     'article_selector': 'article',
-                    'title_selector': 'h1',
-                    'content_selector': '.content'
+                    'title_selector': 'h1'
                 },
-                'schedule': '0 0 * * *'
-            },
-            {
-                'name': 'Bulk Config 2',
-                'website': 'http://example2.com',
-                'crawl_rules': {
-                    'article_selector': 'article',
-                    'title_selector': 'h1',
-                    'content_selector': '.content'
-                },
-                'schedule': '0 0 * * *'
+                'headers': {'User-Agent': 'Mozilla/5.0'},
+                'interval': 60,
+                'status': 1
             }
+            for i in range(3)
         ]
-        response = api_client.post(url, data, format='json')
+        response = api_client.post(url, data, format="json")
         assert response.status_code == status.HTTP_201_CREATED
-        assert len(response.data) == 2
+        assert len(response.data) == 3
 
     def test_crawler_statistics(self, api_client, test_user, test_config):
         login_url = reverse('api:auth:token_obtain')

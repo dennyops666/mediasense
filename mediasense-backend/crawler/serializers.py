@@ -47,31 +47,22 @@ class CrawlerConfigSerializer(serializers.ModelSerializer):
         return round(success / total * 100, 2)
 
 
-class CrawlerConfigBulkSerializer(serializers.ListSerializer):
+class CrawlerConfigBulkSerializer(serializers.ModelSerializer):
     """爬虫配置批量操作序列化器"""
 
-    child = CrawlerConfigSerializer()
+    class Meta:
+        model = CrawlerConfig
+        fields = (
+            'id', 'name', 'description', 'source_url', 'crawler_type',
+            'config_data', 'headers', 'interval', 'status', 'is_active'
+        )
+        read_only_fields = ('id',)
 
-    def create(self, validated_data):
-        configs = [CrawlerConfig(**item) for item in validated_data]
-        return CrawlerConfig.objects.bulk_create(configs)
-
-    def update(self, instances, validated_data):
-        instance_hash = {index: instance for index, instance in enumerate(instances)}
-
-        result = [
-            self.child.update(instance_hash[index], attrs)
-            for index, attrs in enumerate(validated_data)
-        ]
-
-        writable_fields = [
-            field for field in self.child.Meta.fields
-            if field not in self.child.Meta.read_only_fields
-        ]
-
-        CrawlerConfig.objects.bulk_update(result, writable_fields)
-
-        return result
+    def validate_interval(self, value):
+        """验证抓取间隔"""
+        if value < 5:  # 最小5分钟
+            raise serializers.ValidationError("抓取间隔不能小于5分钟")
+        return value
 
 
 class CrawlerTaskSerializer(serializers.ModelSerializer):

@@ -165,6 +165,7 @@ LOGGING = {
     },
 }
 
+# REST Framework配置
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
@@ -172,14 +173,22 @@ REST_FRAMEWORK = {
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
-    'EXCEPTION_HANDLER': 'custom_auth.utils.custom_exception_handler',
-    'NON_FIELD_ERRORS_KEY': 'errors',
-    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
-    'PAGE_SIZE': 10,
-    'UNAUTHENTICATED_USER': None,
-    'UNAUTHENTICATED_TOKEN': None,
+    'EXCEPTION_HANDLER': 'mediasense.utils.custom_exception_handler',
+    'DEFAULT_RENDERER_CLASSES': (
+        'rest_framework.renderers.JSONRenderer',
+    ),
+    'DEFAULT_PARSER_CLASSES': (
+        'rest_framework.parsers.JSONParser',
+        'rest_framework.parsers.FormParser',
+        'rest_framework.parsers.MultiPartParser'
+    ),
+    'NON_FIELD_ERRORS_KEY': 'error',
+    'DEFAULT_PAGINATION_CLASS': None,
+    'FORMAT_SUFFIX_KWARG': None,  # 禁用格式后缀URL模式
+    'URL_FORMAT_OVERRIDE': None,  # 禁用格式覆盖
 }
 
+# JWT配置
 SIMPLE_JWT = {
     'AUTH_HEADER_TYPES': ('Bearer',),
     'USER_ID_FIELD': 'id',

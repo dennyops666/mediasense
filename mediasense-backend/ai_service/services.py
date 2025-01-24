@@ -52,11 +52,17 @@ class AIService:
         self.rate_limit = settings.OPENAI_RATE_LIMIT
         self.rate_limit_window = settings.OPENAI_RATE_LIMIT_WINDOW
         self.cache_ttl = settings.OPENAI_CACHE_TTL
-        self.redis_client = redis.Redis(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            db=settings.REDIS_DB
-        )
+        
+        # 在测试环境中使用本地内存缓存
+        if getattr(settings, 'TESTING', False):
+            self.redis_client = None
+        else:
+            self.redis_client = redis.Redis(
+                host=settings.REDIS_HOST,
+                port=settings.REDIS_PORT,
+                db=settings.REDIS_DB
+            )
+            
         self.rate_limit_key = "ai_service_rate_limit"
         self.rate_limit_max_requests = 5  # 每分钟最多5个请求
         self._request_count = 0

@@ -4,7 +4,8 @@ from .views import NewsSearchViewSet
 
 app_name = 'news_search'
 
-router = DefaultRouter()
+router = DefaultRouter(trailing_slash=False)
+router.include_format_suffixes = False
 router.register(r'search', NewsSearchViewSet, basename='news-search')
 
 urlpatterns = [

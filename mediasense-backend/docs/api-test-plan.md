@@ -196,7 +196,7 @@
 
 #### TC-API-CRAWLER-001：爬虫管理接口测试
 - **优先级**：P2
-- **状态**：Not Started ❌
+- **状态**：Passed ✅
 - **前置条件**：
   1. 已通过认证
   2. 爬虫服务正常运行
@@ -220,9 +220,9 @@
 | TC-API-COMMON-001 | P0 | Passed ✅ | 2025-01-24 | denny | 全部6个测试用例通过 |
 | TC-API-NEWS-001 | P1 | Passed ✅ | 2025-01-24 | denny | 全部26个测试用例通过 |
 | TC-API-MONITOR-001 | P1 | Passed ✅ | 2025-01-24 | denny | 全部18个测试用例通过 |
-| TC-API-SEARCH-001 | P1 | Not Started ❌ | - | - | - |
-| TC-API-AI-001 | P1 | Passed ✅ | 2024-01-24 | denny | 全部24个测试用例通过 |
-| TC-API-CRAWLER-001 | P2 | Not Started ❌ | - | - | - |
+| TC-API-SEARCH-001 | P1 |Passed ✅ | 2025-01-24 | denny  | 全部7个测试用例通过 |
+| TC-API-AI-001 | P1 | Passed ✅ | 2025-01-24 | denny | 全部24个测试用例通过 |
+| TC-API-CRAWLER-001 | P2 |Passed ✅ |2025-01-24 | denny | 全部17个测试用例都通过了 |
 
 ### 5.2 问题记录表
 

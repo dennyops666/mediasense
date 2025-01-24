@@ -1,4 +1,5 @@
 import factory
+import uuid
 from django.utils import timezone
 from django.contrib.auth import get_user_model
 from factory.django import DjangoModelFactory
@@ -254,11 +255,12 @@ class CrawlerTaskFactory(DjangoModelFactory):
         model = CrawlerTask
 
     config = factory.SubFactory(CrawlerConfigFactory)
-    task_id = factory.Sequence(lambda n: f'task_{n}')
     status = 0  # 未开始状态
     start_time = None
     end_time = None
-    result = factory.Dict({})
-    error_message = ''
+    result = None
+    error_message = None
+    retry_count = 0
+    is_test = False
     created_at = factory.LazyFunction(timezone.now)
     updated_at = factory.LazyFunction(timezone.now) 

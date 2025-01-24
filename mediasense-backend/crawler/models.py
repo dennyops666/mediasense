@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+import uuid
 
 
 class CrawlerConfig(models.Model):
@@ -68,7 +69,7 @@ class CrawlerTask(models.Model):
         ERROR = 4, '出错'
 
     config = models.ForeignKey(CrawlerConfig, on_delete=models.CASCADE, verbose_name='爬虫配置')
-    task_id = models.CharField(max_length=36, unique=True, verbose_name='任务ID')
+    task_id = models.CharField(max_length=36, unique=True, verbose_name='任务ID', default=uuid.uuid4)
     status = models.IntegerField(choices=Status.choices, default=Status.PENDING, verbose_name='状态')
     start_time = models.DateTimeField(null=True, blank=True, verbose_name='开始时间')
     end_time = models.DateTimeField(null=True, blank=True, verbose_name='结束时间')

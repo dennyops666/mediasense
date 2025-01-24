@@ -7,7 +7,8 @@ from .views import CustomTokenObtainPairView, UserViewSet
 app_name = "custom_auth"
 
 # API路由
-router = DefaultRouter()
+router = DefaultRouter(trailing_slash=False)
+router.include_format_suffixes = False
 router.register(r"users", UserViewSet, basename="users")
 
 urlpatterns = [

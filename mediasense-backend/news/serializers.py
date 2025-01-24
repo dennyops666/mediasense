@@ -40,26 +40,16 @@ class NewsCategorySerializer(serializers.ModelSerializer):
 
     def get_children(self, obj):
         """获取子分类列表."""
-        # 使用缓存存储子分类
-        cache_key = f'category_children_{obj.id}'
-        children = cache.get(cache_key)
+        queryset = obj.children.filter(is_active=True).prefetch_related(
+            Prefetch(
+                'articles',
+                queryset=NewsArticle.objects.filter(status=NewsArticle.Status.PUBLISHED),
+                to_attr='published_articles'
+            )
+        ).order_by('sort_order')
         
-        if children is None:
-            queryset = obj.children.filter(is_active=True).prefetch_related(
-                Prefetch(
-                    'articles',
-                    queryset=NewsArticle.objects.filter(status=NewsArticle.Status.PUBLISHED),
-                    to_attr='published_articles'
-                )
-            ).order_by('sort_order')
-            
-            serializer = self.__class__(queryset, many=True, context=self.context)
-            children = serializer.data
-            
-            # 缓存结果，设置合理的过期时间
-            cache.set(cache_key, children, timeout=3600)  # 1小时过期
-            
-        return children
+        serializer = self.__class__(queryset, many=True, context=self.context)
+        return serializer.data
 
     def validate(self, data):
         """验证分类数据."""
@@ -88,24 +78,12 @@ class NewsCategorySerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
-        """创建分类时更新缓存."""
-        instance = super().create(validated_data)
-        if instance.parent:
-            cache.delete(f'category_children_{instance.parent.id}')
-        return instance
+        """创建分类."""
+        return super().create(validated_data)
 
     def update(self, instance, validated_data):
-        """更新分类时更新缓存."""
-        old_parent = instance.parent
-        new_instance = super().update(instance, validated_data)
-        
-        # 如果父分类发生变化，需要更新两个父分类的缓存
-        if old_parent:
-            cache.delete(f'category_children_{old_parent.id}')
-        if new_instance.parent and new_instance.parent != old_parent:
-            cache.delete(f'category_children_{new_instance.parent.id}')
-            
-        return new_instance
+        """更新分类."""
+        return super().update(instance, validated_data)
 
 
 class NewsArticleSerializer(serializers.ModelSerializer):

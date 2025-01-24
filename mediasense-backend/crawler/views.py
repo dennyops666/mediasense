@@ -111,8 +111,12 @@ class CrawlerConfigViewSet(viewsets.ModelViewSet):
         """批量创建爬虫配置"""
         serializer = CrawlerConfigBulkSerializer(data=request.data, many=True)
         serializer.is_valid(raise_exception=True)
-        self.perform_bulk_create(serializer)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        configs = [CrawlerConfig(**item) for item in serializer.validated_data]
+        created_configs = CrawlerConfig.objects.bulk_create(configs)
+        return Response(
+            CrawlerConfigBulkSerializer(created_configs, many=True).data,
+            status=status.HTTP_201_CREATED
+        )
 
     @action(detail=False, methods=['put'])
     def bulk_update(self, request):

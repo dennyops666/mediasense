@@ -14,7 +14,8 @@ from .views import (
 
 app_name = "monitoring"
 
-router = DefaultRouter()
+router = DefaultRouter(trailing_slash=False)
+router.include_format_suffixes = False
 router.register('system-metrics', SystemMetricsViewSet, basename='system-metrics')
 router.register('alert-rules', AlertRuleViewSet, basename='alert-rules')
 router.register('alert-history', AlertHistoryViewSet, basename='alert-history')

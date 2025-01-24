@@ -20,11 +20,28 @@ AUTHENTICATION_BACKENDS = [
 # 使用 pytest 测试运行器
 TEST_RUNNER = 'mediasense.test_runner.PytestTestRunner'
 
-# 使用内存数据库进行测试
+# 使用MySQL数据库
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': ':memory:',
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'mediasense',
+        'USER': 'mediasense',
+        'PASSWORD': '123456',
+        'HOST': 'localhost',
+        'PORT': '3306',
+        'CONN_MAX_AGE': 600,
+        'OPTIONS': {
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
+            'charset': 'utf8mb4',
+            'connect_timeout': 20,
+            'isolation_level': 'read committed'
+        },
+        'TEST': {
+            'NAME': 'mediasense',  # 使用相同的数据库
+            'CHARSET': 'utf8mb4',
+            'COLLATION': 'utf8mb4_unicode_ci',
+            'MIGRATE': False,  # 禁用迁移
+        },
     }
 }
 
@@ -62,19 +79,27 @@ MIDDLEWARE = [
     'mediasense.middleware.Custom404Middleware',
 ]
 
-# 使用Redis缓存
+# 配置Redis缓存
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': 'redis://localhost:6379/1',
+        'OPTIONS': {
+            'db': 1,
+            'max_connections': 100,
+            'socket_timeout': 20
+        }
     }
 }
 
-# Redis配置
-REDIS_URL = env('REDIS_URL')
-REDIS_HOST = env('REDIS_HOST')
-REDIS_PORT = env('REDIS_PORT')
-REDIS_DB = 1  # 使用DB 1作为测试数据库
+# Redis主机配置
+REDIS_HOST = 'localhost'
+REDIS_PORT = 6379
+REDIS_DB = 1
+
+# 禁用测试数据库创建
+TEST_DATABASE_CREATE = False
+TEST_DATABASE_PREFIX = ''
 
 # 禁用密码哈希以加快测试速度
 PASSWORD_HASHERS = [

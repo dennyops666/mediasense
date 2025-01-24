@@ -15,11 +15,13 @@ from .serializers import (
     SearchResponseSerializer,
     SuggestQuerySerializer,
     SuggestResultSerializer,
+    SearchSuggestionSerializer,
 )
 from .services import NewsSearchService
 import logging
 from news.models import NewsArticle
 from .documents import NewsArticleDocument
+from .models import SearchSuggestion
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,8 @@ class NewsSearchViewSet(viewsets.ViewSet):
         """搜索新闻"""
         query = request.query_params.get("q", "")
         highlight = request.query_params.get("highlight", "false").lower() == "true"
+        page = int(request.query_params.get("page", 1))
+        page_size = int(request.query_params.get("page_size", 10))
         
         search = NewsArticleDocument.search()
         search = search.query("multi_match", query=query, fields=["title^2", "content"])
@@ -107,6 +111,10 @@ class NewsSearchViewSet(viewsets.ViewSet):
                 number_of_fragments=0
             )
             search = search.highlight("title", "content")
+        
+        # 应用分页
+        start = (page - 1) * page_size
+        search = search[start:start + page_size]
         
         response = search.execute()
         results = []
@@ -126,7 +134,10 @@ class NewsSearchViewSet(viewsets.ViewSet):
         
         return Response({
             "results": results,
-            "total": response.hits.total.value
+            "count": response.hits.total.value,
+            "page": page,
+            "page_size": page_size,
+            "total_pages": (response.hits.total.value + page_size - 1) // page_size
         })
 
     @action(detail=False, methods=["get"])
@@ -166,28 +177,20 @@ class NewsSearchViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"])
     def hot(self, request):
-        """
-        获取热点新闻
-        ---
-        请求参数:
-            - days: 最近几天，默认7天
-            - size: 返回数量，默认10
-        """
-        # 验证请求参数
-        query_serializer = HotArticleQuerySerializer(data=request.query_params)
-        query_serializer.is_valid(raise_exception=True)
-
+        """获取热门搜索"""
         try:
-            # 获取热点新闻
-            hot_articles = self.search_service.hot_articles(
-                days=query_serializer.validated_data["days"], size=query_serializer.validated_data["size"]
-            )
-
+            # 获取热门搜索建议
+            hot_suggestions = SearchSuggestion.objects.filter(
+                is_hot=True
+            ).order_by('-search_count')[:10]
+            
             # 序列化结果
-            response_serializer = HotArticleSerializer(hot_articles, many=True)
-            return Response(response_serializer.data)
-
+            serializer = SearchSuggestionSerializer(hot_suggestions, many=True)
+            return Response(serializer.data)
+            
         except Exception as e:
+            logger.error(f"获取热门搜索失败: {str(e)}")
             return Response(
-                {"message": "获取热点新闻失败", "errors": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                {"message": "获取热门搜索失败", "error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

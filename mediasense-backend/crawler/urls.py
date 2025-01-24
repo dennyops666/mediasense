@@ -4,7 +4,8 @@ from .views import CrawlerConfigViewSet, CrawlerTaskViewSet
 
 app_name = "crawler"
 
-router = DefaultRouter()
+router = DefaultRouter(trailing_slash=False)
+router.include_format_suffixes = False
 router.register('configs', CrawlerConfigViewSet, basename='crawler-config')
 router.register('tasks', CrawlerTaskViewSet, basename='crawler-task')
 
