@@ -251,7 +251,7 @@ class CrawlerService:
                     # 提取必要字段
                     item = {
                         'title': entry.get('title', '').strip(),
-                        'link': entry.get('link', '').strip(),
+                        'source_url': entry.get('link', '').strip(),
                         'description': entry.get('description', '').strip(),
                         'pub_date': entry.get('published', entry.get('pubDate', '')),
                         'author': entry.get('author', '').strip(),
@@ -306,14 +306,14 @@ class CrawlerService:
                             
                         item = {
                             'title': article.get('title', ''),
-                            'url': article.get('url', ''),
+                            'source_url': article.get('url', ''),
                             'content': article.get('intro', ''),
                             'summary': article.get('intro', ''),
                             'author': article.get('author', ''),
                             'category': article.get('categoryid', ''),
                             'pub_date': pub_time
                         }
-                        if item['title'] and item['url'] and item['content']:
+                        if item['title'] and item['source_url'] and item['content']:
                             items.append(item)
                     except Exception as e:
                         logger.error(f"解析新浪新闻数据失败: {str(e)}")
@@ -344,13 +344,13 @@ class CrawlerService:
                                         
                                     item = {
                                         'title': article.get('title', ''),
-                                        'url': article.get('url', ''),
+                                        'source_url': article.get('url', ''),
                                         'content': article.get('digest', ''),
                                         'summary': article.get('digest', ''),
                                         'author': article.get('source', ''),
                                         'pub_date': pub_time
                                     }
-                                    if item['title'] and item['url'] and item['content']:
+                                    if item['title'] and item['source_url'] and item['content']:
                                         news_list.append(item)
                                 except Exception as e:
                                     logger.error(f"解析网易新闻数据失败: {str(e)}")
@@ -379,13 +379,13 @@ class CrawlerService:
                                     
                                 item = {
                                     'title': article.get('title', ''),
-                                    'url': article.get('link', {}).get('url', ''),
+                                    'source_url': article.get('link', {}).get('url', ''),
                                     'content': article.get('description', ''),
                                     'summary': article.get('description', ''),
                                     'author': article.get('source', ''),
                                     'pub_date': pub_time
                                 }
-                                if item['title'] and item['url'] and item['content']:
+                                if item['title'] and item['source_url'] and item['content']:
                                     items.append(item)
                             except Exception as e:
                                 logger.error(f"解析凤凰新闻数据失败: {str(e)}")
@@ -416,7 +416,7 @@ class CrawlerService:
             if title_elem and link_elem:
                 items.append({
                     'title': title_elem.text.strip(),
-                    'link': link_elem['href'],
+                    'source_url': link_elem['href'],
                     'description': desc_elem.text.strip() if desc_elem else '',
                     'pub_date': date_elem.text.strip() if date_elem else '',
                     'author': '',
@@ -447,8 +447,8 @@ class CrawlerService:
         logger.debug(f"开始过滤新闻条目: {item}")
         
         # 检查必要字段
-        if not item.get('title') or not item.get('link'):
-            logger.warning(f"缺少必要字段: title={item.get('title')}, link={item.get('link')}")
+        if not item.get('title') or not item.get('source_url'):
+            logger.warning(f"缺少必要字段: title={item.get('title')}, source_url={item.get('source_url')}")
             return False
             
         # 检查标题长度
@@ -457,11 +457,11 @@ class CrawlerService:
             return False
             
         # 检查链接格式
-        if not item['link'].startswith(('http://', 'https://')):
-            logger.warning(f"链接格式错误: {item['link']}")
+        if not item['source_url'].startswith(('http://', 'https://')):
+            logger.warning(f"链接格式错误: {item['source_url']}")
             return False
             
-        logger.info(f"通过过滤: title={item['title']}, link={item['link']}")
+        logger.info(f"通过过滤: title={item['title']}, source_url={item['source_url']}")
         return True
 
     @staticmethod
@@ -524,15 +524,15 @@ class CrawlerService:
 
         for item in items:
             title = item.get('title', '')
-            url = item.get('url', '') or item.get('link', '')  # 同时支持url和link字段
+            source_url = item.get('source_url', '')
             
-            if not title or not url:
-                logger.warning(f"标题或URL为空，跳过: {title}")
+            if not title or not source_url:
+                logger.warning(f"标题或source_url为空，跳过: {title}")
                 stats['filtered'] += 1
                 continue
 
             # 检查新闻是否已存在
-            if NewsArticle.objects.filter(url=url).exists():
+            if NewsArticle.objects.filter(source_url=source_url).exists():
                 logger.info(f"新闻已存在: {title}")
                 stats['duplicated'] += 1
                 continue
@@ -545,7 +545,7 @@ class CrawlerService:
                     'summary': item.get('summary', '') or item.get('description', ''),  # 同时支持summary和description字段
                     'source': source,
                     'author': item.get('author', ''),
-                    'url': url,
+                    'source_url': source_url,
                     'publish_time': item.get('pub_date') or item.get('pubDate', '')  # 同时支持pub_date和pubDate字段
                 }
                 
@@ -608,6 +608,6 @@ class CrawlerService:
         import datetime
         start_time = datetime.datetime.now() - datetime.timedelta(days=1)
         return NewsArticle.objects.filter(
-            url=url,
+            source_url=url,
             created_at__gte=start_time
         ).exists()

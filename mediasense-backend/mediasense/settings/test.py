@@ -20,33 +20,20 @@ AUTHENTICATION_BACKENDS = [
 # 使用 pytest 测试运行器
 TEST_RUNNER = 'mediasense.test_runner.PytestTestRunner'
 
-# 使用MySQL数据库
+# 使用SQLite作为测试数据库
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'mediasense',
-        'USER': 'mediasense',
-        'PASSWORD': '123456',
-        'HOST': 'localhost',
-        'PORT': '3306',
-        'CONN_MAX_AGE': 600,
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            'charset': 'utf8mb4',
-            'connect_timeout': 20,
-            'isolation_level': 'read committed'
-        },
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': ':memory:',  # 使用内存数据库
         'TEST': {
-            'NAME': 'mediasense',  # 使用相同的数据库
-            'CHARSET': 'utf8mb4',
-            'COLLATION': 'utf8mb4_unicode_ci',
-            'MIGRATE': False,  # 禁用迁移
+            'NAME': ':memory:',
         },
     }
 }
 
-# 配置数据库并发设置
+# 在测试环境中使用单一数据库
 DATABASE_ROUTERS = []
+DATABASE_APPS_MAPPING = {}
 
 # 禁用不必要的应用
 INSTALLED_APPS = [
@@ -76,7 +63,9 @@ MIDDLEWARE = [
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'mediasense.middleware.Custom404Middleware',
+    'mediasense.middleware.routing.RoutingMiddleware',
+    'mediasense.middleware.rate_limit.RateLimitMiddleware',
+    'mediasense.middleware.custom_404.Custom404Middleware',
 ]
 
 # 配置Redis缓存
@@ -97,8 +86,8 @@ REDIS_HOST = 'localhost'
 REDIS_PORT = 6379
 REDIS_DB = 1
 
-# 禁用测试数据库创建
-TEST_DATABASE_CREATE = False
+# 启用测试数据库创建
+TEST_DATABASE_CREATE = True
 TEST_DATABASE_PREFIX = ''
 
 # 禁用密码哈希以加快测试速度
@@ -181,4 +170,36 @@ LOGGING = {
         'handlers': ['null'],
         'level': 'CRITICAL',
     },
+}
+
+# 服务注册配置
+SERVICE_REGISTRY = {
+    'news': 'http://localhost:8000/api/news',
+    'search': 'http://localhost:8000/api/search',
+    'ai': 'http://localhost:8000/api/ai',
+    'crawler': 'http://localhost:8000/api/crawler',
+    'monitoring': 'http://localhost:8000/api/monitoring'
+}
+
+# API网关配置
+API_GATEWAY = {
+    'RATE_LIMIT': {
+        'enabled': True,
+        'requests_per_minute': 60,
+        'backend': 'redis',
+        'location': 'rate_limit'
+    },
+    'LOAD_BALANCING': {
+        'enabled': True,
+        'strategy': 'round_robin',
+        'replicas': 2
+    },
+    'SERVICE_REGISTRY': SERVICE_REGISTRY,
+    'ROUTE_CONFIG': {
+        '/api/news/': 'news',
+        '/api/search/': 'search',
+        '/api/ai/': 'ai',
+        '/api/crawler/': 'crawler',
+        '/api/monitoring/': 'monitoring'
+    }
 }

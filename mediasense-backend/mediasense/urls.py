@@ -21,5 +21,10 @@ from django.urls import path, include
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('api_v1.urls', namespace='api')),
-    path('news-search/', include('news_search.urls', namespace='news-search')),
+    path('api/auth/', include('custom_auth.urls', namespace='auth')),
+    path('api/news/', include('news.urls', namespace='news')),
+    path('api/search/', include('news_search.urls', namespace='search')),
+    path('api/ai/', include('ai_service.urls', namespace='ai')),
+    path('api/crawler/', include('crawler.urls', namespace='crawler')),
+    path('api/monitoring/', include('monitoring.urls', namespace='monitoring')),
 ]

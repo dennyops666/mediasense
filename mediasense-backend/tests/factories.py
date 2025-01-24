@@ -4,6 +4,8 @@ from django.utils import timezone
 from django.contrib.auth import get_user_model
 from factory.django import DjangoModelFactory
 from asgiref.sync import sync_to_async
+from custom_auth.models import Role, Permission
+from faker import Faker
 
 from monitoring.models import (
     SystemMetrics, AlertRule, AlertHistory,
@@ -13,6 +15,7 @@ from crawler.models import CrawlerConfig, CrawlerTask
 from news.models import NewsArticle, NewsCategory
 
 User = get_user_model()
+fake = Faker()
 
 class UserFactory(DjangoModelFactory):
     """用户工厂类"""
@@ -66,7 +69,7 @@ class NewsArticleFactory(DjangoModelFactory, AsyncFactoryMixin):
 
     title = factory.Sequence(lambda n: f'测试新闻{n}')
     content = factory.LazyAttribute(lambda obj: f'这是{obj.title}的内容')
-    url = factory.LazyAttribute(lambda obj: f'https://example.com/news/{obj.title}')
+    source_url = factory.LazyAttribute(lambda obj: f'https://example.com/news/{obj.title}')
     source = '测试来源'
     summary = factory.LazyAttribute(lambda obj: f'这是{obj.title}的摘要')
     author = '测试作者'
@@ -225,42 +228,91 @@ class AlertNotificationConfigFactory(AsyncFactoryMixin, DjangoModelFactory):
     is_active = True
     user = factory.SubFactory(UserFactory)
 
-class CrawlerConfigFactory(DjangoModelFactory):
+class CrawlerConfigFactory(DjangoModelFactory, AsyncFactoryMixin):
     """爬虫配置工厂类"""
 
     class Meta:
         model = CrawlerConfig
 
-    name = factory.Sequence(lambda n: f'Crawler {n}')
-    description = factory.Faker('text')
-    source_url = factory.Faker('url')
+    name = factory.Sequence(lambda n: f'测试爬虫配置{n}')
+    description = factory.LazyAttribute(lambda obj: f'这是{obj.name}的描述')
+    source_url = factory.Sequence(lambda n: f'https://example.com/feed/{n}')
     crawler_type = 1  # RSS类型
     config_data = factory.Dict({
-        'categories': ['news', 'tech'],
-        'encoding': 'utf-8',
-        'timeout': 30
+        'parser': 'xml',
+        'item_path': 'channel.item'
     })
     headers = factory.Dict({
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        'User-Agent': 'Mozilla/5.0'
     })
     interval = 60
-    status = 1  # 启用状态
-    created_at = factory.LazyFunction(timezone.now)
-    updated_at = factory.LazyFunction(timezone.now)
+    max_retries = 3
+    retry_delay = 60
+    status = 1
+    is_active = True
 
-class CrawlerTaskFactory(DjangoModelFactory):
+class CrawlerTaskFactory(DjangoModelFactory, AsyncFactoryMixin):
     """爬虫任务工厂类"""
 
     class Meta:
         model = CrawlerTask
 
     config = factory.SubFactory(CrawlerConfigFactory)
-    status = 0  # 未开始状态
-    start_time = None
-    end_time = None
-    result = None
-    error_message = None
+    task_id = factory.LazyFunction(lambda: str(uuid.uuid4()))
+    status = CrawlerTask.Status.PENDING
+    start_time = factory.LazyFunction(timezone.now)
+    result = factory.Dict({
+        'total': 0,
+        'success': 0,
+        'failed': 0
+    })
     retry_count = 0
     is_test = False
+
+class PermissionFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Permission
+        django_get_or_create = ('name',)
+
+    name = factory.Sequence(lambda n: f'permission_{n}')
+    description = factory.LazyAttribute(lambda obj: f'Description for {obj.name}')
+
+class RoleFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = Role
+        django_get_or_create = ('name',)
+
+    name = factory.Sequence(lambda n: f'role_{n}')
+    description = factory.LazyAttribute(lambda obj: f'Description for {obj.name}')
+
+class CategoryFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = 'news.NewsCategory'
+        django_get_or_create = ('name',)
+
+    name = factory.Sequence(lambda n: f'category_{n}')
+    description = factory.LazyAttribute(lambda obj: f'Description for {obj.name}')
+    level = 1
+    sort_order = factory.Sequence(lambda n: n)
+    is_active = 1
+
+class NewsFactory(factory.django.DjangoModelFactory):
+    class Meta:
+        model = 'news.NewsArticle'
+
+    title = factory.Sequence(lambda n: f'news_title_{n}')
+    content = factory.LazyAttribute(lambda obj: f'Content for {obj.title}')
+    summary = factory.LazyAttribute(lambda obj: f'Summary for {obj.title}')
+    source = factory.Sequence(lambda n: f'source_{n}')
+    author = factory.Sequence(lambda n: f'author_{n}')
+    url = factory.Sequence(lambda n: f'http://example.com/news/{n}')
+    category = factory.SubFactory(CategoryFactory)
+    tags = factory.List([factory.Sequence(lambda n: f'tag_{n}')])
+    status = 'draft'
+    sentiment_score = factory.Faker('pyfloat', min_value=-1, max_value=1)
+    read_count = factory.Sequence(lambda n: n)
+    like_count = factory.Sequence(lambda n: n)
+    comment_count = factory.Sequence(lambda n: n)
     created_at = factory.LazyFunction(timezone.now)
-    updated_at = factory.LazyFunction(timezone.now) 
+    updated_at = factory.LazyFunction(timezone.now)
+    created_by = factory.SubFactory(UserFactory) 

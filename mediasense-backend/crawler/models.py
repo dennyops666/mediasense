@@ -22,6 +22,8 @@ class CrawlerConfig(models.Model):
     config_data = models.JSONField("配置数据", default=dict)
     headers = models.JSONField("请求头", default=dict)
     interval = models.IntegerField("抓取间隔(分钟)", default=60)
+    max_retries = models.IntegerField("最大重试次数", default=3)
+    retry_delay = models.IntegerField("重试延迟(秒)", default=60)
     status = models.IntegerField(
         "状态",
         choices=(

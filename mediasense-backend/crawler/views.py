@@ -5,6 +5,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from django.db.models import Count, Q
 import sys
+import uuid
 
 from .models import CrawlerConfig, CrawlerTask
 from .serializers import (
@@ -59,28 +60,85 @@ class CrawlerConfigViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def test(self, request, pk=None):
         """测试爬虫配置"""
-        config = self.get_object()
-        
-        # 创建测试任务
-        task = crawl_single_website.delay(config.id)
-        
-        # 创建任务记录
-        CrawlerTask.objects.create(
-            config=config,
-            task_id=task.id,
-            status=CrawlerTask.Status.PENDING,
-            is_test=True
-        )
-        
-        return Response({
-            'status': 'success',
-            'task_id': task.id,
-            'test_results': {
-                'config_id': config.id,
-                'source_url': config.source_url,
-                'crawler_type': config.crawler_type
-            }
-        })
+        try:
+            config = self.get_object()
+            
+            # 检查配置是否有效
+            if not config.source_url:
+                return Response(
+                    {'error': 'source_url is required'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            if not config.config_data:
+                return Response(
+                    {'error': 'config_data is required'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 检查配置数据格式
+            if not isinstance(config.config_data, dict):
+                return Response(
+                    {'error': 'config_data must be a dictionary'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # 检查爬虫类型相关的必要配置
+            if config.crawler_type == 1:  # RSS
+                required_fields = ['title_path', 'content_path', 'link_path', 'pub_date_path']
+                missing_fields = [field for field in required_fields if field not in config.config_data]
+                if missing_fields:
+                    return Response(
+                        {'error': f'Missing required fields for RSS crawler: {", ".join(missing_fields)}'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            elif config.crawler_type == 2:  # API
+                required_fields = ['title_path', 'content_path', 'link_path', 'pub_date_path']
+                missing_fields = [field for field in required_fields if field not in config.config_data]
+                if missing_fields:
+                    return Response(
+                        {'error': f'Missing required fields for API crawler: {", ".join(missing_fields)}'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            elif config.crawler_type == 3:  # HTML
+                required_fields = ['title_selector', 'content_selector', 'link_selector', 'pub_date_selector']
+                missing_fields = [field for field in required_fields if field not in config.config_data]
+                if missing_fields:
+                    return Response(
+                        {'error': f'Missing required fields for HTML crawler: {", ".join(missing_fields)}'}, 
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+            
+            # 先创建任务记录
+            task = CrawlerTask.objects.create(
+                config=config,
+                task_id=str(uuid.uuid4()),
+                status=CrawlerTask.Status.PENDING,
+                is_test=True
+            )
+            
+            # 调用异步任务
+            crawl_single_website.delay(config.id)
+            
+            return Response({
+                'status': 'success',
+                'task_id': task.task_id,
+                'test_results': {
+                    'config_id': config.id,
+                    'source_url': config.source_url,
+                    'crawler_type': config.crawler_type,
+                    'config_data': config.config_data
+                }
+            })
+        except Exception as e:
+            import traceback
+            return Response(
+                {
+                    'error': str(e),
+                    'traceback': traceback.format_exc()
+                }, 
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     def retrieve(self, request, *args, **kwargs):
         """获取配置详情,包含统计数据"""

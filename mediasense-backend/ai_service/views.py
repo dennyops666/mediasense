@@ -86,8 +86,8 @@ class AsyncViewSet(viewsets.GenericViewSet):
             response.accepted_media_type = "application/json"
             response.renderer_context = {}
 
-        return response
-
+                return response
+            
     def handle_exception(self, exc):
         """处理异常"""
         if isinstance(exc, NewsArticle.DoesNotExist):
@@ -176,34 +176,34 @@ class AIServiceViewSet(AsyncViewSet):
                 return Response({"error": "文章ID不能为空"}, status=400)
             
             news = await sync_to_async(NewsArticle.objects.get)(id=article_id, created_by=request.user)
-            if not news.content:
+        if not news.content:
                 return Response({"error": "文章内容为空"}, status=400)
             
-            analysis_types = request.data.get("analysis_types", [])
-            if not analysis_types:
+        analysis_types = request.data.get("analysis_types", [])
+        if not analysis_types:
                 return Response({"error": "分析类型不能为空"}, status=400)
             
             results = {}
             result_ids = []
-            
-            for analysis_type in analysis_types:
-                # 先检查缓存
+                
+                for analysis_type in analysis_types:
+                        # 先检查缓存
                 cached_result = await self.ai_service._get_cached_result(article_id, analysis_type)
-                if cached_result:
+                        if cached_result:
                     results[analysis_type] = json.loads(cached_result)
-                    continue
-                
-                # 调用相应的分析方法
-                if analysis_type == 'sentiment':
-                    result = await self.ai_service.analyze_sentiment(news.content)
-                elif analysis_type == 'keywords':
-                    result = await self.ai_service.extract_keywords(news.content)
-                elif analysis_type == 'summary':
-                    result = await self.ai_service.generate_summary(news.content)
-                else:
-                    continue
-                
-                # 缓存结果
+                            continue
+                        
+                        # 调用相应的分析方法
+                        if analysis_type == 'sentiment':
+                            result = await self.ai_service.analyze_sentiment(news.content)
+                        elif analysis_type == 'keywords':
+                            result = await self.ai_service.extract_keywords(news.content)
+                        elif analysis_type == 'summary':
+                            result = await self.ai_service.generate_summary(news.content)
+                        else:
+                            continue
+                        
+                        # 缓存结果
                 await self.ai_service._cache_result(article_id, analysis_type, json.dumps(result))
                 results[analysis_type] = result
                 
@@ -222,7 +222,7 @@ class AIServiceViewSet(AsyncViewSet):
                 "result_ids": result_ids,
                 "result_id": result_ids[0] if result_ids else None
             })
-        except NewsArticle.DoesNotExist:
+            except NewsArticle.DoesNotExist:
             return Response({"error": "文章不存在"}, status=404)
     
     @action(detail=True, methods=["get"])
@@ -243,7 +243,7 @@ class AIServiceViewSet(AsyncViewSet):
     async def analyze_with_rules(self, request, pk=None):
         """使用规则分析文章"""
         try:
-            news = await sync_to_async(NewsArticle.objects.get)(id=pk)
+        news = await sync_to_async(NewsArticle.objects.get)(id=pk)
             if not news.content:
                 return Response({"error": "文章内容为空"}, status=400)
             
@@ -256,16 +256,16 @@ class AIServiceViewSet(AsyncViewSet):
             except AnalysisRule.DoesNotExist:
                 return Response({"error": "规则不存在"}, status=404)
             
-            # 先检查缓存
+                            # 先检查缓存
             cache_key = f"rule_analysis_{pk}_{rule_id}"
             cached_result = await self.ai_service._get_cached_result(pk, cache_key)
-            if cached_result:
+                            if cached_result:
                 return Response(json.loads(cached_result))
             
             # 使用规则进行分析
             result = await self.ai_service.analyze_with_rule(news, rule)
-            
-            # 缓存结果
+                            
+                            # 缓存结果
             await self.ai_service._cache_result(pk, cache_key, json.dumps(result))
             
             # 保存分析结果
@@ -294,7 +294,7 @@ class AIServiceViewSet(AsyncViewSet):
             return Response({"error": str(e)}, status=429)
         except ValueError as e:
             return Response({"error": str(e)}, status=400)
-        except Exception as e:
+                except Exception as e:
             return Response({"error": f"系统错误: {str(e)}"}, status=500)
     
     @action(detail=False, methods=["post"])
@@ -616,13 +616,13 @@ class AnalysisRuleViewSet(AsyncViewSet):
         """切换规则的启用状态"""
         try:
             rule = await sync_to_async(self.queryset.get)(id=pk)
-            rule.is_active = not rule.is_active
-            await sync_to_async(rule.save)()
-            
-            return Response({
-                'message': f"规则已{'启用' if rule.is_active else '禁用'}",
-                'is_active': rule.is_active
-            })
+        rule.is_active = not rule.is_active
+        await sync_to_async(rule.save)()
+        
+        return Response({
+            'message': f"规则已{'启用' if rule.is_active else '禁用'}",
+            'is_active': rule.is_active
+        })
         except AnalysisRule.DoesNotExist:
             return Response({"error": "规则不存在"}, status=status.HTTP_404_NOT_FOUND)
     
@@ -631,20 +631,20 @@ class AnalysisRuleViewSet(AsyncViewSet):
         """测试分析规则"""
         try:
             rule = await sync_to_async(self.queryset.get)(id=pk)
-            news_id = request.data.get('news_id')
-            
-            if not news_id:
-                return Response({
-                    'message': '请提供要测试的新闻ID'
-                }, status=status.HTTP_400_BAD_REQUEST)
-            
-            try:
-                news_article = await sync_to_async(NewsArticle.objects.get)(id=news_id)
-            except NewsArticle.DoesNotExist:
-                return Response({
-                    'message': '未找到指定的新闻'
-                }, status=status.HTTP_404_NOT_FOUND)
-            
+        news_id = request.data.get('news_id')
+        
+        if not news_id:
+            return Response({
+                'message': '请提供要测试的新闻ID'
+            }, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            news_article = await sync_to_async(NewsArticle.objects.get)(id=news_id)
+        except NewsArticle.DoesNotExist:
+            return Response({
+                'message': '未找到指定的新闻'
+            }, status=status.HTTP_404_NOT_FOUND)
+        
             # 使用 AI 服务进行测试
             ai_service = AIService()
             result = await ai_service.analyze_with_rule(news_article, rule)
@@ -738,7 +738,8 @@ class BatchAnalysisTaskViewSet(AsyncViewSet):
             else:
                 return Response({"error": "不支持的操作"}, status=status.HTTP_400_BAD_REQUEST)
             
-            return Response(self.serializer_class(task).data)
+            serializer = self.serializer_class(task)
+            return Response(serializer.data)
         except BatchAnalysisTask.DoesNotExist:
             return Response({"error": "任务不存在"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
@@ -935,16 +936,17 @@ class ScheduleExecutionViewSet(AsyncViewSet):
             
             if action == "cancel":
                 execution.status = "cancelled"
-                await sync_to_async(execution.save)()
+            await sync_to_async(execution.save)()
             elif action == "retry":
                 execution.status = "pending"
                 await sync_to_async(execution.save)()
                 # 重新启动任务
-                process_schedule_execution.delay(execution.id)
+            process_schedule_execution.delay(execution.id)
             else:
                 return Response({"error": "不支持的操作"}, status=status.HTTP_400_BAD_REQUEST)
             
-            return Response(ScheduleExecutionSerializer(execution).data)
+            serializer = ScheduleExecutionSerializer(execution)
+            return Response(serializer.data)
         except ScheduleExecution.DoesNotExist:
             return Response({"error": "执行记录不存在"}, status=status.HTTP_404_NOT_FOUND)
         except Exception as e:
@@ -1184,7 +1186,7 @@ class AnalysisVisualizationViewSet(AsyncViewSet):
             
             # 如果提供了新数据，重新生成可视化
             if "data" in data:
-                visualization_service = VisualizationService()
+            visualization_service = VisualizationService()
                 result = await visualization_service.generate_visualization(
                     visualization_type=visualization.visualization_type,
                     data=data["data"],

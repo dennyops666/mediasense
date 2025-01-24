@@ -15,8 +15,9 @@ class CrawlerConfigSerializer(serializers.ModelSerializer):
         model = CrawlerConfig
         fields = (
             'id', 'name', 'description', 'source_url', 'crawler_type',
-            'config_data', 'headers', 'interval', 'status', 'is_active',
-            'created_at', 'updated_at', 'total_tasks', 'total_items', 'success_rate'
+            'config_data', 'headers', 'interval', 'max_retries', 'retry_delay',
+            'status', 'is_active', 'created_at', 'updated_at', 'total_tasks',
+            'total_items', 'success_rate'
         )
         read_only_fields = ('id', 'created_at', 'updated_at')
 
@@ -54,7 +55,8 @@ class CrawlerConfigBulkSerializer(serializers.ModelSerializer):
         model = CrawlerConfig
         fields = (
             'id', 'name', 'description', 'source_url', 'crawler_type',
-            'config_data', 'headers', 'interval', 'status', 'is_active'
+            'config_data', 'headers', 'interval', 'max_retries', 'retry_delay',
+            'status', 'is_active'
         )
         read_only_fields = ('id',)
 

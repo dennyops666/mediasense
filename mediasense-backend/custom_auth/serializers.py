@@ -5,6 +5,7 @@ from rest_framework import serializers
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework.exceptions import AuthenticationFailed
+from .models import Role, Permission
 
 User = get_user_model()
 
@@ -78,3 +79,46 @@ class ResetPasswordSerializer(serializers.Serializer):
         user = User.objects.get(email=email)
         # TODO: 发送重置密码邮件
         return user
+
+
+class UserRegistrationSerializer(serializers.ModelSerializer):
+    """用户注册序列化器"""
+    confirm_password = serializers.CharField(write_only=True)
+
+    class Meta:
+        model = User
+        fields = ('username', 'email', 'password', 'confirm_password')
+        extra_kwargs = {
+            'password': {'write_only': True}
+        }
+
+    def validate(self, data):
+        if data['password'] != data['confirm_password']:
+            raise serializers.ValidationError("两次输入的密码不一致")
+        return data
+
+    def create(self, validated_data):
+        validated_data.pop('confirm_password')
+        user = User.objects.create_user(**validated_data)
+        return user
+
+
+class PermissionSerializer(serializers.ModelSerializer):
+    """权限序列化器"""
+    class Meta:
+        model = Permission
+        fields = ('id', 'name', 'description')
+
+
+class RoleSerializer(serializers.ModelSerializer):
+    """角色序列化器"""
+    permissions = PermissionSerializer(many=True, read_only=True)
+    parent = serializers.PrimaryKeyRelatedField(
+        queryset=Role.objects.all(),
+        allow_null=True,
+        required=False
+    )
+
+    class Meta:
+        model = Role
+        fields = ('id', 'name', 'description', 'permissions', 'parent')

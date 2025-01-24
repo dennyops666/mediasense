@@ -73,8 +73,68 @@ class User(AbstractUser):
 
     objects = AsyncUserManager()
 
+    roles = models.ManyToManyField(
+        'Role',
+        verbose_name="角色列表",
+        related_name="users",
+        blank=True
+    )
+
     class Meta:
         verbose_name = "用户"
         verbose_name_plural = verbose_name
         db_table = "custom_auth_user"
         ordering = ["-date_joined"]
+
+class Permission(models.Model):
+    """权限模型"""
+    name = models.CharField("权限名称", max_length=100, unique=True)
+    description = models.CharField("权限描述", max_length=200)
+    created_at = models.DateTimeField("创建时间", auto_now_add=True)
+    updated_at = models.DateTimeField("更新时间", auto_now=True)
+
+    class Meta:
+        verbose_name = "权限"
+        verbose_name_plural = verbose_name
+        db_table = "custom_auth_permission"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+class Role(models.Model):
+    """角色模型"""
+    name = models.CharField("角色名称", max_length=100, unique=True)
+    description = models.CharField("角色描述", max_length=200, blank=True)
+    permissions = models.ManyToManyField(
+        Permission,
+        verbose_name="权限列表",
+        related_name="roles",
+        blank=True
+    )
+    parent = models.ForeignKey(
+        'self',
+        verbose_name="父角色",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="children"
+    )
+    created_at = models.DateTimeField("创建时间", auto_now_add=True)
+    updated_at = models.DateTimeField("更新时间", auto_now=True)
+
+    class Meta:
+        verbose_name = "角色"
+        verbose_name_plural = verbose_name
+        db_table = "custom_auth_role"
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    def get_all_permissions(self):
+        """获取角色的所有权限（包括继承的权限）"""
+        permissions = set(self.permissions.all())
+        if self.parent:
+            permissions.update(self.parent.get_all_permissions())
+        return permissions
