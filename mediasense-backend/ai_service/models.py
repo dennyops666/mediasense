@@ -413,3 +413,67 @@ class AnalysisVisualization(models.Model):
         """验证数据"""
         if self.time_range < 1:
             raise ValidationError("时间范围必须大于0")
+
+
+class Notification(models.Model):
+    """通知模型"""
+
+    class NotificationType(models.TextChoices):
+        ANALYSIS_COMPLETE = "analysis_complete", "分析完成"
+        RULE_CREATED = "rule_created", "规则创建"
+        TASK_COMPLETE = "task_complete", "任务完成"
+        SYSTEM = "system", "系统通知"
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="notifications",
+        verbose_name="用户"
+    )
+    notification_type = models.CharField(
+        max_length=50,
+        choices=NotificationType.choices,
+        verbose_name="通知类型"
+    )
+    title = models.CharField(max_length=200, verbose_name="通知标题")
+    content = models.TextField(verbose_name="通知内容")
+    is_read = models.BooleanField(default=False, verbose_name="是否已读")
+    created_at = models.DateTimeField(default=timezone.now, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    related_object_id = models.IntegerField(null=True, blank=True, verbose_name="相关对象ID")
+    related_object_type = models.CharField(
+        max_length=100,
+        null=True,
+        blank=True,
+        verbose_name="相关对象类型"
+    )
+
+    class Meta:
+        verbose_name = "通知"
+        verbose_name_plural = "通知"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["user", "is_read"]),
+            models.Index(fields=["notification_type"]),
+            models.Index(fields=["created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.title} ({self.get_notification_type_display()})"
+
+    @classmethod
+    def create_notification(cls, user, notification_type, title, content, related_object=None):
+        """
+        创建通知的便捷方法
+        """
+        notification = cls(
+            user=user,
+            notification_type=notification_type,
+            title=title,
+            content=content
+        )
+        if related_object:
+            notification.related_object_id = related_object.id
+            notification.related_object_type = related_object.__class__.__name__
+        notification.save()
+        return notification

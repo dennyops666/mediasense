@@ -438,93 +438,56 @@ class AIService:
         # 执行批量分析
         return await self.batch_analyze(list(news_articles), analysis_types=analysis_types)
 
-    async def analyze_with_rule(self, news_article: NewsArticle, rule: AnalysisRule) -> Dict:
-        """使用自定义规则进行分析"""
-        if not news_article or not rule:
-            raise ValueError("新闻文章和规则不能为空")
-            
-        if not rule.is_active:
-            raise ValueError("规则未启用")
+    async def analyze_with_rules(self, content: str, rules: List[AnalysisRule]) -> Dict[str, Any]:
+        """
+        使用多个规则分析文本
+        """
+        results = {}
+        for rule in rules:
+            try:
+                result = await self.analyze_with_rule(content, rule)
+                results[str(rule.id)] = result
+            except Exception as e:
+                results[str(rule.id)] = {
+                    "error": str(e),
+                    "status": "failed"
+                }
+        return results
 
-        cache_key = f"{self._get_cache_key(news_article.content, rule.rule_type)}:rule_{rule.id}"
-        cached_result = await self._get_cached_result(cache_key)
-        if cached_result:
-            return cached_result
+    async def analyze_with_rule(self, content: str, rule: AnalysisRule) -> Dict[str, Any]:
+        """
+        使用单个规则分析文本
+        """
+        if not await self._check_rate_limit():
+            raise RateLimitExceeded("API调用次数超限，请稍后重试")
+
+        # 生成提示词
+        system_prompt = rule.system_prompt
+        user_prompt = rule.user_prompt_template.format(
+            title="",  # 暂时不使用标题
+            content=content
+        )
 
         try:
-            # 检查速率限制
-            await self._check_rate_limit()
-
-            # 生成用户提示词
-            user_prompt = rule.user_prompt_template.format(
-                title=news_article.title,
-                content=news_article.content
-            )
-
             # 调用OpenAI API
             response = await self.openai_client.chat.completions.create(
                 model=self.openai_model,
                 messages=[
-                    {"role": "system", "content": rule.system_prompt},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
                 temperature=float(rule.parameters.get("temperature", self.openai_temperature)),
-                max_tokens=int(rule.parameters.get("max_tokens", self.openai_max_tokens)),
+                max_tokens=int(rule.parameters.get("max_tokens", self.openai_max_tokens))
             )
 
-            result = {
-                "content": response.choices[0].message.content,
-                "rule_id": rule.id,
-                "rule_name": rule.name,
-                "timestamp": timezone.now().isoformat(),
-            }
-
-            # 缓存结果
-            await self._cache_result(cache_key, result)
-
-            # 保存分析结果
-            await sync_to_async(AnalysisResult.objects.update_or_create)(
-                news=news_article,
-                analysis_type=rule.rule_type,
-                defaults={
-                    "result": json.dumps(result),
-                    "is_valid": True
-                }
-            )
-
+            # 解析响应
+            result = json.loads(response.choices[0].message.content)
             return result
 
+        except json.JSONDecodeError:
+            raise ValueError("AI返回的结果格式不正确")
         except Exception as e:
-            # 记录错误
-            await sync_to_async(AnalysisResult.objects.update_or_create)(
-                news=news_article,
-                analysis_type=rule.rule_type,
-                defaults={
-                    "result": json.dumps({"error": str(e)}),
-                    "is_valid": False,
-                    "error_message": str(e)
-                }
-            )
-            raise
-
-    async def batch_analyze_with_rules(self, news_articles, rules=None):
-        """使用自定义规则批量分析新闻"""
-        if rules is None:
-            # 获取所有启用的规则
-            rules = AnalysisRule.objects.filter(is_active=True)
-
-        results = {}
-        for article in news_articles:
-            article_results = {}
-            for rule in rules:
-                try:
-                    result = await self.analyze_with_rule(article, rule)
-                    article_results[rule.id] = {"data": result, "success": True}
-                except Exception as e:
-                    article_results[rule.id] = {"error": str(e), "success": False}
-            results[article.id] = article_results
-
-        return results
+            raise e
 
     def export_analysis_results(
         self, format="csv", start_date=None, end_date=None, analysis_types=None, categories=None
@@ -630,6 +593,45 @@ class AIService:
         buffer.close()
 
         return content, content_type, file_ext
+
+    async def analyze_text(self, content: str, analysis_types: List[str]) -> Dict[str, Any]:
+        """
+        分析文本内容
+        """
+        if not await self._check_rate_limit():
+            raise RateLimitExceeded("API调用次数超限，请稍后重试")
+
+        results = {}
+        for analysis_type in analysis_types:
+            try:
+                if analysis_type == 'sentiment':
+                    # 生成提示词
+                    system_prompt = "你是一个文本分析助手，专门进行情感分析。请分析以下文本的情感倾向，并给出分析结果。"
+                    user_prompt = f"请分析以下文本的情感倾向：\n\n{content}"
+
+                    # 调用OpenAI API
+                    response = await self.openai_client.chat.completions.create(
+                        model=self.openai_model,
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        temperature=self.openai_temperature,
+                        max_tokens=self.openai_max_tokens
+                    )
+
+                    # 解析响应
+                    result = json.loads(response.choices[0].message.content)
+                    results[analysis_type] = result
+                else:
+                    raise ValueError(f"不支持的分析类型: {analysis_type}")
+
+            except json.JSONDecodeError:
+                raise ValueError("AI返回的结果格式不正确")
+            except Exception as e:
+                raise e
+
+        return results
 
 
 class NotificationService:

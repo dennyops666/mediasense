@@ -11,6 +11,7 @@ from .models import (
     BatchAnalysisTask,
     NotificationSubscription,
     ScheduleExecution,
+    Notification,
 )
 
 
@@ -362,3 +363,27 @@ class AnalysisVisualizationSerializer(serializers.ModelSerializer):
         if value not in valid_fields:
             raise serializers.ValidationError(f'分组字段必须是以下之一: {", ".join(valid_fields)}')
         return value
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    """通知序列化器"""
+
+    notification_type_display = serializers.CharField(source="get_notification_type_display", read_only=True)
+    user = serializers.ReadOnlyField(source="user.username")
+
+    class Meta:
+        model = Notification
+        fields = [
+            "id",
+            "user",
+            "notification_type",
+            "notification_type_display",
+            "title",
+            "content",
+            "is_read",
+            "created_at",
+            "updated_at",
+            "related_object_id",
+            "related_object_type",
+        ]
+        read_only_fields = ["id", "created_at", "updated_at", "user"]

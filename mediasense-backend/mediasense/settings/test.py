@@ -20,19 +20,69 @@ AUTHENTICATION_BACKENDS = [
 # 使用 pytest 测试运行器
 TEST_RUNNER = 'mediasense.test_runner.PytestTestRunner'
 
-# 使用SQLite作为测试数据库
+# 使用MySQL作为测试数据库
 DATABASES = {
     'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': ':memory:',  # 使用内存数据库
+        'ENGINE': 'django.db.backends.mysql',
+        'NAME': 'mediasense',
+        'USER': 'mediasense',
+        'PASSWORD': '123456',
+        'HOST': 'localhost',
+        'PORT': '3306',
+        'CONN_MAX_AGE': None,
+        'OPTIONS': {
+            'init_command': """
+                SET SESSION sql_mode = 'STRICT_TRANS_TABLES';
+                SET SESSION innodb_lock_wait_timeout = 30;
+                SET SESSION autocommit = 1;
+                SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
+                SET SESSION max_execution_time = 30000;
+            """,
+            'charset': 'utf8mb4',
+            'use_unicode': True,
+            'isolation_level': None,
+            'autocommit': True,
+        },
         'TEST': {
-            'NAME': ':memory:',
+            'NAME': 'mediasense',
+            'CHARSET': 'utf8mb4',
+            'COLLATION': 'utf8mb4_general_ci',
+            'CREATE_DB': False,
+            'MIRROR': None,
+            'SERIALIZE': False,
         },
     }
 }
 
+# 禁用事务
+DJANGO_TRANSACTION_MIDDLEWARE = None
+ATOMIC_REQUESTS = False
+DISABLE_TRANSACTION_MANAGEMENT = True
+
+# 禁用数据库迁移
+MIGRATION_MODULES = {
+    'auth': None,
+    'contenttypes': None,
+    'default': None,
+    'sessions': None,
+    'news': None,
+    'crawler': None,
+    'ai_service': None,
+    'monitoring': None,
+    'custom_auth': None,
+}
+
+# 数据库连接池配置
+DATABASE_CONNECTION_POOLING = True
+DATABASE_MAX_CONNECTIONS = 100
+DATABASE_MIN_CONNECTIONS = 10
+DATABASE_POOL_TIMEOUT = 30
+
+# 测试运行器配置
+TEST_RUNNER = 'mediasense.test_runner.PytestTestRunner'
+TEST_NON_SERIALIZED_APPS = ['auth', 'contenttypes', 'sessions', 'news', 'crawler', 'ai_service', 'monitoring', 'custom_auth']
+
 # 在测试环境中使用单一数据库
-DATABASE_ROUTERS = []
 DATABASE_APPS_MAPPING = {}
 
 # 禁用不必要的应用
@@ -86,8 +136,8 @@ REDIS_HOST = 'localhost'
 REDIS_PORT = 6379
 REDIS_DB = 1
 
-# 启用测试数据库创建
-TEST_DATABASE_CREATE = True
+# 禁用测试数据库创建
+TEST_DATABASE_CREATE = False
 TEST_DATABASE_PREFIX = ''
 
 # 禁用密码哈希以加快测试速度
@@ -203,3 +253,7 @@ API_GATEWAY = {
         '/api/monitoring/': 'monitoring'
     }
 }
+
+# 异步测试配置
+DJANGO_ALLOW_ASYNC_UNSAFE = True
+ASYNC_TEST_TIMEOUT = 30  # 秒
