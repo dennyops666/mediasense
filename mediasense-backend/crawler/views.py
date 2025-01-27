@@ -10,13 +10,11 @@ import uuid
 from .models import CrawlerConfig, CrawlerTask
 from .serializers import (
     CrawlerConfigSerializer, 
-    CrawlerTaskDetailSerializer, 
     CrawlerTaskSerializer,
-    CrawlerConfigBulkSerializer,
-    CrawlerTaskBulkSerializer
+    CrawlerConfigBulkSerializer
 )
 from .services import CrawlerService
-from .tasks import crawl_single_website
+from .tasks import run_crawler
 
 
 class CrawlerConfigViewSet(viewsets.ModelViewSet):
@@ -29,10 +27,16 @@ class CrawlerConfigViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def enable(self, request, pk=None):
         """启用爬虫配置"""
+        from .tasks import schedule_crawlers
+        
         config = self.get_object()
         config.status = 1
         config.is_active = True
         config.save()
+        
+        # 启动调度任务
+        schedule_crawlers.delay()
+        
         return Response({'status': 'success', 'is_active': True})
 
     @action(detail=True, methods=['post'])
@@ -118,7 +122,7 @@ class CrawlerConfigViewSet(viewsets.ModelViewSet):
             )
             
             # 调用异步任务
-            crawl_single_website.delay(config.id)
+            run_crawler.delay(config.id)
             
             return Response({
                 'status': 'success',
@@ -184,12 +188,47 @@ class CrawlerConfigViewSet(viewsets.ModelViewSet):
         self.perform_bulk_update(serializer)
         return Response(serializer.data)
 
+    def perform_bulk_update(self, serializer):
+        """执行批量更新操作"""
+        configs = []
+        for item in serializer.validated_data:
+            config_id = item.pop('id', None)
+            if config_id:
+                config = CrawlerConfig.objects.get(id=config_id)
+                for key, value in item.items():
+                    setattr(config, key, value)
+                configs.append(config)
+        
+        if configs:
+            CrawlerConfig.objects.bulk_update(
+                configs,
+                ['name', 'description', 'source_url', 'crawler_type', 
+                 'config_data', 'headers', 'interval', 'max_retries', 
+                 'retry_delay', 'status', 'is_active']
+            )
+
     @action(detail=False, methods=['post'])
     def bulk_delete(self, request):
         """批量删除爬虫配置"""
-        ids = request.data.get('ids', [])
-        if not ids:
-            return Response({"error": "No IDs provided"}, status=status.HTTP_400_BAD_REQUEST)
+        print("Request data:", request.data)
+        print("Request data type:", type(request.data))
+        
+        # 如果是QueryDict,获取ids列表
+        if hasattr(request.data, 'getlist'):
+            ids = request.data.getlist('ids', [])
+        else:
+            ids = request.data.get('ids', [])
+            
+        print("IDs:", ids)
+        print("IDs type:", type(ids))
+        
+        if ids is None:  # 只有当ids为None时才返回400
+            return Response({"error": "IDs field is required"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # 确保ids是列表
+        if not isinstance(ids, list):
+            ids = [ids]
+            
         CrawlerConfig.objects.filter(id__in=ids).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -243,7 +282,7 @@ class CrawlerTaskViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
             
-        new_task = crawl_single_website.delay(task.config.id)
+        new_task = run_crawler.delay(task.config.id)
         return Response({
             'status': CrawlerTask.Status.PENDING,
             'task_id': new_task.id

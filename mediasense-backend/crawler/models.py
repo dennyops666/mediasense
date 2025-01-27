@@ -1,6 +1,9 @@
 from django.db import models
 from django.utils import timezone
 import uuid
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class CrawlerConfig(models.Model):
@@ -179,26 +182,86 @@ class ProxyPool(models.Model):
 
 
 class NewsArticle(models.Model):
-    """新闻文章模型"""
-
-    title = models.CharField("标题", max_length=500)
-    description = models.TextField("描述", blank=True)
-    content = models.TextField("内容", blank=True)
-    url = models.URLField("链接", max_length=255, unique=True)
-    source = models.CharField("来源", max_length=100)
-    author = models.CharField("作者", max_length=100, blank=True)
-    pub_time = models.DateTimeField("发布时间")
-    created_at = models.DateTimeField("创建时间", auto_now_add=True)
-    updated_at = models.DateTimeField("更新时间", auto_now=True)
+    """
+    新闻文章模型
+    """
+    id = models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name="ID")
+    title = models.CharField(max_length=500, verbose_name='标题')
+    description = models.TextField(blank=True, verbose_name='描述')
+    content = models.TextField(blank=True, verbose_name='内容')
+    url = models.URLField(max_length=255, unique=True, verbose_name='链接')
+    source = models.CharField(max_length=100, verbose_name='来源')
+    author = models.CharField(blank=True, max_length=100, verbose_name='作者')
+    pub_time = models.DateTimeField(verbose_name='发布时间')
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name='创建时间')
+    updated_at = models.DateTimeField(auto_now=True, verbose_name='更新时间')
+    config = models.ForeignKey('CrawlerConfig', on_delete=models.CASCADE, verbose_name='爬虫配置')
 
     class Meta:
-        verbose_name = "新闻文章"
+        verbose_name = '新闻文章'
         verbose_name_plural = verbose_name
-        ordering = ["-pub_time"]
-        indexes = [
-            models.Index(fields=["-pub_time"], name="news_article_pub_time_idx"),
-            models.Index(fields=["source", "-pub_time"], name="news_article_source_idx"),
-        ]
+        ordering = ['-created_at']
 
     def __str__(self):
         return self.title
+
+    @classmethod
+    def save_news_articles(cls, articles):
+        """
+        保存新闻文章列表
+        :param articles: 新闻文章列表
+        :return: 成功保存的文章数量
+        """
+        success_count = 0
+        duplicate_count = 0
+        error_count = 0
+        filtered_count = 0
+        
+        for article in articles:
+            try:
+                # 验证必要字段
+                if not article.get('title') or not article.get('url'):
+                    logger.warning(f'文章缺少必要字段: title={article.get("title")}, url={article.get("url")}')
+                    filtered_count += 1
+                    continue
+                    
+                # 检查URL是否有效
+                url = article.get('url')
+                if not url.startswith('http'):
+                    logger.warning(f'无效的URL: {url}')
+                    filtered_count += 1
+                    continue
+                    
+                # 检查是否已存在
+                if cls.objects.filter(url=url).exists():
+                    logger.info(f'文章已存在: {url}')
+                    duplicate_count += 1
+                    continue
+                    
+                # 创建新闻文章
+                article_data = {
+                    'title': article.get('title'),
+                    'url': url,
+                    'author': article.get('author', ''),
+                    'source': article.get('source', ''),
+                    'content': article.get('content', ''),
+                    'description': article.get('description', ''),
+                    'pub_time': article.get('pub_time'),
+                    'config': article.get('config')
+                }
+                
+                # 保存文章
+                try:
+                    cls.objects.create(**article_data)
+                    success_count += 1
+                    logger.info(f'成功保存文章: {url}')
+                except Exception as e:
+                    logger.error(f'保存文章时发生错误: {url}, 错误信息: {str(e)}')
+                    error_count += 1
+                    
+            except Exception as e:
+                logger.error(f'处理文章时发生错误: {str(e)}')
+                error_count += 1
+                
+        logger.info(f'新闻保存完成，共处理{len(articles)}条新闻，成功保存{success_count}条，重复{duplicate_count}条，过滤{filtered_count}条，错误{error_count}条')
+        return success_count
