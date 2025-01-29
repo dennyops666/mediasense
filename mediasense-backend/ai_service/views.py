@@ -153,6 +153,22 @@ class AIServiceViewSet(AsyncViewSet):
             # 获取分析类型
             analysis_types = request.data.get('analysis_types', ['sentiment'])
             
+            # 检查分析类型是否有效
+            valid_types = {'sentiment', 'keywords', 'summary'}
+            invalid_types = [t for t in analysis_types if t not in valid_types]
+            if invalid_types:
+                return Response({
+                    'error': 'invalid_analysis_type',
+                    'detail': f'不支持的分析类型: {", ".join(invalid_types)}'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
+            # 检查分析类型列表是否为空
+            if not analysis_types:
+                return Response({
+                    'error': 'empty_analysis_types',
+                    'detail': '分析类型列表不能为空'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
             # 检查文章内容
             if not article.content:
                 return Response({
@@ -163,6 +179,7 @@ class AIServiceViewSet(AsyncViewSet):
             # 使用AI服务进行分析
             service = AIService()
             results = {}
+            result_ids = []
             
             # 分析每种类型
             for analysis_type in analysis_types:
@@ -185,6 +202,7 @@ class AIServiceViewSet(AsyncViewSet):
                     )
                     
                     results[analysis_type] = result
+                    result_ids.append(analysis_result.id)
                     
                 except Exception as e:
                     logger.error(f"分析{analysis_type}时出错: {str(e)}", exc_info=True)
@@ -195,7 +213,8 @@ class AIServiceViewSet(AsyncViewSet):
 
             return Response({
                 'message': '分析完成',
-                'data': results
+                'data': results,
+                'result_ids': result_ids
             })
             
         except RateLimitExceeded as e:
@@ -295,6 +314,16 @@ class AIServiceViewSet(AsyncViewSet):
                     'detail': '缺少规则ID'
                 }, status=status.HTTP_400_BAD_REQUEST)
             
+            # 验证规则ID格式
+            try:
+                rule_id = int(rule_id)
+            except (TypeError, ValueError):
+                logger.warning(f"无效的规则ID格式: {rule_id}")
+                return Response({
+                    'error': 'invalid_rule_id',
+                    'detail': '无效的规则ID格式'
+                }, status=status.HTTP_400_BAD_REQUEST)
+            
             try:
                 rule = await sync_to_async(AnalysisRule.objects.get)(pk=rule_id)
                 logger.info(f"获取到规则: {rule.name}")
@@ -334,7 +363,7 @@ class AIServiceViewSet(AsyncViewSet):
                 # 保存分析结果
                 analysis_result = await sync_to_async(AnalysisResult.objects.create)(
                     news=news,
-                    analysis_type=rule.rule_type,
+                    analysis_type=f"rule_{rule.id}",
                     result=result,
                     created_by=request.user,
                     is_valid=True
@@ -342,8 +371,11 @@ class AIServiceViewSet(AsyncViewSet):
                 logger.info("分析结果保存成功")
                 
                 return Response({
-                    'message': '分析完成',
-                    'data': result
+                    'message': '规则分析完成',
+                    'data': {
+                        str(rule.id): result
+                    },
+                    'result_id': analysis_result.id
                 })
                 
             except RateLimitExceeded as e:

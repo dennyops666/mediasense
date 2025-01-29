@@ -264,7 +264,7 @@ class NewsSearchViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["get"])
     def suggest(self, request):
         """获取搜索建议"""
-        prefix = request.query_params.get("prefix", "")
+        prefix = request.query_params.get("prefix") or request.query_params.get("q", "")
         page = int(request.query_params.get("page", 1))
         page_size = int(request.query_params.get("page_size", 10))
         
@@ -277,7 +277,13 @@ class NewsSearchViewSet(viewsets.ViewSet):
         paginated_suggestions = suggestions[start:end]
         
         serializer = SearchSuggestionSerializer(paginated_suggestions, many=True)
-        return Response(serializer.data)
+        data = serializer.data
+        suggestions_list = [item["keyword"] for item in data]
+        
+        return Response({
+            "suggestions": suggestions_list,
+            "count": suggestions.count()
+        })
 
     @action(detail=False, methods=["get"])
     def hot(self, request):
@@ -302,7 +308,10 @@ class NewsSearchViewSet(viewsets.ViewSet):
         paginated_searches = hot_searches[start:end]
         
         serializer = SearchSuggestionSerializer(paginated_searches, many=True)
-        return Response(serializer.data)
+        return Response({
+            "hot_searches": serializer.data,
+            "count": hot_searches.count()
+        })
 
     @action(detail=False, methods=["get"])
     def history(self, request):

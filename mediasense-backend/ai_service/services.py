@@ -17,6 +17,7 @@ from asgiref.sync import sync_to_async
 from django.core.cache import cache
 import redis
 from openai import AsyncOpenAI
+import string
 
 from news.models import NewsArticle, NewsCategory
 
@@ -466,6 +467,22 @@ class AIService:
         # 检查速率限制
         await self._check_rate_limit()
 
+        # 检查规则的提示词模板
+        if not rule.user_prompt_template or not rule.user_prompt_template.strip():
+            raise ValueError("规则的提示词模板不能为空")
+
+        # 检查规则类型
+        valid_rule_types = ['sentiment', 'keywords', 'summary']
+        if rule.rule_type not in valid_rule_types:
+            raise ValueError(f"不支持的规则类型: {rule.rule_type}")
+
+        # 检查模板变量
+        required_vars = {'content'}  # 必需的变量集合
+        template_vars = {var[1] for var in string.Formatter().parse(rule.user_prompt_template) if var[1] is not None}
+        if not required_vars.issubset(template_vars):
+            missing_vars = required_vars - template_vars
+            raise ValueError(f"提示词模板缺少必需的变量: {', '.join(missing_vars)}")
+
         # 在测试环境中返回模拟数据
         if getattr(settings, 'TESTING', False):
             return {
@@ -475,11 +492,16 @@ class AIService:
             }
 
         # 生成提示词
-        system_prompt = rule.system_prompt
-        user_prompt = rule.user_prompt_template.format(
-            title="",  # 暂时不使用标题
-            content=content
-        )
+        system_prompt = rule.system_prompt or "你是一个文本分析助手"
+        try:
+            user_prompt = rule.user_prompt_template.format(
+                title="",  # 暂时不使用标题
+                content=content
+            )
+        except KeyError as e:
+            raise ValueError(f"提示词模板中包含未知变量: {str(e)}")
+        except Exception as e:
+            raise ValueError(f"提示词模板格式化失败: {str(e)}")
 
         try:
             # 调用OpenAI API

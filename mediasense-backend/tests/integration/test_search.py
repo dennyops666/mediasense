@@ -173,6 +173,25 @@ class TestSearchIntegration(TransactionTestCase):
         rate_limit_key = f"ratelimit_search_suggest_{self.user.id}"
         await sync_to_async(cache.delete)(rate_limit_key)
         
+        # 创建搜索建议数据
+        suggestions = [
+            await sync_to_async(SearchSuggestion.objects.create)(
+                keyword="人工智能",
+                search_count=100,
+                is_hot=True
+            ),
+            await sync_to_async(SearchSuggestion.objects.create)(
+                keyword="人工智能技术",
+                search_count=80,
+                is_hot=True
+            ),
+            await sync_to_async(SearchSuggestion.objects.create)(
+                keyword="人工智能应用",
+                search_count=60,
+                is_hot=True
+            )
+        ]
+        
         # 创建测试分类
         category = await NewsCategoryFactory.acreate()
         

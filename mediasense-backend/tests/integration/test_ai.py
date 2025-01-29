@@ -64,7 +64,7 @@ class TestAIServiceIntegration(TransactionTestCase):
             )
 
             # 测试情感分析
-            url = reverse('api:ai_service:ai-analyze-article', args=[article.id])
+            url = reverse('api:ai_service:ai-analyze', args=[article.id])
             response = await sync_to_async(self.client.post)(
                 url, 
                 data=json.dumps({
@@ -116,7 +116,7 @@ class TestAIServiceIntegration(TransactionTestCase):
             assert 'error' in response.data
             
             # 测试不存在的文章
-            invalid_url = reverse('api:ai_service:ai-analyze-article', args=[99999])
+            invalid_url = reverse('api:ai_service:ai-analyze', args=[99999])
             response = await sync_to_async(self.client.post)(
                 invalid_url,
                 data=json.dumps({
@@ -133,7 +133,7 @@ class TestAIServiceIntegration(TransactionTestCase):
                 status=NewsArticle.Status.DRAFT,
                 created_by=self.user
             )
-            draft_url = reverse('api:ai_service:ai-analyze-article', args=[draft_article.id])
+            draft_url = reverse('api:ai_service:ai-analyze', args=[draft_article.id])
             response = await sync_to_async(self.client.post)(
                 draft_url,
                 data=json.dumps({
@@ -151,7 +151,7 @@ class TestAIServiceIntegration(TransactionTestCase):
                 status=NewsArticle.Status.PUBLISHED,
                 created_by=self.user
             )
-            empty_url = reverse('api:ai_service:ai-analyze-article', args=[empty_article.id])
+            empty_url = reverse('api:ai_service:ai-analyze', args=[empty_article.id])
             response = await sync_to_async(self.client.post)(
                 empty_url,
                 data=json.dumps({
