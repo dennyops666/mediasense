@@ -93,8 +93,8 @@ class BatchAnalysisTaskSerializer(serializers.ModelSerializer):
 
     duration = serializers.FloatField(read_only=True)
     success_rate = serializers.FloatField(read_only=True)
-    news_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True)
-    analysis_types = serializers.ListField(child=serializers.CharField(), write_only=True)
+    news_ids = serializers.ListField(child=serializers.IntegerField(), write_only=True, required=False)
+    analysis_types = serializers.ListField(child=serializers.CharField(), write_only=True, required=False)
 
     class Meta:
         model = BatchAnalysisTask
@@ -132,16 +132,17 @@ class BatchAnalysisTaskSerializer(serializers.ModelSerializer):
             "duration",
             "success_rate",
             "created_by",
-            "config",
         ]
 
     def create(self, validated_data):
         news_ids = validated_data.pop('news_ids', [])
-        analysis_types = validated_data.pop('analysis_types', [])
+        analysis_types = validated_data.pop('analysis_types', ['sentiment'])
         validated_data['config'] = {
             'news_ids': news_ids,
             'analysis_types': analysis_types
         }
+        validated_data['status'] = 'pending'
+        validated_data['total_count'] = len(news_ids)
         return super().create(validated_data)
 
     def to_representation(self, instance):
@@ -167,9 +168,10 @@ class AnalysisScheduleSerializer(serializers.ModelSerializer):
     created_by = serializers.ReadOnlyField(source="created_by.username")
     schedule_type_display = serializers.CharField(source="get_schedule_type_display", read_only=True)
     rules = AnalysisRuleSerializer(many=True, read_only=True)
-    rule_ids = serializers.PrimaryKeyRelatedField(
-        queryset=AnalysisRule.objects.filter(is_active=True), many=True, write_only=True, required=False, source="rules"
+    rule = serializers.PrimaryKeyRelatedField(
+        queryset=AnalysisRule.objects.filter(is_active=True), write_only=True, required=True
     )
+    is_active = serializers.IntegerField(default=1)
 
     class Meta:
         model = AnalysisSchedule
@@ -183,7 +185,7 @@ class AnalysisScheduleSerializer(serializers.ModelSerializer):
             "analysis_types",
             "categories",
             "rules",
-            "rule_ids",
+            "rule",
             "time_window",
             "is_active",
             "created_by",
@@ -196,27 +198,45 @@ class AnalysisScheduleSerializer(serializers.ModelSerializer):
 
     def validate(self, data):
         """验证调度配置"""
-        schedule_type = data.get("schedule_type")
-        interval_minutes = data.get("interval_minutes")
-        cron_expression = data.get("cron_expression")
+        # 设置默认值
+        if "schedule_type" not in data:
+            data["schedule_type"] = "cron"
+        
+        schedule_type = data["schedule_type"]
+        
+        # 根据调度类型设置默认值
+        if schedule_type == "interval":
+            if "interval_minutes" not in data or not data["interval_minutes"]:
+                data["interval_minutes"] = 60  # 默认每小时执行一次
+        elif schedule_type == "cron":
+            if "cron_expression" not in data or not data["cron_expression"]:
+                data["cron_expression"] = "0 0 * * *"  # 默认每天午夜执行
 
-        if schedule_type == AnalysisSchedule.ScheduleType.INTERVAL:
-            if not interval_minutes:
-                raise serializers.ValidationError({"interval_minutes": "间隔执行必须设置执行间隔"})
-            if interval_minutes < 1:
-                raise serializers.ValidationError({"interval_minutes": "执行间隔必须大于0"})
-        else:  # CRON
-            if not cron_expression:
-                raise serializers.ValidationError({"cron_expression": "定时执行必须设置Cron表达式"})
-            try:
-                from croniter import croniter
+        # 设置其他默认值
+        if "analysis_types" not in data:
+            data["analysis_types"] = ["sentiment"]
+        if "categories" not in data:
+            data["categories"] = []
+        if "time_window" not in data:
+            data["time_window"] = 24  # 默认24小时
+        if "is_active" not in data:
+            data["is_active"] = 1  # 默认启用
 
-                if not croniter.is_valid(cron_expression):
-                    raise ValueError("Invalid cron expression")
-            except Exception as e:
-                raise serializers.ValidationError({"cron_expression": f"Cron表达式格式错误: {str(e)}"})
+        # 验证必填字段
+        if "name" not in data:
+            raise serializers.ValidationError("必须提供调度名称")
+        if "rule" not in data:
+            raise serializers.ValidationError("必须提供分析规则")
 
         return data
+
+    def create(self, validated_data):
+        """创建调度"""
+        rule = validated_data.pop('rule', None)
+        instance = super().create(validated_data)
+        if rule:
+            instance.rules.add(rule)
+        return instance
 
 
 class ScheduleExecutionSerializer(serializers.ModelSerializer):
@@ -276,6 +296,32 @@ class NotificationSubscriptionSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "user", "created_at", "updated_at"]
+
+    def validate(self, data):
+        """验证订阅配置"""
+        # 确保至少启用一种通知方式
+        if not data.get('email_enabled', False) and not data.get('websocket_enabled', False):
+            raise serializers.ValidationError("至少需要启用一种通知方式")
+
+        # 确保至少订阅一种通知类型
+        notify_types = [
+            data.get('notify_on_complete', False),
+            data.get('notify_on_error', False),
+            data.get('notify_on_batch', False),
+            data.get('notify_on_schedule', False)
+        ]
+        if not any(notify_types):
+            raise serializers.ValidationError("至少需要订阅一种通知类型")
+
+        # 设置默认值
+        data.setdefault('email_enabled', True)
+        data.setdefault('websocket_enabled', True)
+        data.setdefault('notify_on_complete', True)
+        data.setdefault('notify_on_error', True)
+        data.setdefault('notify_on_batch', False)
+        data.setdefault('notify_on_schedule', False)
+
+        return data
 
     def create(self, validated_data):
         request = self.context.get('request')

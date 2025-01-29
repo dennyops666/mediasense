@@ -17,8 +17,6 @@ class PytestTestRunner(DiscoverRunner):
         
     def run_tests(self, test_labels, extra_tests=None, **kwargs):
         """运行测试"""
-        self.setup_test_environment()
-        
         # 添加pytest参数
         self.pytest_args = [
             '--verbose',
@@ -36,9 +34,6 @@ class PytestTestRunner(DiscoverRunner):
             
         # 运行测试
         result = pytest.main(self.pytest_args)
-        
-        # 清理
-        self.teardown_test_environment()
         
         return result
     

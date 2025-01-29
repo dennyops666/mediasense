@@ -27,6 +27,7 @@ INSTALLED_APPS = [
     'monitoring.apps.MonitoringConfig',
     'ai_service.apps.AIServiceConfig',
     'crawler.apps.CrawlerConfig',
+    'monitor.apps.MonitorConfig',  # 使用完整的应用配置类
 ]
 
 MIDDLEWARE = [
@@ -99,7 +100,7 @@ LANGUAGE_CODE = 'zh-hans'
 TIME_ZONE = 'Asia/Shanghai'
 USE_I18N = True
 USE_L10N = True
-USE_TZ = False  # 关闭时区支持，使用本地时间
+USE_TZ = True
 
 # Static files (CSS, JavaScript, Images)
 STATIC_URL = 'static/'

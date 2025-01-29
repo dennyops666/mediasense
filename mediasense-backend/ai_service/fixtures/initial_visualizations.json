@@ -1,0 +1,65 @@
+[
+    {
+        "model": "ai_service.analysisvisualization",
+        "pk": 1,
+        "fields": {
+            "name": "情感分析趋势",
+            "description": "新闻情感分析结果趋势图",
+            "chart_type": "line",
+            "data_type": "sentiment",
+            "time_range": 7,
+            "categories": [],
+            "aggregation_field": "result",
+            "aggregation_method": "avg",
+            "group_by": "created_at__date",
+            "filters": {},
+            "is_active": 1,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00",
+            "last_generated": null,
+            "cached_data": null
+        }
+    },
+    {
+        "model": "ai_service.analysisvisualization",
+        "pk": 2,
+        "fields": {
+            "name": "关键词分布",
+            "description": "新闻关键词提取结果分布图",
+            "chart_type": "pie",
+            "data_type": "keywords",
+            "time_range": 7,
+            "categories": [],
+            "aggregation_field": "result",
+            "aggregation_method": "count",
+            "group_by": "news__category",
+            "filters": {},
+            "is_active": 1,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00",
+            "last_generated": null,
+            "cached_data": null
+        }
+    },
+    {
+        "model": "ai_service.analysisvisualization",
+        "pk": 3,
+        "fields": {
+            "name": "摘要生成统计",
+            "description": "新闻摘要生成结果统计图",
+            "chart_type": "bar",
+            "data_type": "summary",
+            "time_range": 7,
+            "categories": [],
+            "aggregation_field": "is_valid",
+            "aggregation_method": "count",
+            "group_by": "created_at__date",
+            "filters": {},
+            "is_active": 1,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00",
+            "last_generated": null,
+            "cached_data": null
+        }
+    }
+] 

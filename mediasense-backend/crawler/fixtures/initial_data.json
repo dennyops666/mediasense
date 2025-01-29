@@ -6,15 +6,15 @@
             "name": "新浪新闻爬虫",
             "description": "爬取新浪新闻网站的新闻内容",
             "source_url": "https://news.sina.com.cn",
-            "crawler_type": "news",
-            "config": {
+            "crawler_type": 2,
+            "config_data": {
                 "article_selector": "div.article",
                 "title_selector": "h1.title",
                 "content_selector": "div.content",
                 "date_selector": "span.date",
                 "author_selector": "span.author"
             },
-            "schedule": "*/30 * * * *",
+            "interval": 30,
             "is_active": true,
             "max_retries": 3,
             "retry_delay": 300,
@@ -29,15 +29,15 @@
             "name": "腾讯新闻爬虫",
             "description": "爬取腾讯新闻网站的新闻内容",
             "source_url": "https://news.qq.com",
-            "crawler_type": "news",
-            "config": {
+            "crawler_type": 2,
+            "config_data": {
                 "article_selector": "div.article-box",
                 "title_selector": "h1.title",
                 "content_selector": "div.content-article",
                 "date_selector": "div.article-time",
                 "author_selector": "div.article-author"
             },
-            "schedule": "*/30 * * * *",
+            "interval": 30,
             "is_active": true,
             "max_retries": 3,
             "retry_delay": 300,
@@ -52,15 +52,15 @@
             "name": "网易新闻爬虫",
             "description": "爬取网易新闻网站的新闻内容",
             "source_url": "https://news.163.com",
-            "crawler_type": "news",
-            "config": {
+            "crawler_type": 2,
+            "config_data": {
                 "article_selector": "div.post_content",
                 "title_selector": "h1.post_title",
                 "content_selector": "div.post_text",
                 "date_selector": "div.post_time",
                 "author_selector": "div.post_author"
             },
-            "schedule": "*/30 * * * *",
+            "interval": 30,
             "is_active": true,
             "max_retries": 3,
             "retry_delay": 300,
@@ -75,15 +75,15 @@
             "name": "搜狐新闻爬虫",
             "description": "爬取搜狐新闻网站的新闻内容",
             "source_url": "https://news.sohu.com",
-            "crawler_type": "news",
-            "config": {
+            "crawler_type": 2,
+            "config_data": {
                 "article_selector": "div.article",
                 "title_selector": "h1.title",
                 "content_selector": "article.article",
                 "date_selector": "span.time",
                 "author_selector": "span.author"
             },
-            "schedule": "*/30 * * * *",
+            "interval": 30,
             "is_active": true,
             "max_retries": 3,
             "retry_delay": 300,
@@ -98,15 +98,19 @@
             "name": "凤凰新闻爬虫",
             "description": "爬取凤凰新闻网站的新闻内容",
             "source_url": "https://news.ifeng.com",
-            "crawler_type": "news",
-            "config": {
-                "article_selector": "div.main_content",
-                "title_selector": "h1.title",
-                "content_selector": "div.main_content-detail",
-                "date_selector": "span.time",
-                "author_selector": "span.author"
+            "crawler_type": 2,
+            "config_data": {
+                "data_path": "[1].item",
+                "link_path": "link.weburl",
+                "title_path": "title",
+                "author_path": "source",
+                "source_path": "source",
+                "content_path": "content",
+                "pub_time_path": "updateTime",
+                "content_selector": "div.main_content",
+                "description_path": "summary"
             },
-            "schedule": "*/30 * * * *",
+            "interval": 30,
             "is_active": true,
             "max_retries": 3,
             "retry_delay": 300,

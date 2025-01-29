@@ -57,9 +57,9 @@ class NewsArticle(models.Model):
     summary = models.TextField(_("摘要"), blank=True)
     source = models.CharField(_("来源"), max_length=100, blank=True)
     author = models.CharField(_("作者"), max_length=100, blank=True)
-    source_url = models.CharField(_("原文链接"), max_length=255, unique=True)
+    source_url = models.URLField(_("原文链接"), max_length=255, unique=True)
     category = models.ForeignKey(
-        NewsCategory, verbose_name=_("所属分类"), on_delete=models.SET_NULL, null=True, related_name="articles"
+        NewsCategory, verbose_name=_("所属分类"), on_delete=models.SET_NULL, null=True, blank=True, related_name="articles"
     )
     tags = models.JSONField(_("标签"), default=list)
     status = models.CharField(_("状态"), max_length=20, choices=Status.choices, default=Status.DRAFT)
@@ -91,7 +91,19 @@ class NewsArticle(models.Model):
         verbose_name=_("创建者"),
         on_delete=models.SET_NULL,
         null=True,
+        blank=True,
         related_name="created_articles",
+    )
+
+    # 爬虫配置
+    crawler = models.ForeignKey(
+        'crawler.CrawlerConfig',
+        verbose_name=_("爬虫配置"),
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="articles",
+        db_constraint=False  # 不创建外键约束
     )
 
     class Meta:

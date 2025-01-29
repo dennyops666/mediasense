@@ -7,8 +7,121 @@ from django.conf import settings
 from django.db.models import Avg, Count, Max, Min, Sum
 from django.utils import timezone
 
-from .models import MonitoringVisualization, SystemMetrics
+from .models import MonitoringVisualization, SystemMetrics, AlertRule
 
+
+class MonitoringService:
+    """监控服务类"""
+
+    @staticmethod
+    def collect_system_metrics():
+        """收集系统指标"""
+        metrics = []
+        
+        # CPU使用率
+        cpu_usage = psutil.cpu_percent(interval=1)
+        metrics.append(SystemMetrics(
+            metric_type=SystemMetrics.MetricType.CPU_USAGE,
+            value=cpu_usage
+        ))
+
+        # 内存使用率
+        memory = psutil.virtual_memory()
+        metrics.append(SystemMetrics(
+            metric_type=SystemMetrics.MetricType.MEMORY_USAGE,
+            value=memory.percent
+        ))
+
+        # 磁盘使用率
+        disk = psutil.disk_usage('/')
+        metrics.append(SystemMetrics(
+            metric_type=SystemMetrics.MetricType.DISK_USAGE,
+            value=disk.percent
+        ))
+
+        # 网络流量
+        net_io = psutil.net_io_counters()
+        metrics.append(SystemMetrics(
+            metric_type=SystemMetrics.MetricType.NETWORK_IN,
+            value=net_io.bytes_recv
+        ))
+        metrics.append(SystemMetrics(
+            metric_type=SystemMetrics.MetricType.NETWORK_OUT,
+            value=net_io.bytes_sent
+        ))
+
+        # 批量创建
+        SystemMetrics.objects.bulk_create(metrics)
+
+    @staticmethod
+    def generate_visualization_data(visualization):
+        """生成可视化数据"""
+        end_time = timezone.now()
+        time_range = visualization.config.get('time_range', 30)  # 默认30分钟
+        start_time = end_time - timedelta(minutes=time_range)
+
+        # 获取指定时间范围内的指标数据
+        metrics = SystemMetrics.objects.filter(
+            metric_type=visualization.metric_type,
+            timestamp__gte=start_time,
+            timestamp__lte=end_time
+        ).order_by('timestamp')
+
+        if visualization.visualization_type == MonitoringVisualization.ChartType.LINE_CHART:
+            # 生成折线图数据
+            data = {
+                'timestamps': [m.timestamp.isoformat() for m in metrics],
+                'values': [m.value for m in metrics],
+                'metric_type': visualization.get_metric_type_display()
+            }
+        else:  # GAUGE
+            # 获取最新值用于仪表盘显示
+            latest_metric = metrics.last()
+            data = {
+                'value': latest_metric.value if latest_metric else 0,
+                'metric_type': visualization.get_metric_type_display(),
+                'timestamp': latest_metric.timestamp.isoformat() if latest_metric else end_time.isoformat()
+            }
+
+        # 更新缓存
+        visualization.cached_data = data
+        visualization.save()
+
+        return data
+
+    @staticmethod
+    def check_alerts():
+        """检查告警规则"""
+        alerts = []
+        rules = AlertRule.objects.filter(is_enabled=True)
+        
+        for rule in rules:
+            # 获取最新的指标值
+            latest_metric = SystemMetrics.objects.filter(
+                metric_type=rule.metric_type
+            ).order_by('-timestamp').first()
+
+            if not latest_metric:
+                continue
+
+            # 检查是否触发告警
+            should_alert = False
+            if rule.operator == AlertRule.Operator.GT and latest_metric.value > rule.threshold:
+                should_alert = True
+            elif rule.operator == AlertRule.Operator.LT and latest_metric.value < rule.threshold:
+                should_alert = True
+
+            if should_alert:
+                alerts.append({
+                    'rule_name': rule.name,
+                    'metric_type': rule.get_metric_type_display(),
+                    'current_value': latest_metric.value,
+                    'threshold': rule.threshold,
+                    'alert_level': rule.alert_level,
+                    'timestamp': latest_metric.timestamp.isoformat()
+                })
+
+        return alerts
 
 class MonitoringVisualizationService:
     """监控可视化服务类"""

@@ -92,6 +92,8 @@ class NewsArticleSerializer(serializers.ModelSerializer):
     category_name = serializers.CharField(source='category.name', read_only=True)
     status_display = serializers.CharField(source='get_status_display', read_only=True)
     reviewer_name = serializers.CharField(source='reviewer.username', read_only=True)
+    source_url = serializers.URLField(required=False, allow_blank=True)
+    tags = serializers.ListField(child=serializers.CharField(), required=False, default=list)
 
     class Meta:
         """元数据类."""
@@ -104,7 +106,7 @@ class NewsArticleSerializer(serializers.ModelSerializer):
             'summary',
             'source',
             'author',
-            'url',
+            'source_url',
             'category',
             'category_name',
             'tags',
@@ -139,13 +141,19 @@ class NewsArticleSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError('所选分类已禁用')
         return value
 
-    def validate_url(self, value):
+    def validate_source_url(self, value):
         """验证URL唯一性."""
-        qs = NewsArticle.objects.filter(url=value)
+        qs = NewsArticle.objects.filter(source_url=value)
         if self.instance:
             qs = qs.exclude(pk=self.instance.pk)
         if qs.exists():
             raise serializers.ValidationError('该URL已存在')
+        return value
+
+    def validate_tags(self, value):
+        """验证标签列表."""
+        if not isinstance(value, list):
+            raise serializers.ValidationError('标签必须是列表类型')
         return value
 
     def validate(self, attrs):
@@ -224,7 +232,7 @@ class NewsArticleReviewSerializer(serializers.ModelSerializer):
             'content',
             'category',
             'source',
-            'url',
+            'source_url',
             'author',
             'publish_time',
             'tags',
@@ -239,7 +247,7 @@ class NewsArticleReviewSerializer(serializers.ModelSerializer):
             'content',
             'category',
             'source',
-            'url',
+            'source_url',
             'author',
             'publish_time',
             'tags',
@@ -318,7 +326,7 @@ class NewsArticleExportSerializer(NewsArticleSerializer):
             'category',
             'category_name',
             'source',
-            'url',
+            'source_url',
             'author',
             'publish_time',
             'tags',
@@ -348,7 +356,7 @@ class NewsArticleImportSerializer(serializers.ModelSerializer):
             'content',
             'category',
             'source',
-            'url',
+            'source_url',
             'author',
             'publish_time',
             'tags',
@@ -452,7 +460,7 @@ class NewsArticleAuditSerializer(serializers.ModelSerializer):
             'content',
             'category',
             'source',
-            'url',
+            'source_url',
             'author',
             'publish_time',
             'tags',
@@ -467,7 +475,7 @@ class NewsArticleAuditSerializer(serializers.ModelSerializer):
             'content',
             'category',
             'source',
-            'url',
+            'source_url',
             'author',
             'publish_time',
             'tags',

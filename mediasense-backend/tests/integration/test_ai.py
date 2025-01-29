@@ -3,7 +3,7 @@ from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 from unittest.mock import patch, Mock, MagicMock, AsyncMock
-from tests.factories import UserFactory, NewsArticleFactory, AnalysisRuleFactory
+from tests.factories import UserFactory, NewsArticleFactory as NewsFactory, AnalysisRuleFactory
 from news.models import NewsArticle
 from ai_service.models import AnalysisRule, AnalysisResult
 from django.utils import timezone
@@ -56,7 +56,7 @@ class TestAIServiceIntegration(TransactionTestCase):
         """测试文本分析功能"""
         try:
             # 创建测试文章
-            article = await NewsArticleFactory.acreate(
+            article = await NewsFactory.acreate(
                 title="测试文章",
                 content="这是一篇测试文章的内容，用于测试AI文本分析功能。",
                 status=NewsArticle.Status.PUBLISHED,
@@ -92,6 +92,75 @@ class TestAIServiceIntegration(TransactionTestCase):
             assert 'sentiment' in result.result, "分析结果中缺少sentiment字段"
             assert 'confidence' in result.result, "分析结果中缺少confidence字段"
             assert 'explanation' in result.result, "分析结果中缺少explanation字段"
+            
+            # 测试无效的分析类型
+            response = await sync_to_async(self.client.post)(
+                url,
+                data=json.dumps({
+                    'analysis_types': ['invalid_type']
+                }),
+                content_type='application/json'
+            )
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert 'error' in response.data
+            
+            # 测试空的分析类型列表
+            response = await sync_to_async(self.client.post)(
+                url,
+                data=json.dumps({
+                    'analysis_types': []
+                }),
+                content_type='application/json'
+            )
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert 'error' in response.data
+            
+            # 测试不存在的文章
+            invalid_url = reverse('api:ai_service:ai-analyze-article', args=[99999])
+            response = await sync_to_async(self.client.post)(
+                invalid_url,
+                data=json.dumps({
+                    'analysis_types': ['sentiment']
+                }),
+                content_type='application/json'
+            )
+            assert response.status_code == status.HTTP_404_NOT_FOUND
+            
+            # 测试未发布的文章
+            draft_article = await NewsFactory.acreate(
+                title="草稿文章",
+                content="这是一篇草稿文章。",
+                status=NewsArticle.Status.DRAFT,
+                created_by=self.user
+            )
+            draft_url = reverse('api:ai_service:ai-analyze-article', args=[draft_article.id])
+            response = await sync_to_async(self.client.post)(
+                draft_url,
+                data=json.dumps({
+                    'analysis_types': ['sentiment']
+                }),
+                content_type='application/json'
+            )
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert 'error' in response.data
+            
+            # 测试空内容的文章
+            empty_article = await NewsFactory.acreate(
+                title="空内容文章",
+                content="",
+                status=NewsArticle.Status.PUBLISHED,
+                created_by=self.user
+            )
+            empty_url = reverse('api:ai_service:ai-analyze-article', args=[empty_article.id])
+            response = await sync_to_async(self.client.post)(
+                empty_url,
+                data=json.dumps({
+                    'analysis_types': ['sentiment']
+                }),
+                content_type='application/json'
+            )
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert 'error' in response.data
 
         except Exception as e:
             logger.error(f"测试失败: {str(e)}")
@@ -101,7 +170,7 @@ class TestAIServiceIntegration(TransactionTestCase):
         """测试服务集成"""
         try:
             # 创建测试文章和分析规则
-            article = await NewsArticleFactory.acreate(
+            article = await NewsFactory.acreate(
                 title="集成测试文章",
                 content="这是一篇用于测试服务集成的文章。",
                 status=NewsArticle.Status.PUBLISHED,
@@ -142,6 +211,85 @@ class TestAIServiceIntegration(TransactionTestCase):
             assert result is not None, "分析结果未保存到数据库"
             assert result.result is not None, "分析结果为空"
             assert isinstance(result.result, dict), "分析结果格式不正确"
+            
+            # 测试不存在的规则
+            response = await sync_to_async(self.client.post)(
+                url,
+                data=json.dumps({'rule_id': 99999}),
+                content_type='application/json'
+            )
+            assert response.status_code == status.HTTP_404_NOT_FOUND
+            
+            # 测试禁用的规则
+            rule.is_active = False
+            await sync_to_async(rule.save)()
+            response = await sync_to_async(self.client.post)(
+                url,
+                data=json.dumps({'rule_id': rule.id}),
+                content_type='application/json'
+            )
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert 'error' in response.data
+            
+            # 测试无效的规则ID
+            response = await sync_to_async(self.client.post)(
+                url,
+                data=json.dumps({'rule_id': 'invalid_id'}),
+                content_type='application/json'
+            )
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert 'error' in response.data
+            
+            # 测试空的prompt模板
+            empty_rule = await AnalysisRuleFactory.acreate(
+                name="空模板规则",
+                rule_type="sentiment",
+                system_prompt="你是一个文本分析助手",
+                user_prompt_template="",
+                is_active=True,
+                created_by=self.user
+            )
+            response = await sync_to_async(self.client.post)(
+                url,
+                data=json.dumps({'rule_id': empty_rule.id}),
+                content_type='application/json'
+            )
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert 'error' in response.data
+            
+            # 测试无效的规则类型
+            invalid_rule = await AnalysisRuleFactory.acreate(
+                name="无效类型规则",
+                rule_type="invalid_type",
+                system_prompt="你是一个文本分析助手",
+                user_prompt_template="分析文本：{content}",
+                is_active=True,
+                created_by=self.user
+            )
+            response = await sync_to_async(self.client.post)(
+                url,
+                data=json.dumps({'rule_id': invalid_rule.id}),
+                content_type='application/json'
+            )
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert 'error' in response.data
+            
+            # 测试缺失必要的prompt变量
+            missing_var_rule = await AnalysisRuleFactory.acreate(
+                name="缺失变量规则",
+                rule_type="sentiment",
+                system_prompt="你是一个文本分析助手",
+                user_prompt_template="分析文本：{missing_var}",
+                is_active=True,
+                created_by=self.user
+            )
+            response = await sync_to_async(self.client.post)(
+                url,
+                data=json.dumps({'rule_id': missing_var_rule.id}),
+                content_type='application/json'
+            )
+            assert response.status_code == status.HTTP_400_BAD_REQUEST
+            assert 'error' in response.data
 
         except Exception as e:
             logger.error(f"测试失败: {str(e)}")

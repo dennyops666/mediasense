@@ -11,4 +11,6 @@ router.register(r'search', NewsSearchViewSet, basename='news-search')
 urlpatterns = [
     path('search/', NewsSearchViewSet.as_view({'get': 'search'}), name='news-search-search'),
     path('suggest/', NewsSearchViewSet.as_view({'get': 'suggest'}), name='news-search-suggest'),
+    path('history/', NewsSearchViewSet.as_view({'get': 'history'}), name='news-search-history'),
+    path('history/clear/', NewsSearchViewSet.as_view({'post': 'clear_history'}), name='news-search-clear-history'),
 ] + router.urls

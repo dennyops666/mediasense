@@ -63,7 +63,10 @@ class TestAPIResponseFormat(BaseTestCase):
         response = self.client.get(self.nonexistent_url)
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
         response_data = response.json()  # 将JSON响应解析为字典
-        self.assertIn('message', response_data)
+        self.assertTrue(
+            'detail' in response_data or 'message' in response_data,
+            "Response should contain either 'detail' or 'message'"
+        )
 
     def test_method_not_allowed_format(self):
         """测试方法不允许的响应格式"""

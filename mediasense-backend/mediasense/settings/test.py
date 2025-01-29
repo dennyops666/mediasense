@@ -1,10 +1,17 @@
 from environ import Env
 import os
+from datetime import timedelta
 
 env = Env()
 env.read_env(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
 
 from .base import *
+
+# 标记为测试环境
+TESTING = True
+
+# 允许所有主机名
+ALLOWED_HOSTS = ['*']
 
 # 允许在异步上下文中执行同步操作
 os.environ["DJANGO_ALLOW_ASYNC_UNSAFE"] = "true"
@@ -18,132 +25,56 @@ AUTHENTICATION_BACKENDS = [
 ]
 
 # 使用 pytest 测试运行器
-TEST_RUNNER = 'mediasense.test_runner.PytestTestRunner'
+TEST_RUNNER = 'django.test.runner.DiscoverRunner'
 
-# 使用MySQL作为测试数据库
+# REST框架测试设置
+REST_FRAMEWORK = {
+    'TEST_REQUEST_DEFAULT_FORMAT': 'json',
+    'DEFAULT_RENDERER_CLASSES': [
+        'rest_framework.renderers.JSONRenderer',
+    ],
+    'DEFAULT_PARSER_CLASSES': [
+        'rest_framework.parsers.JSONParser',
+    ],
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework_simplejwt.authentication.JWTAuthentication',
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+    'UNAUTHENTICATED_USER': None,
+    'EXCEPTION_HANDLER': 'mediasense.utils.custom_exception_handler',
+}
+
+# 使用现有的MySQL数据库进行测试
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'mediasense',
-        'USER': 'mediasense',
-        'PASSWORD': '123456',
-        'HOST': 'localhost',
-        'PORT': '3306',
-        'CONN_MAX_AGE': None,
+        'NAME': env('MYSQL_DATABASE', default='mediasense'),
+        'USER': env('MYSQL_USER', default='mediasense'),
+        'PASSWORD': env('MYSQL_PASSWORD'),
+        'HOST': env('MYSQL_HOST', default='localhost'),
+        'PORT': env('MYSQL_PORT', default='3306'),
+        'CONN_MAX_AGE': 60,  # 连接保持60秒
         'OPTIONS': {
-            'init_command': """
-                SET SESSION sql_mode = 'STRICT_TRANS_TABLES';
-                SET SESSION innodb_lock_wait_timeout = 30;
-                SET SESSION autocommit = 1;
-                SET SESSION TRANSACTION ISOLATION LEVEL READ UNCOMMITTED;
-                SET SESSION max_execution_time = 30000;
-            """,
             'charset': 'utf8mb4',
-            'use_unicode': True,
-            'isolation_level': None,
-            'autocommit': True,
+            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
         },
         'TEST': {
-            'NAME': 'mediasense',
-            'CHARSET': 'utf8mb4',
-            'COLLATION': 'utf8mb4_general_ci',
-            'CREATE_DB': False,
+            'NAME': env('MYSQL_DATABASE'),  # 使用相同的数据库
             'MIRROR': None,
-            'SERIALIZE': False,
+            'CREATE_DB': False,  # 不创建新的测试数据库
+            'DEPENDENCIES': [],
+            'MIGRATE': False,  # 不进行迁移
+            'SERIALIZE': False  # 不序列化数据
         },
     }
 }
 
-# 禁用事务
-DJANGO_TRANSACTION_MIDDLEWARE = None
-ATOMIC_REQUESTS = False
-DISABLE_TRANSACTION_MANAGEMENT = True
-
-# 禁用数据库迁移
-MIGRATION_MODULES = {
-    'auth': None,
-    'contenttypes': None,
-    'default': None,
-    'sessions': None,
-    'news': None,
-    'crawler': None,
-    'ai_service': None,
-    'monitoring': None,
-    'custom_auth': None,
-}
-
-# 数据库连接池配置
-DATABASE_CONNECTION_POOLING = True
-DATABASE_MAX_CONNECTIONS = 100
-DATABASE_MIN_CONNECTIONS = 10
-DATABASE_POOL_TIMEOUT = 30
-
-# 测试运行器配置
-TEST_RUNNER = 'mediasense.test_runner.PytestTestRunner'
-TEST_NON_SERIALIZED_APPS = ['auth', 'contenttypes', 'sessions', 'news', 'crawler', 'ai_service', 'monitoring', 'custom_auth']
-
-# 在测试环境中使用单一数据库
-DATABASE_APPS_MAPPING = {}
-
-# 禁用不必要的应用
-INSTALLED_APPS = [
-    'django.contrib.admin',
-    'django.contrib.auth',
-    'django.contrib.contenttypes',
-    'django.contrib.sessions',
-    'django.contrib.messages',
-    'django.contrib.staticfiles',
-    'rest_framework',
-    'rest_framework.authtoken',
-    'monitoring',
-    'custom_auth',
-    'news',
-    'news_search',
-    'crawler',
-    'ai_service',
-]
-
-# 使用异步中间件
-MIDDLEWARE = [
-    'django.middleware.security.SecurityMiddleware',
-    'django.contrib.sessions.middleware.SessionMiddleware',
-    'corsheaders.middleware.CorsMiddleware',
-    'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
-    'mediasense.middleware.routing.RoutingMiddleware',
-    'mediasense.middleware.rate_limit.RateLimitMiddleware',
-    'mediasense.middleware.custom_404.Custom404Middleware',
-]
-
-# 配置Redis缓存
-CACHES = {
-    'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': 'redis://localhost:6379/1',
-        'OPTIONS': {
-            'db': 1,
-            'max_connections': 100,
-            'socket_timeout': 20
-        }
-    }
-}
-
-# Redis主机配置
-REDIS_HOST = 'localhost'
-REDIS_PORT = 6379
-REDIS_DB = 1
-
-# 禁用测试数据库创建
-TEST_DATABASE_CREATE = False
-TEST_DATABASE_PREFIX = ''
-
 # 禁用密码哈希以加快测试速度
-PASSWORD_HASHERS = [
+PASSWORD_HASHERS = (
     'django.contrib.auth.hashers.MD5PasswordHasher',
-]
+)
 
 # 使用测试邮件后端
 EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
@@ -152,31 +83,15 @@ EMAIL_BACKEND = 'django.core.mail.backends.locmem.EmailBackend'
 CELERY_ALWAYS_EAGER = True
 CELERY_EAGER_PROPAGATES_EXCEPTIONS = True
 
-# REST Framework测试配置
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': (
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ),
-    'DEFAULT_PERMISSION_CLASSES': (
-        'rest_framework.permissions.IsAuthenticated',
-    ),
-    'EXCEPTION_HANDLER': 'mediasense.utils.custom_exception_handler',
-    'DEFAULT_RENDERER_CLASSES': (
-        'rest_framework.renderers.JSONRenderer',
-    ),
-    'DEFAULT_PARSER_CLASSES': (
-        'rest_framework.parsers.JSONParser',
-        'rest_framework.parsers.FormParser',
-        'rest_framework.parsers.MultiPartParser'
-    ),
-    'NON_FIELD_ERRORS_KEY': 'error',
-    'DEFAULT_PAGINATION_CLASS': None,
-    'UNAUTHENTICATED_USER': None,
-    'UNAUTHENTICATED_TOKEN': None,
-}
-
-# JWT 配置
+# JWT配置
 SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ROTATE_REFRESH_TOKENS': False,
+    'BLACKLIST_AFTER_ROTATION': True,
+    'ALGORITHM': 'HS256',
+    'SIGNING_KEY': env('DJANGO_SECRET_KEY', default='your-secret-key-for-testing'),
+    'VERIFYING_KEY': None,
     'AUTH_HEADER_TYPES': ('Bearer',),
     'USER_ID_FIELD': 'id',
     'USER_ID_CLAIM': 'user_id',
@@ -185,7 +100,7 @@ SIMPLE_JWT = {
 }
 
 # Elasticsearch配置
-ELASTICSEARCH_HOSTS = [env('ELASTICSEARCH_HOST', default='http://localhost:9200')]
+ELASTICSEARCH_HOSTS = ['http://localhost:9200']
 ELASTICSEARCH_INDEX_PREFIX = 'test_'
 
 # OpenAI配置
@@ -207,53 +122,186 @@ MEDIA_URL = '/media/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'static_test')
 STATIC_URL = '/static/'
 
-# 禁用日志记录
+# 启用日志记录
 LOGGING = {
     'version': 1,
-    'disable_existing_loggers': True,
+    'disable_existing_loggers': False,
     'handlers': {
-        'null': {
-            'class': 'logging.NullHandler',
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': 'logs/test.log',
+            'mode': 'w',
         },
     },
     'root': {
-        'handlers': ['null'],
-        'level': 'CRITICAL',
+        'handlers': ['console', 'file'],
+        'level': 'INFO',
     },
-}
-
-# 服务注册配置
-SERVICE_REGISTRY = {
-    'news': 'http://localhost:8000/api/news',
-    'search': 'http://localhost:8000/api/search',
-    'ai': 'http://localhost:8000/api/ai',
-    'crawler': 'http://localhost:8000/api/crawler',
-    'monitoring': 'http://localhost:8000/api/monitoring'
-}
-
-# API网关配置
-API_GATEWAY = {
-    'RATE_LIMIT': {
-        'enabled': True,
-        'requests_per_minute': 60,
-        'backend': 'redis',
-        'location': 'rate_limit'
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'ai_service': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': False,
+        },
     },
-    'LOAD_BALANCING': {
-        'enabled': True,
-        'strategy': 'round_robin',
-        'replicas': 2
-    },
-    'SERVICE_REGISTRY': SERVICE_REGISTRY,
-    'ROUTE_CONFIG': {
-        '/api/news/': 'news',
-        '/api/search/': 'search',
-        '/api/ai/': 'ai',
-        '/api/crawler/': 'crawler',
-        '/api/monitoring/': 'monitoring'
-    }
 }
 
 # 异步测试配置
 DJANGO_ALLOW_ASYNC_UNSAFE = True
 ASYNC_TEST_TIMEOUT = 30  # 秒
+
+# 其他测试相关设置
+DEBUG = False
+TEMPLATE_DEBUG = False
+
+# 禁用异步中间件
+MIDDLEWARE = [
+    'django.middleware.security.SecurityMiddleware',
+    'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.common.CommonMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    'mediasense.middleware.routing.RoutingMiddleware',
+    'mediasense.middleware.rate_limit.RateLimitMiddleware',
+]
+
+# 数据库应用映射配置
+DATABASE_APPS_MAPPING = {
+    'news': 'default',
+    'search': 'default',
+    'auth': 'default',
+    'ai': 'default',
+}
+
+# 服务注册配置
+SERVICE_REGISTRY = {
+    'news': {
+        'hosts': ['http://localhost:8000'],
+        'weight': 1,
+    },
+    'search': {
+        'hosts': ['http://localhost:8000'],
+        'weight': 1,
+    },
+    'auth': {
+        'hosts': ['http://localhost:8000'],
+        'weight': 1,
+    },
+    'ai': {
+        'hosts': ['http://localhost:8000'],
+        'weight': 1,
+    },
+}
+
+# 网关配置
+GATEWAY = {
+    'rate_limit': {
+        'enabled': True,
+        'default_limit': 60,  # 每分钟请求次数
+        'window': 60,  # 时间窗口（秒）
+    },
+    'load_balancing': {
+        'algorithm': 'round_robin',  # 负载均衡算法
+    },
+}
+
+# API网关配置
+API_GATEWAY = {
+    'enabled': True,
+    'auth': {
+        'required': True,
+        'exempt_paths': [
+            '/api/v1/auth/login/',
+            '/api/v1/auth/register/',
+        ],
+    },
+    'load_balancing': {
+        'enabled': True,
+        'algorithm': 'round_robin',
+        'health_check': {
+            'enabled': True,
+            'interval': 30,  # 健康检查间隔（秒）
+            'timeout': 5,    # 健康检查超时（秒）
+        },
+    },
+    'rate_limiting': {
+        'enabled': True,
+        'default_limit': 60,  # 每分钟请求数
+        'window': 60,         # 时间窗口（秒）
+    },
+}
+
+# Redis配置
+REDIS_HOST = env('REDIS_HOST', default='localhost')
+REDIS_PORT = env('REDIS_PORT', default='6379')
+REDIS_DB = env('REDIS_DB', default='0')
+REDIS_PASSWORD = env('REDIS_PASSWORD', default=None)
+
+# Redis缓存配置
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': f'redis://{REDIS_HOST}:{REDIS_PORT}/{REDIS_DB}',
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'PASSWORD': REDIS_PASSWORD,
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'RETRY_ON_TIMEOUT': True,
+            'MAX_CONNECTIONS': 1000,
+            'CONNECTION_POOL_KWARGS': {'max_connections': 100},
+        }
+    }
+}
+
+# Redis会话配置
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+SESSION_CACHE_ALIAS = 'default'
+
+# Redis限流配置
+RATE_LIMIT = {
+    'ENABLED': True,
+    'BACKEND': 'django_redis.cache.RedisCache',
+    'DEFAULT_LIMIT': 60,  # 每分钟请求次数
+    'WINDOW': 60,  # 时间窗口（秒）
+}
+
+# Redis队列配置
+RQ_QUEUES = {
+    'default': {
+        'HOST': REDIS_HOST,
+        'PORT': REDIS_PORT,
+        'DB': REDIS_DB,
+        'PASSWORD': REDIS_PASSWORD,
+        'DEFAULT_TIMEOUT': 360,
+    },
+    'high': {
+        'HOST': REDIS_HOST,
+        'PORT': REDIS_PORT,
+        'DB': REDIS_DB,
+        'PASSWORD': REDIS_PASSWORD,
+        'DEFAULT_TIMEOUT': 500,
+    },
+    'low': {
+        'HOST': REDIS_HOST,
+        'PORT': REDIS_PORT,
+        'DB': REDIS_DB,
+        'PASSWORD': REDIS_PASSWORD,
+        'DEFAULT_TIMEOUT': 180,
+    }
+}
+
+# 测试运行器配置
+TEST_RUNNER = 'django.test.runner.DiscoverRunner'
+TEST_NON_SERIALIZED_APPS = []

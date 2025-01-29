@@ -1,4 +1,4 @@
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseBase, Http404
 from rest_framework.response import Response
 from rest_framework import viewsets, status, exceptions
 from rest_framework.viewsets import ModelViewSet
@@ -6,6 +6,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.decorators import action
 from django.utils import timezone
 from datetime import timedelta
+from django.db import models
 from .models import (
     SystemMetrics, AlertRule, AlertHistory,
     MonitoringVisualization, ErrorLog,
@@ -15,253 +16,236 @@ from .serializers import (
     SystemMetricsSerializer, AlertRuleSerializer,
     AlertHistorySerializer, MonitoringVisualizationSerializer,
     ErrorLogSerializer, DashboardSerializer,
-    DashboardWidgetSerializer, AlertNotificationConfigSerializer
+    DashboardWidgetSerializer, AlertNotificationConfigSerializer,
+    ErrorLogStatisticsSerializer
 )
 import logging
+import psutil
+from rest_framework import serializers
+from asgiref.sync import sync_to_async
+from django.db import transaction
+from rest_framework.viewsets import ViewSetMixin
+from rest_framework.views import APIView
+from django.utils.decorators import method_decorator
+from django.views.decorators.csrf import csrf_exempt
+import asyncio
+from rest_framework.renderers import JSONRenderer
+from rest_framework.viewsets import ViewSet
+from rest_framework.mixins import (
+    CreateModelMixin, ListModelMixin, RetrieveModelMixin,
+    UpdateModelMixin, DestroyModelMixin
+)
+from rest_framework.request import Request
+from rest_framework.parsers import JSONParser, FormParser, MultiPartParser
+from rest_framework.negotiation import DefaultContentNegotiation
+from rest_framework.versioning import AcceptHeaderVersioning
+from rest_framework.metadata import SimpleMetadata
+from rest_framework.pagination import PageNumberPagination
+from rest_framework.filters import SearchFilter, OrderingFilter
+from rest_framework.settings import api_settings
+from django.db.models import Count
+from .async_viewset import AsyncViewSet
 
 logger = logging.getLogger(__name__)
 
-class SystemMetricsViewSet(ModelViewSet):
-    """系统指标视图集"""
-    serializer_class = SystemMetricsSerializer
+class SystemMetricsViewSet(AsyncViewSet):
     queryset = SystemMetrics.objects.all()
+    serializer_class = SystemMetricsSerializer
     permission_classes = [IsAuthenticated]
 
-    def perform_create(self, serializer):
-        """创建系统指标时检查告警规则"""
-        instance = serializer.save(created_by=self.request.user)
-        
-        # 检查是否触发告警规则
-        alert_rules = AlertRule.objects.filter(
-            metric_type=instance.metric_type,
-            is_enabled=True
-        )
-        
-        for rule in alert_rules:
-            should_alert = False
-            if rule.operator == 'gt' and instance.value > rule.threshold:
-                should_alert = True
-            elif rule.operator == 'lt' and instance.value < rule.threshold:
-                should_alert = True
-            elif rule.operator == 'gte' and instance.value >= rule.threshold:
-                should_alert = True
-            elif rule.operator == 'lte' and instance.value <= rule.threshold:
-                should_alert = True
-            elif rule.operator == 'eq' and instance.value == rule.threshold:
-                should_alert = True
-            elif rule.operator == 'neq' and instance.value != rule.threshold:
-                should_alert = True
-                
-            if should_alert:
-                AlertHistory.objects.create(
-                    rule=rule,
-                    metric_value=instance.value,
-                    message=f"{rule.get_metric_type_display()}超过阈值: {instance.value}",
-                    created_by=self.request.user
-                )
-
-class AlertRuleViewSet(ModelViewSet):
-    """告警规则视图集"""
-    serializer_class = AlertRuleSerializer
+class AlertRuleViewSet(AsyncViewSet):
     queryset = AlertRule.objects.all()
+    serializer_class = AlertRuleSerializer
     permission_classes = [IsAuthenticated]
 
     @action(detail=True, methods=['post'])
-    def enable(self, request, pk=None):
+    async def enable(self, request, pk=None):
         """启用告警规则"""
-        rule = self.get_object()
-        rule.is_enabled = True
-        rule.save()
-        serializer = self.get_serializer(rule)
-        return Response(serializer.data)
-
-    @action(detail=True, methods=['post'])
-    def disable(self, request, pk=None):
-        """禁用告警规则"""
-        rule = self.get_object()
-        rule.is_enabled = False
-        rule.save()
-        serializer = self.get_serializer(rule)
-        return Response(serializer.data)
-
-class AlertHistoryViewSet(ModelViewSet):
-    """告警历史视图集"""
-    serializer_class = AlertHistorySerializer
-    queryset = AlertHistory.objects.all()
-    permission_classes = [IsAuthenticated]
-
-    @action(detail=True, methods=['post'])
-    def acknowledge(self, request, pk=None):
-        """确认告警"""
-        alert = self.get_object()
-        alert.status = 'acknowledged'
-        alert.acknowledged_at = timezone.now()
-        alert.acknowledged_by = request.user
-        alert.save()
-        return Response({'status': 'success'})
-
-    @action(detail=True, methods=['post'])
-    def resolve(self, request, pk=None):
-        """解决告警"""
-        alert = self.get_object()
-        alert.status = 'resolved'
-        alert.resolved_at = timezone.now()
-        alert.save()
-        return Response({'status': 'success'})
-
-class MonitoringVisualizationViewSet(ModelViewSet):
-    """监控可视化视图集"""
-    serializer_class = MonitoringVisualizationSerializer
-    queryset = MonitoringVisualization.objects.all()
-    permission_classes = [IsAuthenticated]
-
-    def perform_create(self, serializer):
-        """创建时设置创建者"""
-        serializer.save(created_by=self.request.user)
-
-    @action(detail=True, methods=['get'])
-    def data(self, request, pk=None):
-        """获取可视化数据"""
-        instance = self.get_object()
-        metrics = SystemMetrics.objects.filter(
-            timestamp__gte=timezone.now() - timedelta(minutes=instance.time_range)
-        )
-        
-        data = []
-        for metric in metrics:
-            data.append({
-                'timestamp': metric.timestamp,
-                'value': metric.value,
-                'type': metric.metric_type
-            })
-        
-        return Response(data)
-
-class ErrorLogViewSet(ModelViewSet):
-    """错误日志视图集"""
-    serializer_class = ErrorLogSerializer
-    queryset = ErrorLog.objects.all()
-    permission_classes = [IsAuthenticated]
-
-    @action(detail=False, methods=['get'])
-    def statistics(self, request):
-        """获取错误日志统计信息"""
-        one_day_ago = timezone.now() - timedelta(days=1)
-        queryset = ErrorLog.objects.filter(
-            created_at__gte=one_day_ago
-        )
-        
-        stats = {
-            'total_count': queryset.count(),
-            'error_count': queryset.filter(severity='ERROR').count(),
-            'warning_count': queryset.filter(severity='WARNING').count(),
-            'info_count': queryset.filter(severity='INFO').count()
-        }
-        
-        return Response(stats)
-
-class SystemStatusViewSet(ModelViewSet):
-    """系统状态视图集"""
-    permission_classes = [IsAuthenticated]
-
-    @action(detail=False, methods=['get'])
-    def overview(self, request):
-        """获取系统概览"""
-        return Response({
-            'status': 'healthy',
-            'last_check': timezone.now(),
-            'memory_usage': {
-                'total': 16384,  # MB
-                'used': 8192,    # MB
-                'free': 8192     # MB
-            },
-            'services': {
-                'database': True,
-                'cache': True,
-                'queue': True
-            }
-        })
-
-    @action(detail=False, methods=['get'])
-    def health(self, request):
-        """获取系统健康状态"""
-        return Response({
-            'status': 'ok',
-            'checks': {
-                'database': 'ok',
-                'cache': 'ok',
-                'queue': 'ok'
-            }
-        })
-
-class DashboardViewSet(ModelViewSet):
-    """仪表板视图集"""
-    serializer_class = DashboardSerializer
-    queryset = Dashboard.objects.all()
-    permission_classes = [IsAuthenticated]
-
-    def perform_create(self, serializer):
-        """创建时设置创建者"""
-        serializer.save(created_by=self.request.user)
-
-class DashboardWidgetViewSet(ModelViewSet):
-    """仪表板组件视图集"""
-    serializer_class = DashboardWidgetSerializer
-    queryset = DashboardWidget.objects.all()
-    permission_classes = [IsAuthenticated]
-
-class AlertNotificationConfigViewSet(ModelViewSet):
-    """告警通知配置视图集"""
-    serializer_class = AlertNotificationConfigSerializer
-    queryset = AlertNotificationConfig.objects.all()
-    permission_classes = [IsAuthenticated]
-
-    def perform_create(self, serializer):
-        """创建时设置用户"""
-        logger.info(f"Creating alert notification config with data: {serializer.validated_data}")
-        serializer.save(user=self.request.user)
-
-    @action(detail=True, methods=['post'])
-    def test(self, request, pk=None):
-        """发送测试通知"""
         try:
-            instance = self.get_object()
-            logger.info(f"Testing notification for config: {instance.name}")
-            
-            # 调用异步测试方法
-            success = True  # 简化测试，直接返回成功
-            
-            if success:
-                # 更新最后通知时间和通知计数
-                instance.last_notified = timezone.now()
-                instance.notification_count += 1
-                instance.save()
-                
-                return Response({
-                    'status': 'success',
-                    'message': f'测试通知发送成功 ({instance.notification_type})'
-                })
-            
+            rule = await self.get_object()
+            await self.check_object_permissions(request, rule)
+            rule.is_enabled = True
+            try:
+                await sync_to_async(rule.save)()
+                serializer = self.get_serializer(rule)
+                return Response(serializer.data)
+            except Exception as e:
+                logger.error(f"保存告警规则失败: {str(e)}")
+                raise serializers.ValidationError(str(e))
+        except Http404:
+            raise
+        except Exception as e:
+            logger.error(f"启用告警规则失败: {str(e)}")
             return Response(
-                {
-                    'status': 'error',
-                    'message': '发送测试通知失败'
-                },
+                {'detail': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
+
+    @action(detail=True, methods=['post'])
+    async def disable(self, request, pk=None):
+        """禁用告警规则"""
+        try:
+            rule = await self.get_object()
+            await self.check_object_permissions(request, rule)
+            rule.is_enabled = False
+            try:
+                await sync_to_async(rule.save)()
+                serializer = self.get_serializer(rule)
+                return Response(serializer.data)
+            except Exception as e:
+                logger.error(f"保存告警规则失败: {str(e)}")
+                raise serializers.ValidationError(str(e))
+        except Http404:
+            raise
+        except Exception as e:
+            logger.error(f"禁用告警规则失败: {str(e)}")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class AlertHistoryViewSet(AsyncViewSet):
+    queryset = AlertHistory.objects.all()
+    serializer_class = AlertHistorySerializer
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=True, methods=['post'])
+    async def acknowledge(self, request, pk=None):
+        """确认告警"""
+        try:
+            alert = await self.get_object()
+            await self.check_object_permissions(request, alert)
+            alert.status = 'acknowledged'
+            try:
+                await sync_to_async(alert.save)()
+                serializer = self.get_serializer(alert)
+                return Response(serializer.data)
+            except Exception as e:
+                logger.error(f"保存告警失败: {str(e)}")
+                raise serializers.ValidationError(str(e))
+        except Http404:
+            raise
+        except Exception as e:
+            logger.error(f"确认告警失败: {str(e)}")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    @action(detail=True, methods=['post'])
+    async def resolve(self, request, pk=None):
+        """解决告警"""
+        try:
+            alert = await self.get_object()
+            await self.check_object_permissions(request, alert)
+            alert.status = 'resolved'
+            try:
+                await sync_to_async(alert.save)()
+                serializer = self.get_serializer(alert)
+                return Response(serializer.data)
+            except Exception as e:
+                logger.error(f"保存告警失败: {str(e)}")
+                raise serializers.ValidationError(str(e))
+        except Http404:
+            raise
+        except Exception as e:
+            logger.error(f"解决告警失败: {str(e)}")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class MonitoringVisualizationViewSet(AsyncViewSet):
+    queryset = MonitoringVisualization.objects.all()
+    serializer_class = MonitoringVisualizationSerializer
+    permission_classes = [IsAuthenticated]
+
+class ErrorLogViewSet(AsyncViewSet):
+    queryset = ErrorLog.objects.all()
+    serializer_class = ErrorLogSerializer
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=['get'])
+    async def statistics(self, request):
+        """获取错误日志统计信息"""
+        try:
+            # 获取查询参数
+            period = request.query_params.get('period', '24h')
+            
+            # 计算时间范围
+            if period == '24h':
+                start_time = timezone.now() - timedelta(hours=24)
+            elif period == '7d':
+                start_time = timezone.now() - timedelta(days=7)
+            else:
+                start_time = timezone.now() - timedelta(hours=24)
+            
+            # 获取查询集
+            queryset = await sync_to_async(lambda: self.queryset.filter(timestamp__gte=start_time))()
+            
+            # 统计数据
+            stats = await sync_to_async(lambda: queryset.values('severity').annotate(count=Count('id')))()
+            
+            return Response(list(stats))
             
         except Exception as e:
-            logger.error(f"Error testing notification: {str(e)}")
-            ErrorLog.objects.create(
-                message=str(e),
-                severity='ERROR',
-                source='AlertNotificationConfig.test',
-                created_by=request.user
-            )
+            logger.error(f"获取错误日志统计信息失败: {str(e)}")
             return Response(
-                {
-                    'status': 'error',
-                    'message': str(e)
-                },
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class DashboardViewSet(AsyncViewSet):
+    queryset = Dashboard.objects.all()
+    serializer_class = DashboardSerializer
+    permission_classes = [IsAuthenticated]
+
+class DashboardWidgetViewSet(AsyncViewSet):
+    queryset = DashboardWidget.objects.all()
+    serializer_class = DashboardWidgetSerializer
+    permission_classes = [IsAuthenticated]
+
+class AlertNotificationConfigViewSet(AsyncViewSet):
+    queryset = AlertNotificationConfig.objects.all()
+    serializer_class = AlertNotificationConfigSerializer
+    permission_classes = [IsAuthenticated]
+
+class SystemStatusViewSet(AsyncViewSet):
+    queryset = SystemMetrics.objects.all()
+    serializer_class = SystemMetricsSerializer
+    permission_classes = [IsAuthenticated]
+
+    async def list(self, request, *args, **kwargs):
+        """获取系统状态概览"""
+        try:
+            # 获取最新的系统指标
+            latest_metrics = {}
+            for metric_type in SystemMetrics.MetricType.choices:
+                metric = await sync_to_async(
+                    lambda: self.queryset.filter(metric_type=metric_type[0])
+                    .order_by('-timestamp')
+                    .first()
+                )()
+                if metric:
+                    latest_metrics[metric_type[0]] = await sync_to_async(self.get_serializer)(metric).data
+            
+            # 获取活跃告警数量
+            active_alerts_count = await sync_to_async(
+                lambda: AlertHistory.objects.filter(status='active').count()
+            )()
+            
+            # 构建响应数据
+            data = {
+                'metrics': latest_metrics,
+                'active_alerts_count': active_alerts_count,
+                'timestamp': timezone.now()
+            }
+            
+            return Response(data)
+            
+        except Exception as e:
+            logger.error(f"获取系统状态概览失败: {str(e)}")
+            return Response(
+                {'detail': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )

@@ -71,15 +71,16 @@ WSGI_APPLICATION = 'mediasense.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': env('MYSQL_DATABASE', default='mediasense'),
-        'USER': env('MYSQL_USER', default='mediasense'),
+        'NAME': env('MYSQL_DATABASE'),
+        'USER': env('MYSQL_USER'),
         'PASSWORD': env('MYSQL_PASSWORD'),
-        'HOST': env('MYSQL_HOST', default='localhost'),
-        'PORT': env('MYSQL_PORT', default='3306'),
-        'OPTIONS': {
-            'charset': 'utf8mb4',
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-        }
+        'HOST': env('MYSQL_HOST'),
+        'PORT': env('MYSQL_PORT'),
+        'TEST': {
+            'NAME': env('MYSQL_DATABASE'),
+            'MIGRATE': False,
+            'CREATE_DB': False,
+        },
     }
 }
 
@@ -190,41 +191,24 @@ GENERATE_SUMMARY = env.bool("GENERATE_SUMMARY", default=True)
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
-    'formatters': {
-        'verbose': {
-            'format': '[%(asctime)s: %(levelname)s/%(processName)s] %(message)s'
-        },
-        'simple': {
-            'format': '%(levelname)s %(message)s'
-        },
-    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
-            'level': 'DEBUG',
-            'formatter': 'verbose',
-        },
-        'celery': {
-            'class': 'logging.FileHandler',
-            'filename': 'logs/celery.log',
-            'formatter': 'verbose',
-        },
-        'file': {
-            'class': 'logging.FileHandler',
-            'filename': 'logs/django.log',
-            'formatter': 'verbose',
         },
     },
+    'root': {
+        'handlers': ['console'],
+        'level': 'DEBUG',
+    },
     'loggers': {
-        'django': {
-            'handlers': ['console', 'file'],
-            'level': 'INFO',
-            'propagate': True,
-        },
         'crawler': {
-            'handlers': ['console', 'celery'],
+            'handlers': ['console'],
             'level': 'DEBUG',
             'propagate': True,
         },
     },
 }
+
+# 测试设置
+TEST_RUNNER = 'monitoring.tests.test_runner.NoDbTestRunner'
+TEST_NON_SERIALIZED_APPS = []

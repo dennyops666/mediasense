@@ -92,7 +92,7 @@ class TestAuthAPI:
     def test_protected_api_with_token(self, api_client, test_user):
         """测试使用令牌访问受保护的API"""
         login_url = reverse('api:auth:token_obtain')
-        protected_url = reverse('api:auth:users-me')
+        protected_url = reverse('api:auth:users_me')
         
         # 获取 token
         login_response = api_client.post(login_url, {
@@ -101,15 +101,15 @@ class TestAuthAPI:
         })
         access_token = login_response.data['access']
         
-        # 使用 token 访问受保护的 API
+        # 使用token访问受保护的API
         api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
         response = api_client.get(protected_url)
         assert response.status_code == status.HTTP_200_OK
         assert response.data['username'] == test_user.username
 
-    def test_protected_api_without_token(self, api_client, test_user):
-        """测试不使用令牌访问受保护的API"""
-        protected_url = reverse('api:auth:users-me')
+    def test_protected_api_without_token(self, api_client):
+        """测试未使用令牌访问受保护的API"""
+        protected_url = reverse('api:auth:users_me')
         response = api_client.get(protected_url)
         assert response.status_code == status.HTTP_401_UNAUTHORIZED
 

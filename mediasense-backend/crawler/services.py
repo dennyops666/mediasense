@@ -289,7 +289,7 @@ class CrawlerService:
                 
             # 如果是数字类型,转换为字典格式
             if isinstance(item, (int, float)):
-                item = {
+                    item = {
                     'title': str(item),
                     'url': '',
                     'content': str(item),
@@ -417,7 +417,7 @@ class CrawlerService:
                 }
 
                 logger.debug(f"准备保存文章: {article_data}")
-                        
+                    
                 serializer = NewsArticleCreateSerializer(data=article_data)
                 if serializer.is_valid():
                     serializer.save()
@@ -427,11 +427,11 @@ class CrawlerService:
                     stats['errors'] += 1
                     logger.error(f"保存文章失败: {serializer.errors}")
                     logger.error(f"文章数据: {article_data}")
-                
+
             except Exception as e:
                 stats['errors'] += 1
                 logger.error(f"保存文章失败: {str(e)}", exc_info=True)
                 logger.error(f"文章数据: {article_data}")
 
         logger.info(f"新闻保存完成，共处理{len(items)}条新闻，成功保存{stats['saved']}条，重复{stats['duplicated']}条，过滤{stats['filtered']}条，错误{stats['errors']}条")
-        return stats 
+        return stats

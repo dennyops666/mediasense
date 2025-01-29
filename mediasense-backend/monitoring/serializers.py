@@ -173,6 +173,9 @@ class AlertHistorySerializer(serializers.ModelSerializer):
     acknowledged_by_username = serializers.CharField(source="acknowledged_by.username", read_only=True)
     alert_level = serializers.CharField(source="rule.alert_level", read_only=True)
     alert_level_display = serializers.CharField(source="rule.get_alert_level_display", read_only=True)
+    metric_type = serializers.CharField(source="rule.metric_type", read_only=True)
+    threshold = serializers.FloatField(source="rule.threshold", read_only=True)
+    value = serializers.FloatField(source="metric_value", read_only=True)
 
     class Meta:
         model = AlertHistory
@@ -182,7 +185,10 @@ class AlertHistorySerializer(serializers.ModelSerializer):
             "rule_name",
             "status",
             "status_display",
+            "metric_type",
             "metric_value",
+            "value",
+            "threshold",
             "triggered_at",
             "resolved_at",
             "acknowledged_at",
@@ -195,7 +201,10 @@ class AlertHistorySerializer(serializers.ModelSerializer):
         read_only_fields = [
             "id",
             "rule_name",
+            "metric_type",
             "metric_value",
+            "value",
+            "threshold",
             "triggered_at",
             "resolved_at",
             "acknowledged_at",
@@ -211,6 +220,8 @@ class AlertNotificationConfigSerializer(serializers.ModelSerializer):
 
     user = serializers.ReadOnlyField(source="user.username")
     notification_type_display = serializers.CharField(source="get_notification_type_display", read_only=True)
+    notification_interval = serializers.IntegerField(required=False, default=300)
+    recovery_notify = serializers.BooleanField(required=False, default=True)
 
     class Meta:
         model = AlertNotificationConfig
@@ -222,13 +233,28 @@ class AlertNotificationConfigSerializer(serializers.ModelSerializer):
             "config",
             "alert_levels",
             "is_active",
+            "notification_interval",
+            "recovery_notify",
             "user",
             "created_at",
             "updated_at",
             "last_notified",
             "notification_count",
         ]
-        read_only_fields = ["user", "created_at", "updated_at", "last_notified", "notification_count"]
+        read_only_fields = ["id", "user", "created_at", "updated_at", "last_notified", "notification_count"]
+
+    def validate_notification_type(self, value):
+        """验证通知类型"""
+        valid_types = [choice[0] for choice in AlertNotificationConfig.NotificationType.choices]
+        if value not in valid_types:
+            raise serializers.ValidationError(f"无效的通知类型: {value}")
+        return value
+
+    def validate_notification_interval(self, value):
+        """验证通知间隔"""
+        if value < 0:
+            raise serializers.ValidationError("通知间隔不能为负数")
+        return value
 
     def validate_config(self, value):
         """验证配置信息"""
@@ -236,6 +262,8 @@ class AlertNotificationConfigSerializer(serializers.ModelSerializer):
         if notification_type == "email":
             if "email" not in value:
                 raise serializers.ValidationError("邮件通知配置必须包含email字段")
+            if "template" not in value:
+                value["template"] = "default"
         elif notification_type == "webhook":
             if "url" not in value:
                 raise serializers.ValidationError("Webhook通知配置必须包含url字段")
@@ -269,6 +297,7 @@ class DashboardWidgetSerializer(serializers.ModelSerializer):
             "name",
             "widget_type",
             "widget_type_display",
+            "visualization",
             "config",
             "position",
             "is_visible",
@@ -304,14 +333,35 @@ class DashboardSerializer(serializers.ModelSerializer):
 
 class ErrorLogSerializer(serializers.ModelSerializer):
     """错误日志序列化器"""
+    
+    severity_display = serializers.CharField(source='get_severity_display', read_only=True)
+    created_by_username = serializers.CharField(source='created_by.username', read_only=True)
+
     class Meta:
         model = ErrorLog
-        fields = ['id', 'severity', 'message', 'stack_trace', 'source', 'created_by', 'created_at']
-        read_only_fields = ['created_by', 'created_at']
+        fields = [
+            'id', 'severity', 'severity_display', 'message', 'stack_trace', 
+            'source', 'created_by', 'created_by_username', 'created_at'
+        ]
+        read_only_fields = ['created_by', 'created_by_username', 'created_at']
 
     def validate_severity(self, value):
-        """验证日志级别"""
-        valid_levels = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL']
-        if value not in valid_levels:
-            raise serializers.ValidationError(f"无效的日志级别: {value}")
+        """验证严重程度"""
+        valid_severities = [choice[0] for choice in ErrorLog.SEVERITY_CHOICES]
+        if value not in valid_severities:
+            raise serializers.ValidationError(f"无效的严重程度: {value}")
         return value
+
+
+class ErrorLogStatisticsSerializer(serializers.Serializer):
+    """错误日志统计序列化器"""
+    
+    total_count = serializers.IntegerField()
+    severity_distribution = serializers.DictField(
+        child=serializers.IntegerField(),
+        required=False
+    )
+    source_distribution = serializers.DictField(
+        child=serializers.IntegerField(),
+        required=False
+    )

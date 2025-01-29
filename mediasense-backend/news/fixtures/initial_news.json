@@ -1,0 +1,58 @@
+[
+    {
+        "model": "news.newscategory",
+        "pk": 1,
+        "fields": {
+            "name": "科技",
+            "description": "科技相关新闻",
+            "parent": null,
+            "level": 1,
+            "sort_order": 1,
+            "is_active": 1,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 2,
+        "fields": {
+            "name": "人工智能",
+            "description": "AI相关新闻",
+            "parent": 1,
+            "level": 2,
+            "sort_order": 1,
+            "is_active": 1,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 3,
+        "fields": {
+            "name": "商业",
+            "description": "商业相关新闻",
+            "parent": null,
+            "level": 1,
+            "sort_order": 2,
+            "is_active": 1,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    },
+    {
+        "model": "news.newscategory",
+        "pk": 4,
+        "fields": {
+            "name": "金融",
+            "description": "金融市场相关新闻",
+            "parent": 3,
+            "level": 2,
+            "sort_order": 1,
+            "is_active": 1,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    }
+] 

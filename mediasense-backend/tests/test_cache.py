@@ -17,7 +17,7 @@ class TestRedisConnection(TestCase):
     def test_connection_settings(self):
         """测试Redis连接配置"""
         # 验证Redis基本配置
-        self.assertEqual(self.redis_settings['BACKEND'], 'django.core.cache.backends.redis.RedisCache')
+        self.assertEqual(self.redis_settings['BACKEND'], 'django_redis.cache.RedisCache')
         self.assertTrue('LOCATION' in self.redis_settings)
         self.assertTrue('OPTIONS' in self.redis_settings)
 

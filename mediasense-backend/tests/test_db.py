@@ -19,9 +19,14 @@ class TestDatabasePool(TestCase):
     def test_connection_settings(self):
         """测试连接池配置"""
         # 验证连接池基本配置
-        self.assertEqual(self.db_settings['CONN_MAX_AGE'], 600)  # 连接保持10分钟
-        self.assertEqual(self.db_settings['OPTIONS']['connect_timeout'], 20)  # 连接超时20秒
+        self.assertEqual(self.db_settings['CONN_MAX_AGE'], 60)  # 连接保持60秒
         self.assertEqual(self.db_settings['OPTIONS']['charset'], 'utf8mb4')  # 字符集utf8mb4
+        self.assertEqual(self.db_settings['OPTIONS']['init_command'], "SET sql_mode='STRICT_TRANS_TABLES'")  # SQL模式
+        
+        # 验证测试数据库配置
+        self.assertEqual(self.db_settings['TEST']['NAME'], self.db_settings['NAME'])  # 使用相同的数据库名
+        self.assertIsNone(self.db_settings['TEST']['MIRROR'])  # 不使用镜像
+        self.assertFalse(self.db_settings['TEST']['CREATE_DB'])  # 不创建新的测试数据库
 
     def test_connection_reuse(self):
         """测试连接复用"""

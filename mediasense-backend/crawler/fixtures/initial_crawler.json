@@ -1,0 +1,176 @@
+[
+    {
+        "model": "crawler.crawlerconfig",
+        "pk": 1,
+        "fields": {
+            "name": "科技爱好者周刊",
+            "description": "阮一峰的科技爱好者周刊，提供最新科技动态",
+            "source_url": "https://github.com/ruanyf/weekly/releases.atom",
+            "crawler_type": 1,
+            "config_data": {
+                "title_path": "entry.title",
+                "content_path": "entry.content",
+                "link_path": "entry.link.@href",
+                "pub_date_path": "entry.updated",
+                "category_mapping": {
+                    "default": 1
+                }
+            },
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            },
+            "interval": 1440,
+            "max_retries": 3,
+            "retry_delay": 300,
+            "status": 1,
+            "is_active": true,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    },
+    {
+        "model": "crawler.crawlerconfig",
+        "pk": 2,
+        "fields": {
+            "name": "IT之家",
+            "description": "IT之家科技新闻RSS源",
+            "source_url": "https://www.ithome.com/rss",
+            "crawler_type": 1,
+            "config_data": {
+                "title_path": "item.title",
+                "content_path": "item.description",
+                "link_path": "item.link",
+                "pub_date_path": "item.pubDate",
+                "category_mapping": {
+                    "default": 1
+                }
+            },
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            },
+            "interval": 30,
+            "max_retries": 3,
+            "retry_delay": 300,
+            "status": 1,
+            "is_active": true,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    },
+    {
+        "model": "crawler.crawlerconfig",
+        "pk": 3,
+        "fields": {
+            "name": "开源中国资讯",
+            "description": "开源中国资讯RSS源",
+            "source_url": "https://www.oschina.net/news/rss",
+            "crawler_type": 1,
+            "config_data": {
+                "title_path": "item.title",
+                "content_path": "item.description",
+                "link_path": "item.link",
+                "pub_date_path": "item.pubDate",
+                "category_mapping": {
+                    "default": 1
+                }
+            },
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            },
+            "interval": 30,
+            "max_retries": 3,
+            "retry_delay": 300,
+            "status": 1,
+            "is_active": true,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    },
+    {
+        "model": "crawler.crawlerconfig",
+        "pk": 4,
+        "fields": {
+            "name": "V2EX最新",
+            "description": "V2EX最新主题RSS源",
+            "source_url": "https://www.v2ex.com/index.xml",
+            "crawler_type": 1,
+            "config_data": {
+                "title_path": "item.title",
+                "content_path": "item.description",
+                "link_path": "item.link",
+                "pub_date_path": "item.pubDate",
+                "category_mapping": {
+                    "default": 1
+                }
+            },
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            },
+            "interval": 30,
+            "max_retries": 3,
+            "retry_delay": 300,
+            "status": 1,
+            "is_active": true,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    },
+    {
+        "model": "crawler.crawlerconfig",
+        "pk": 5,
+        "fields": {
+            "name": "V2EX技术",
+            "description": "V2EX技术主题RSS源",
+            "source_url": "https://www.v2ex.com/feed/tech.xml",
+            "crawler_type": 1,
+            "config_data": {
+                "title_path": "item.title",
+                "content_path": "item.description",
+                "link_path": "item.link",
+                "pub_date_path": "item.pubDate",
+                "category_mapping": {
+                    "default": 1
+                }
+            },
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            },
+            "interval": 30,
+            "max_retries": 3,
+            "retry_delay": 300,
+            "status": 1,
+            "is_active": true,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    },
+    {
+        "model": "crawler.crawlerconfig",
+        "pk": 6,
+        "fields": {
+            "name": "SegmentFault",
+            "description": "SegmentFault最新文章RSS源",
+            "source_url": "https://segmentfault.com/feeds",
+            "crawler_type": 1,
+            "config_data": {
+                "title_path": "item.title",
+                "content_path": "item.description",
+                "link_path": "item.link",
+                "pub_date_path": "item.pubDate",
+                "category_mapping": {
+                    "default": 1
+                }
+            },
+            "headers": {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+            },
+            "interval": 30,
+            "max_retries": 3,
+            "retry_delay": 300,
+            "status": 1,
+            "is_active": true,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    }
+] 

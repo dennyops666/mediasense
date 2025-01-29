@@ -5,9 +5,10 @@ from rest_framework.response import Response
 from rest_framework import status, exceptions, viewsets
 from django.core.exceptions import ValidationError
 from django.db import models
-from rest_framework.request import Request
+from rest_framework.request import Request, Empty
 from rest_framework.renderers import JSONRenderer
 from rest_framework.parsers import JSONParser
+import json
 
 class SyncAsyncViewSetMixin(viewsets.ViewSetMixin):
     """同步异步视图集混入类"""
@@ -18,22 +19,119 @@ class SyncAsyncViewSetMixin(viewsets.ViewSetMixin):
     @classmethod
     def as_view(cls, actions=None, **initkwargs):
         """视图工厂"""
-        instance = cls(**initkwargs)
-        instance.action_map = actions or {}
-        instance.actions = actions or {}
-        return instance.dispatch
+        if not actions:
+            actions = {}
+        
+        # 确保基类的 __init__ 方法被调用
+        async def view(request, *args, **kwargs):
+            self = cls()
+            self.action_map = actions
+            self.actions = actions
+            for key, value in initkwargs.items():
+                setattr(self, key, value)
+            
+            # 设置当前动作
+            handler = actions.get(request.method.lower())
+            if handler:
+                self.action = handler
+            
+            # 处理自定义动作
+            if request.path.endswith('/resolve/'):
+                self.action = 'resolve'
+                handler = getattr(self, 'resolve', None)
+                if handler:
+                    return await handler(request, *args, **kwargs)
+            elif request.path.endswith('/ignore/'):
+                self.action = 'ignore'
+                handler = getattr(self, 'ignore', None)
+                if handler:
+                    return await handler(request, *args, **kwargs)
+            elif request.path.endswith('/stats/'):
+                self.action = 'stats'
+                handler = getattr(self, 'stats', None)
+                if handler:
+                    return await handler(request, *args, **kwargs)
+            
+            return await self.dispatch(request, *args, **kwargs)
+        
+        return view
 
     async def initialize_request(self, request, *args, **kwargs):
         """初始化请求"""
-        if not isinstance(request, Request):
-            request = Request(request)
+        try:
+            if not isinstance(request, Request):
+                request = Request(request)
 
-        request.method = request.method.upper()
-        if request.content_type == 'application/json':
-            request.META['CONTENT_TYPE'] = 'application/json'
-            request.META['HTTP_ACCEPT'] = 'application/json'
+            request.method = request.method.upper()
+            if request.content_type == 'application/json' or request.content_type is None:
+                request.META['CONTENT_TYPE'] = 'application/json'
+                request.META['HTTP_ACCEPT'] = 'application/json'
+                if request.body:
+                    try:
+                        data = json.loads(request.body.decode('utf-8'))
+                        print(f"原始请求体: {request.body.decode('utf-8')}")  # 调试信息
+                        print(f"解析后的数据: {data}")  # 调试信息
+                        # 创建一个新的请求对象
+                        new_request = Request(request)
+                        # 设置请求属性
+                        object.__setattr__(new_request, '_data', data if data is not None else Empty)
+                        object.__setattr__(new_request, '_full_data', data if data is not None else Empty)
+                        object.__setattr__(new_request, '_request', request)
+                        object.__setattr__(new_request, 'method', request.method)
+                        object.__setattr__(new_request, 'META', request.META)
+                        object.__setattr__(new_request, 'user', request.user)
+                        object.__setattr__(new_request, 'authenticators', request.authenticators)
+                        object.__setattr__(new_request, 'successful_authenticator', request.successful_authenticator)
+                        object.__setattr__(new_request, 'parser_context', {
+                            'kwargs': kwargs,
+                            'args': args,
+                            'request': new_request,
+                            'encoding': request.encoding or 'utf-8'
+                        })
+                        return new_request
+                    except json.JSONDecodeError as e:
+                        print(f"JSON解析错误: {str(e)}")  # 调试信息
+                        new_request = Request(request)
+                        # 设置请求属性
+                        object.__setattr__(new_request, '_data', Empty)
+                        object.__setattr__(new_request, '_full_data', Empty)
+                        object.__setattr__(new_request, '_request', request)
+                        object.__setattr__(new_request, 'method', request.method)
+                        object.__setattr__(new_request, 'META', request.META)
+                        object.__setattr__(new_request, 'user', request.user)
+                        object.__setattr__(new_request, 'authenticators', request.authenticators)
+                        object.__setattr__(new_request, 'successful_authenticator', request.successful_authenticator)
+                        object.__setattr__(new_request, 'parser_context', {
+                            'kwargs': kwargs,
+                            'args': args,
+                            'request': new_request,
+                            'encoding': request.encoding or 'utf-8'
+                        })
+                        return new_request
+                else:
+                    print("请求体为空")  # 调试信息
+                    new_request = Request(request)
+                    # 设置请求属性
+                    object.__setattr__(new_request, '_data', Empty)
+                    object.__setattr__(new_request, '_full_data', Empty)
+                    object.__setattr__(new_request, '_request', request)
+                    object.__setattr__(new_request, 'method', request.method)
+                    object.__setattr__(new_request, 'META', request.META)
+                    object.__setattr__(new_request, 'user', request.user)
+                    object.__setattr__(new_request, 'authenticators', request.authenticators)
+                    object.__setattr__(new_request, 'successful_authenticator', request.successful_authenticator)
+                    object.__setattr__(new_request, 'parser_context', {
+                        'kwargs': kwargs,
+                        'args': args,
+                        'request': new_request,
+                        'encoding': request.encoding or 'utf-8'
+                    })
+                    return new_request
             
-        return request
+            return request
+        except Exception as e:
+            print(f"初始化请求异常: {str(e)}")  # 调试信息
+            raise
 
     async def get_handler(self, request):
         """获取处理器"""
@@ -45,15 +143,40 @@ class SyncAsyncViewSetMixin(viewsets.ViewSetMixin):
     async def dispatch(self, request, *args, **kwargs):
         """分发请求"""
         try:
+            print(f"开始处理请求: {request.method} {request.path}")  # 调试信息
+            
+            # 初始化请求
             request = await self.initialize_request(request, *args, **kwargs)
             self.request = request
             self.args = args
             self.kwargs = kwargs
             
+            print(f"请求数据: {request.data}")  # 调试信息
+            print(f"请求用户: {request.user}")  # 调试信息
+            
+            # 获取处理器
             handler = await self.get_handler(request)
-            response = await handler(request, *args, **kwargs)
-            return await self.finalize_response(request, response, *args, **kwargs)
+            print(f"处理器: {handler}")  # 调试信息
+            
+            # 执行处理
+            try:
+                response = await handler(request, *args, **kwargs)
+                print(f"处理结果: {response}")  # 调试信息
+            except Exception as e:
+                print(f"处理异常: {str(e)}")  # 调试信息
+                raise
+            
+            # 完成响应
+            try:
+                response = await self.finalize_response(request, response, *args, **kwargs)
+                print(f"最终响应: {response}")  # 调试信息
+                return response
+            except Exception as e:
+                print(f"完成响应异常: {str(e)}")  # 调试信息
+                raise
+            
         except Exception as e:
+            print(f"请求处理异常: {str(e)}")  # 调试信息
             return await self.handle_exception(e)
 
     async def finalize_response(self, request, response, *args, **kwargs):
@@ -118,27 +241,35 @@ class SyncAsyncViewSetMixin(viewsets.ViewSetMixin):
 
     async def get_queryset(self):
         """获取查询集"""
-        if self.queryset is not None:
-            return self.queryset
+        if hasattr(self, 'queryset') and self.queryset is not None:
+            queryset = self.queryset
+            if isinstance(queryset, models.QuerySet):
+                queryset = queryset._chain()
+            return queryset
         raise NotImplementedError('get_queryset() must be implemented.')
 
     async def get_object(self):
         """获取对象"""
         queryset = await self.get_queryset()
         lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-        lookup_value = self.kwargs[lookup_url_arg]
+        lookup_value = self.kwargs[lookup_url_kwarg]
 
         try:
-            obj = await sync_to_async(queryset.get)(id=lookup_value)
-            await sync_to_async(self.check_object_permissions)(self.request, obj)
+            obj = await sync_to_async(queryset.get)(pk=lookup_value)
             return obj
         except models.ObjectDoesNotExist:
             raise Http404
 
+    async def get_serializer_class(self):
+        """获取序列化器类"""
+        if hasattr(self, 'serializer_class'):
+            return self.serializer_class
+        raise NotImplementedError('get_serializer_class() must be implemented.')
+
     async def get_serializer(self, *args, **kwargs):
-        """获取序列化器"""
-        serializer_class = await sync_to_async(self.get_serializer_class)()
-        kwargs.setdefault('context', await self.get_serializer_context())
+        """获取序列化器实例"""
+        serializer_class = await self.get_serializer_class()
+        kwargs['context'] = await self.get_serializer_context()
         return serializer_class(*args, **kwargs)
 
     async def get_serializer_context(self):
@@ -149,11 +280,30 @@ class SyncAsyncViewSetMixin(viewsets.ViewSetMixin):
             'view': self
         }
 
-    async def get_serializer_class(self):
-        """获取序列化器类"""
-        if self.serializer_class is None:
-            raise NotImplementedError('serializer_class must be implemented.')
-        return self.serializer_class
+    async def create(self, request, *args, **kwargs):
+        """创建对象"""
+        try:
+            print("开始创建对象...")  # 调试信息
+            print(f"请求数据: {request.data}")  # 调试信息
+            
+            # 获取序列化器
+            serializer = await self.get_serializer(data=request.data)
+            
+            # 验证数据
+            await sync_to_async(serializer.is_valid)(raise_exception=True)
+            
+            # 保存数据
+            instance = await sync_to_async(serializer.save)()
+            
+            # 返回响应
+            return Response(
+                serializer.data,
+                status=status.HTTP_201_CREATED
+            )
+            
+        except Exception as e:
+            print(f"Error in create: {str(e)}")  # 调试信息
+            raise
 
     def __call__(self, request, *args, **kwargs):
         """调用视图"""
@@ -222,13 +372,6 @@ class SyncAsyncViewSetMixin(viewsets.ViewSetMixin):
         queryset = await self.get_queryset()
         serializer = await self.get_serializer(queryset, many=True)
         return Response(serializer.data)
-
-    async def create(self, request, *args, **kwargs):
-        """创建视图"""
-        serializer = await self.get_serializer(data=request.data)
-        await sync_to_async(serializer.is_valid)(raise_exception=True)
-        instance = await sync_to_async(serializer.save)()
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
     async def retrieve(self, request, *args, **kwargs):
         """详情视图"""

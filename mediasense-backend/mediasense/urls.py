@@ -17,6 +17,26 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path, include
+from django.views.decorators.csrf import csrf_exempt
+from django.contrib.admin.sites import AdminSite
+
+# 创建一个支持异步的AdminSite
+class AsyncAdminSite(AdminSite):
+    def get_urls(self):
+        urls = super().get_urls()
+        processed_urls = []
+        for url in urls:
+            if hasattr(url, 'callback'):
+                processed_urls.append(
+                    path(url.pattern.regex.pattern.lstrip('^').rstrip('$'),
+                         csrf_exempt(url.callback),
+                         name=url.name if hasattr(url, 'name') else None)
+                )
+            else:
+                processed_urls.append(url)
+        return processed_urls
+
+admin.site.__class__ = AsyncAdminSite
 
 urlpatterns = [
     path('admin/', admin.site.urls),

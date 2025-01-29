@@ -3,6 +3,7 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from datetime import datetime, timedelta
 
 from news.models import NewsArticle
 
@@ -249,28 +250,21 @@ class AnalysisSchedule(models.Model):
         if self.schedule_type == self.ScheduleType.INTERVAL:
             if not self.interval_minutes:
                 raise ValidationError("间隔执行必须设置执行间隔")
-            if self.interval_minutes < 1:
-                raise ValidationError("执行间隔必须大于0")
-        else:  # CRON
+        elif self.schedule_type == self.ScheduleType.CRON:
             if not self.cron_expression:
                 raise ValidationError("定时执行必须设置Cron表达式")
-            # TODO: 验证Cron表达式格式
 
-    def calculate_next_run(self):
+    def schedule_next_execution(self):
         """计算下次执行时间"""
-        from datetime import datetime, timedelta
-
-        from croniter import croniter
-
         now = timezone.now()
-
         if self.schedule_type == self.ScheduleType.INTERVAL:
             self.next_run = now + timedelta(minutes=self.interval_minutes)
-        else:  # CRON
+        elif self.schedule_type == self.ScheduleType.CRON:
+            # 使用croniter计算下次执行时间
+            from croniter import croniter
             cron = croniter(self.cron_expression, now)
             self.next_run = cron.get_next(datetime)
-
-        return self.next_run
+        self.save()
 
 
 class ScheduleExecution(models.Model):

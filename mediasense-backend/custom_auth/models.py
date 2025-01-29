@@ -90,6 +90,8 @@ class Permission(models.Model):
     """权限模型"""
     name = models.CharField("权限名称", max_length=100, unique=True)
     description = models.CharField("权限描述", max_length=200)
+    code = models.CharField("权限代码", max_length=100, unique=True, null=True, blank=True)
+    is_active = models.BooleanField("是否启用", default=True)
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
     updated_at = models.DateTimeField("更新时间", auto_now=True)
 
@@ -106,6 +108,7 @@ class Role(models.Model):
     """角色模型"""
     name = models.CharField("角色名称", max_length=100, unique=True)
     description = models.CharField("角色描述", max_length=200, blank=True)
+    is_active = models.BooleanField("是否启用", default=True)
     permissions = models.ManyToManyField(
         Permission,
         verbose_name="权限列表",

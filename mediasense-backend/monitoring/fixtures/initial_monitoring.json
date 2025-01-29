@@ -1,0 +1,68 @@
+[
+    {
+        "model": "monitoring.alertrule",
+        "pk": 1,
+        "fields": {
+            "name": "CPU使用率告警",
+            "description": "当CPU使用率超过80%时触发告警",
+            "metric_type": "cpu_usage",
+            "operator": "gt",
+            "threshold": 80.0,
+            "duration": 300,
+            "alert_level": "warning",
+            "is_enabled": true,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    },
+    {
+        "model": "monitoring.alertrule",
+        "pk": 2,
+        "fields": {
+            "name": "内存使用率告警",
+            "description": "当内存使用率超过85%时触发告警",
+            "metric_type": "memory_usage",
+            "operator": "gt",
+            "threshold": 85.0,
+            "duration": 300,
+            "alert_level": "warning",
+            "is_enabled": true,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    },
+    {
+        "model": "monitoring.alertrule",
+        "pk": 3,
+        "fields": {
+            "name": "磁盘使用率告警",
+            "description": "当磁盘使用率超过90%时触发告警",
+            "metric_type": "disk_usage",
+            "operator": "gt",
+            "threshold": 90.0,
+            "duration": 300,
+            "alert_level": "critical",
+            "is_enabled": true,
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    },
+    {
+        "model": "monitoring.alertnotificationconfig",
+        "pk": 1,
+        "fields": {
+            "name": "默认邮件通知",
+            "description": "系统默认邮件通知配置",
+            "notification_type": "email",
+            "config": {
+                "recipients": ["admin@mediasense.local"],
+                "subject_template": "【MediaSense告警】{alert_level}: {alert_name}",
+                "body_template": "告警详情：\n- 规则名称：{alert_name}\n- 告警级别：{alert_level}\n- 触发时间：{trigger_time}\n- 指标类型：{metric_type}\n- 当前值：{current_value}\n- 阈值：{threshold}\n- 持续时间：{duration}秒"
+            },
+            "is_active": true,
+            "alert_levels": ["warning", "critical"],
+            "created_at": "2024-01-01 00:00:00",
+            "updated_at": "2024-01-01 00:00:00"
+        }
+    }
+] 

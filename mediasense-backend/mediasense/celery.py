@@ -13,6 +13,16 @@ app = Celery("mediasense")
 # 使用Django的settings文件配置Celery
 app.config_from_object("django.conf:settings", namespace="CELERY")
 
+# 配置日志
+app.conf.update(
+    worker_log_file='logs/celery.log',
+    beat_log_file='logs/celery_beat.log',
+    worker_log_level='INFO',
+    beat_log_level='INFO',
+    worker_log_format='%(levelname)s %(asctime)s %(name)s %(process)d %(thread)d %(message)s',
+    beat_log_format='%(levelname)s %(asctime)s %(name)s %(process)d %(thread)d %(message)s',
+)
+
 # 自动发现任务
 app.autodiscover_tasks()
 

@@ -7,6 +7,7 @@ from elasticsearch_dsl.query import MultiMatch, Bool
 from django.conf import settings
 from elasticsearch import Elasticsearch
 import json
+import logging
 
 from .serializers import (
     HotArticleQuerySerializer,
@@ -18,10 +19,9 @@ from .serializers import (
     SearchSuggestionSerializer,
 )
 from .services import NewsSearchService
-import logging
 from news.models import NewsArticle
 from .documents import NewsArticleDocument
-from .models import SearchSuggestion
+from .models import SearchSuggestion, SearchHistory
 
 logger = logging.getLogger(__name__)
 
@@ -96,101 +96,239 @@ class NewsSearchViewSet(viewsets.ViewSet):
     @action(detail=False, methods=["get"])
     def search(self, request):
         """搜索新闻"""
-        query = request.query_params.get("q", "")
-        highlight = request.query_params.get("highlight", "false").lower() == "true"
-        page = int(request.query_params.get("page", 1))
-        page_size = int(request.query_params.get("page_size", 10))
-        
-        search = NewsArticleDocument.search()
-        search = search.query("multi_match", query=query, fields=["title^2", "content"])
-        
-        if highlight:
-            search = search.highlight_options(
-                pre_tags=["<em>"],
-                post_tags=["</em>"],
-                number_of_fragments=0
-            )
-            search = search.highlight("title", "content")
-        
-        # 应用分页
-        start = (page - 1) * page_size
-        search = search[start:start + page_size]
-        
-        response = search.execute()
-        results = []
-        
-        for hit in response:
-            result = {
-                "id": hit.meta.id,
-                "title": hit.title,
-                "content": hit.content
+        try:
+            query = request.query_params.get("q", "")
+            highlight = request.query_params.get("highlight", "false").lower() == "true"
+            exact_match = request.query_params.get("exact_match", "false").lower() == "true"
+            page = int(request.query_params.get("page", 1))
+            page_size = int(request.query_params.get("page_size", 10))
+            
+            # 处理字段过滤
+            raw_fields = request.query_params.getlist("fields")
+            logger.info(f"Raw fields: {raw_fields}, type: {type(raw_fields)}")
+            if raw_fields:
+                fields = []
+                for field in raw_fields:
+                    if isinstance(field, str):
+                        fields.extend(f.strip() for f in field.split(',') if f.strip())
+                    else:
+                        fields.append(str(field))
+                logger.info(f"Processed fields: {fields}, type: {type(fields)}")
+                
+                # 验证字段是否有效
+                valid_fields = []
+                for field in fields:
+                    if field == '*':
+                        valid_fields = ['*']
+                        break
+                    if field in ["title", "content", "summary", "source", "author", "source_url", "status", "publish_time", "category"]:
+                        valid_fields.append(field)
+                fields = valid_fields
+                logger.info(f"Valid fields: {fields}, type: {type(fields)}")
+            else:
+                fields = None
+                logger.info(f"No fields specified")
+            
+            # 记录搜索历史
+            if query and request.user.is_authenticated:
+                SearchHistory.objects.create(
+                    user=request.user,
+                    keyword=query
+                )
+            
+            # 创建ES客户端
+            es_client = Elasticsearch(settings.ELASTICSEARCH_HOSTS)
+            index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}news_articles"
+            
+            # 构建搜索查询
+            search_body = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {
+                                "match_all": {}
+                            }
+                        ]
+                    }
+                } if not query else {
+                    "bool": {
+                        "must": [
+                            {
+                                "multi_match": {
+                                    "query": query,
+                                    "fields": ["title^2", "content", "summary"],
+                                    "type": "phrase" if exact_match else "best_fields"
+                                }
+                            }
+                        ]
+                    }
+                },
+                "from": (page - 1) * page_size,
+                "size": page_size,
+                "sort": [{"_score": "desc"}]
             }
-            if highlight and hasattr(hit.meta, "highlight"):
-                if hasattr(hit.meta.highlight, "title"):
-                    result["title"] = hit.meta.highlight.title[0]
-                if hasattr(hit.meta.highlight, "content"):
-                    result["content"] = hit.meta.highlight.content[0]
-            results.append(result)
-        
-        return Response({
-            "results": results,
-            "count": response.hits.total.value,
-            "page": page,
-            "page_size": page_size,
-            "total_pages": (response.hits.total.value + page_size - 1) // page_size
-        })
+
+            # 添加字段过滤
+            if fields:
+                if '*' in fields:
+                    search_body["_source"] = True
+                elif fields:
+                    search_body["_source"] = fields
+                else:
+                    search_body["_source"] = False
+            
+            # 添加高亮配置
+            if highlight:
+                pre_tags = request.query_params.get("highlight_pre_tags", "<em>")
+                post_tags = request.query_params.get("highlight_post_tags", "</em>")
+                search_body["highlight"] = {
+                    "fields": {
+                        "title": {
+                            "number_of_fragments": 0,
+                            "pre_tags": [pre_tags],
+                            "post_tags": [post_tags]
+                        },
+                        "content": {
+                            "number_of_fragments": 3,
+                            "fragment_size": 150,
+                            "pre_tags": [pre_tags],
+                            "post_tags": [post_tags]
+                        },
+                        "summary": {
+                            "number_of_fragments": 1,
+                            "fragment_size": 150,
+                            "pre_tags": [pre_tags],
+                            "post_tags": [post_tags]
+                        }
+                    }
+                }
+            
+            # 执行搜索
+            response = es_client.search(index=index_name, body=search_body)
+            
+            # 处理搜索结果
+            hits = response["hits"]["hits"]
+            total = response["hits"]["total"]["value"]
+            
+            results = []
+            for hit in hits:
+                result = {}
+                
+                # 处理字段过滤
+                if fields:
+                    if '*' in fields:
+                        result = hit.get("_source", {}).copy()
+                        result["id"] = hit["_id"]
+                        result["score"] = hit["_score"]
+                    elif fields:
+                        result = {}
+                        source = hit.get("_source", {})
+                        for field in fields:
+                            result[field] = source.get(field)
+                        result["id"] = hit["_id"]
+                        result["score"] = hit["_score"]
+                    else:
+                        result = {}
+                else:
+                    result = hit.get("_source", {}).copy()
+                    result["id"] = hit["_id"]
+                    result["score"] = hit["_score"]
+                
+                # 如果没有有效字段，返回空字典
+                if fields is not None and not fields:
+                    result = {}
+                
+                # 添加高亮结果
+                if highlight and "highlight" in hit:
+                    for field, highlights in hit["highlight"].items():
+                        if not fields or field in fields or '*' in fields:
+                            result[field] = highlights[0]
+                
+                results.append(result)
+            
+            return Response({
+                "total": total,
+                "count": total,
+                "results": results,
+                "page": page,
+                "page_size": page_size
+            })
+            
+        except Exception as e:
+            logger.error(f"搜索失败: {str(e)}", exc_info=True)
+            return Response(
+                {"message": "搜索失败", "error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=False, methods=["get"])
     def suggest(self, request):
-        """搜索建议"""
-        prefix = request.query_params.get('prefix', '')
-        size = int(request.query_params.get('size', 5))
-
-        if not prefix:
-            return Response([])
-
-        # 创建搜索对象
-        s = Search(using=self.get_client(), index='news_articles')
+        """获取搜索建议"""
+        prefix = request.query_params.get("prefix", "")
+        page = int(request.query_params.get("page", 1))
+        page_size = int(request.query_params.get("page_size", 10))
         
-        # 使用标题字段的前缀匹配查询
-        s = s.query('match_phrase_prefix',
-            title={
-                'query': prefix,
-                'max_expansions': 10,
-                'slop': 2
-            }
-        )
-        s = s[:size]
-
-        # 执行查询
-        response = s.execute()
-
-        # 处理结果
-        suggestions = []
-        for hit in response:
-            suggestions.append({
-                'title': hit.title,
-                'score': hit.meta.score
-            })
-
-        return Response(suggestions)
+        suggestions = SearchSuggestion.objects.filter(
+            keyword__istartswith=prefix
+        ).order_by("-search_count")
+        
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_suggestions = suggestions[start:end]
+        
+        serializer = SearchSuggestionSerializer(paginated_suggestions, many=True)
+        return Response(serializer.data)
 
     @action(detail=False, methods=["get"])
     def hot(self, request):
         """获取热门搜索"""
-        try:
-            # 获取热门搜索建议
-            hot_suggestions = SearchSuggestion.objects.filter(
-                is_hot=True
-            ).order_by('-search_count')[:10]
+        page = int(request.query_params.get("page", 1))
+        page_size = int(request.query_params.get("page_size", 10))
+        min_count = request.query_params.get("min_count")
+        
+        filters = {
+            'is_hot': True
+        }
+        
+        if min_count:
+            filters['search_count__gte'] = int(min_count)
+        
+        hot_searches = SearchSuggestion.objects.filter(
+            **filters
+        ).order_by("-search_count")
+        
+        start = (page - 1) * page_size
+        end = start + page_size
+        paginated_searches = hot_searches[start:end]
+        
+        serializer = SearchSuggestionSerializer(paginated_searches, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=["get"])
+    def history(self, request):
+        """获取用户搜索历史"""
+        if not request.user.is_authenticated:
+            return Response({"message": "请先登录"}, status=status.HTTP_401_UNAUTHORIZED)
             
-            # 序列化结果
-            serializer = SearchSuggestionSerializer(hot_suggestions, many=True)
-            return Response(serializer.data)
+        history = SearchHistory.objects.filter(
+            user=request.user
+        ).order_by("-created_at")[:50]
+        
+        return Response({
+            "history": [
+                {
+                    "keyword": h.keyword,
+                    "created_at": h.created_at
+                } for h in history
+            ],
+            "count": len(history)
+        })
+
+    @action(detail=False, methods=["post"])
+    def clear_history(self, request):
+        """清空用户搜索历史"""
+        if not request.user.is_authenticated:
+            return Response({"message": "请先登录"}, status=status.HTTP_401_UNAUTHORIZED)
             
-        except Exception as e:
-            logger.error(f"获取热门搜索失败: {str(e)}")
-            return Response(
-                {"message": "获取热门搜索失败", "error": str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+        SearchHistory.objects.filter(user=request.user).delete()
+        return Response({"message": "搜索历史已清空"})

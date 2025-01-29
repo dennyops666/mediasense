@@ -4,7 +4,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 from django.contrib.auth import get_user_model
 from news.models import NewsArticle, NewsCategory
-from tests.factories import UserFactory, NewsFactory, CategoryFactory
+from tests.factories import UserFactory, NewsArticleFactory as NewsFactory, NewsCategoryFactory
 from unittest.mock import patch, MagicMock
 from elasticsearch_dsl.response import Response as ESResponse
 from elasticsearch_dsl.response import Hit
@@ -28,7 +28,7 @@ class TestNewsIntegration:
 
     @pytest.fixture
     def test_category(self):
-        return CategoryFactory(name='测试分类')
+        return NewsCategoryFactory(name='测试分类')
 
     @pytest.fixture
     def test_news(self, test_category):
@@ -68,13 +68,14 @@ class TestNewsIntegration:
 
         # 2. 创建新闻
         news_data = {
-            'title': '测试新闻标题',
-            'content': '这是一条测试新闻的内容',
+            'title': 'Test News Article',
+            'content': 'This is a test news article content.',
+            'summary': 'Test summary',
+            'source': 'Test Source',
+            'author': 'Test Author',
+            'source_url': 'http://example.com/test-article',
             'category': test_category.id,
-            'source': '测试来源',
-            'author': '测试作者',
-            'status': NewsArticle.Status.PUBLISHED,
-            'url': 'http://example.com/test-news'
+            'tags': ['test', 'news']
         }
         create_url = reverse('news:news-article-list')
         response = api_client.post(create_url, news_data)
@@ -131,7 +132,7 @@ class TestNewsIntegration:
                 content=f'测试内容{i}',
                 category=test_category,
                 status=NewsArticle.Status.PUBLISHED,
-                url=f'http://example.com/test-news-{i}'
+                source_url=f'http://example.com/test-news-{i}'
             ) for i in range(3)
         ]
 
@@ -165,7 +166,7 @@ class TestNewsIntegration:
                 category=test_category,
                 read_count=i,
                 status=NewsArticle.Status.PUBLISHED,
-                url=f'http://example.com/test-news-{i}'
+                source_url=f'http://example.com/test-news-{i}'
             ) for i in range(3)
         ]
 

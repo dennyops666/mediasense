@@ -53,7 +53,7 @@ def test_article(test_category):
         summary='Test article summary',
         source='Test Source',
         author='Test Author',
-        url='http://example.com/test-article',
+        source_url='http://example.com/test-article',
         category=test_category,
         tags=['test', 'article'],
         status='published'
@@ -63,29 +63,87 @@ def test_article(test_category):
 class TestNewsAPI:
     """新闻模块API测试"""
 
-    def test_create_article(self, api_client, test_user, test_category):
-        """测试创建新闻文章"""
-        login_url = reverse('api:auth:token_obtain')
+    @pytest.fixture(autouse=True)
+    def setup(self, authenticated_client, test_category):
+        """初始化测试数据"""
+        self.client = authenticated_client
+        self.category = test_category
+        self.article = NewsArticle.objects.create(
+            title='Test News',
+            content='This is a test article content.',
+            summary='Test article summary',
+            source='Test Source',
+            author='Test Author',
+            source_url='http://example.com/test-news',
+            category=self.category,
+            status='published'
+        )
+
+    def test_create_article(self, authenticated_client, test_category):
+        """测试创建文章"""
         url = reverse('api:news:news-article-list')
         
-        # 登录获取 token
-        login_response = api_client.post(login_url, {
-            'username': test_user.username,
-            'password': 'testpass123'
-        })
-        access_token = login_response.data['access']
-        api_client.credentials(HTTP_AUTHORIZATION=f'Bearer {access_token}')
-        
+        # 测试基本创建
         data = {
-            'title': 'New Article',
-            'content': 'New article content',
+            'title': 'New Test Article',
+            'content': 'This is a new test article content.',
+            'summary': 'Test article summary',
             'source': 'Test Source',
-            'url': 'http://example.com/new-article',
-            'category': test_category.id
+            'author': 'Test Author',
+            'source_url': 'http://example.com/new-test-article',
+            'category': test_category.id,
+            'tags': ['test', 'article'],
+            'status': 'draft',
+            'publish_time': timezone.now().isoformat()
         }
-        response = api_client.post(url, data)
+        response = authenticated_client.post(url, data, format='json')
         assert response.status_code == status.HTTP_201_CREATED
         assert response.data['title'] == data['title']
+        assert response.data['content'] == data['content']
+        assert response.data['category'] == test_category.id
+        
+        # 测试必填字段验证
+        invalid_data = {
+            'title': '',  # 标题为空
+            'content': 'Test content'
+        }
+        response = authenticated_client.post(url, invalid_data, format='json')
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'message' in response.data
+        assert 'title' in response.data['message']
+        
+        # 测试状态验证
+        invalid_status_data = {
+            'title': 'Test Article',
+            'content': 'Test content',
+            'status': 'invalid_status'  # 无效的状态
+        }
+        response = authenticated_client.post(url, invalid_status_data, format='json')
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'message' in response.data
+        assert 'status' in response.data['message']
+        
+        # 测试URL格式验证
+        invalid_url_data = {
+            'title': 'Test Article',
+            'content': 'Test content',
+            'source_url': 'invalid-url'  # 无效的URL
+        }
+        response = authenticated_client.post(url, invalid_url_data, format='json')
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'message' in response.data
+        assert 'source_url' in response.data['message']
+        
+        # 测试标签列表验证
+        invalid_tags_data = {
+            'title': 'Test Article',
+            'content': 'Test content',
+            'tags': 'not-a-list'  # 标签不是列表
+        }
+        response = authenticated_client.post(url, invalid_tags_data, format='json')
+        assert response.status_code == status.HTTP_400_BAD_REQUEST
+        assert 'message' in response.data
+        assert 'tags' in response.data['message']
 
     def test_get_article_list(self, authenticated_client, test_article):
         """测试获取新闻文章列表"""
@@ -118,7 +176,7 @@ class TestNewsAPI:
             'title': 'Updated Article',
             'content': test_article.content,
             'source': test_article.source,
-            'url': test_article.url,
+            'source_url': test_article.source_url,
             'category': test_article.category.id
         }
         response = api_client.patch(url, data)
@@ -163,7 +221,7 @@ class TestNewsAPI:
                 'category': test_category.id,
                 'source': '测试来源',
                 'author': '测试作者',
-                'url': f'http://example.com/test-{i}',
+                'source_url': f'http://example.com/test-{i}',
                 'tags': ['test', 'article'],
                 'publish_time': timezone.now().isoformat()
             }
@@ -290,7 +348,7 @@ class TestNewsCRUD(BaseAPITestCase):
             'title': '测试新闻',
             'content': '测试内容',
             'category': category.id,
-            'url': 'http://example.com/news/1',
+            'source_url': 'http://example.com/news/1',
             'status': 'draft'
         }
         response = self.client.post(reverse('api:news:news-article-list'), data)
@@ -309,7 +367,7 @@ class TestNewsCRUD(BaseAPITestCase):
             title='测试新闻',
             content='测试内容',
             category=category,
-            url='http://example.com/news/2',
+            source_url='http://example.com/news/2',
             status='draft'
         )
         response = self.client.get(reverse('api:news:news-article-detail', args=[news.id]))
@@ -326,7 +384,7 @@ class TestNewsCRUD(BaseAPITestCase):
             title='测试新闻',
             content='测试内容',
             category=category,
-            url='http://example.com/news/3',
+            source_url='http://example.com/news/3',
             status='draft'
         )
         data = {'title': '更新后的标题'}
@@ -346,7 +404,7 @@ class TestNewsCRUD(BaseAPITestCase):
             title='测试新闻',
             content='测试内容',
             category=category,
-            url='http://example.com/news/4',
+            source_url='http://example.com/news/4',
             status='draft'
         )
         response = self.client.delete(reverse('api:news:news-article-detail', args=[news.id]))
@@ -362,7 +420,7 @@ class TestNewsCRUD(BaseAPITestCase):
                 title=f'测试新闻{i+1}',
                 content=f'测试内容{i+1}',
                 category=category,
-                url=f'http://example.com/news/batch/{i+1}',
+                source_url=f'http://example.com/news/batch/{i+1}',
                 status='draft'
             )
             news_list.append(news)
@@ -447,7 +505,7 @@ class TestNewsViewSet(BaseAPITestCase):
             'title': '测试新闻',
             'content': '测试内容',
             'category': category.id,
-            'url': 'http://example.com/news/1',
+            'source_url': 'http://example.com/news/1',
             'status': 'draft'
         }
         response = self.client.post(reverse('api:news:news-article-list'), data)
@@ -466,7 +524,7 @@ class TestNewsViewSet(BaseAPITestCase):
             title='测试新闻',
             content='测试内容',
             category=category,
-            url='http://example.com/news/retrieve/1',
+            source_url='http://example.com/news/retrieve/1',
             status='published'
         )
         
@@ -485,7 +543,7 @@ class TestNewsViewSet(BaseAPITestCase):
             title='测试新闻',
             content='测试内容',
             category=category,
-            url='http://example.com/news/3',
+            source_url='http://example.com/news/3',
             status='draft'
         )
         data = {'title': '更新后的标题'}
@@ -507,7 +565,7 @@ class TestNewsViewSet(BaseAPITestCase):
             title='测试新闻',
             content='测试内容',
             category=category,
-            url='http://example.com/news/4',
+            source_url='http://example.com/news/4',
             status='draft'
         )
         
@@ -525,7 +583,7 @@ class TestNewsViewSet(BaseAPITestCase):
                 title=f'测试新闻{i+1}',
                 content=f'测试内容{i+1}',
                 category=category,
-                url=f'http://example.com/news/batch/{i+1}',
+                source_url=f'http://example.com/news/batch/{i+1}',
                 status='draft'
             )
             news_list.append(news)

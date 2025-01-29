@@ -1,0 +1,57 @@
+[
+    {
+        "model": "crawler.newssource",
+        "pk": 1,
+        "fields": {
+            "name": "科技新闻源",
+            "url": "https://tech.example.com",
+            "source_type": "rss",
+            "config": {
+                "article_selector": "article.post",
+                "title_selector": "h1.title",
+                "content_selector": "div.content",
+                "date_selector": "time.published",
+                "author_selector": "span.author",
+                "category_mapping": {
+                    "tech": 1,
+                    "ai": 2,
+                    "business": 3,
+                    "finance": 4
+                }
+            },
+            "crawl_interval": 1800,
+            "is_active": true,
+            "last_crawl_time": null,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }
+    },
+    {
+        "model": "crawler.newssource",
+        "pk": 2,
+        "fields": {
+            "name": "商业新闻源",
+            "url": "https://business.example.com",
+            "source_type": "api",
+            "config": {
+                "api_key": "demo_key",
+                "endpoint": "/api/news",
+                "method": "GET",
+                "headers": {
+                    "Accept": "application/json"
+                },
+                "category_mapping": {
+                    "technology": 1,
+                    "artificial-intelligence": 2,
+                    "business": 3,
+                    "finance": 4
+                }
+            },
+            "crawl_interval": 3600,
+            "is_active": true,
+            "last_crawl_time": null,
+            "created_at": "2024-01-01T00:00:00Z",
+            "updated_at": "2024-01-01T00:00:00Z"
+        }
+    }
+] 

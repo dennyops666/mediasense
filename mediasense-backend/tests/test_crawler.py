@@ -75,7 +75,7 @@ class TestCrawlerService(TestCase):
         mock_response.status_code = 200
         mock_response.content = b'<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"></rss>'
         mock_get.return_value = mock_response
-
+            
         # Mock RSS数据
         mock_entry = {
             'title': 'Test Title',

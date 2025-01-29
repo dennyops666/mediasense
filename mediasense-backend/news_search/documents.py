@@ -1,6 +1,6 @@
 from django_elasticsearch_dsl import Document, fields
 from django_elasticsearch_dsl.registries import registry
-
+from django.conf import settings
 from news.models import NewsArticle
 
 
@@ -48,7 +48,7 @@ class NewsArticleDocument(Document):
     content_analyzed = fields.TextField(analyzer='html_strip')  # 用于全文搜索
 
     class Index:
-        name = 'news_articles'
+        name = getattr(settings, 'ELASTICSEARCH_INDEX_PREFIX', '') + 'news_articles'
         settings = {
             'number_of_shards': 1,
             'number_of_replicas': 0,
@@ -98,7 +98,7 @@ class NewsArticleDocument(Document):
             inputs.extend(instance.tags)
         
         # 根据状态设置权重,已发布的文章权重更高
-        weight = 100 if instance.status == 'published' else 50
+        weight = 10 if instance.status == NewsArticle.Status.PUBLISHED else 5
         
         return {
             'input': inputs,
