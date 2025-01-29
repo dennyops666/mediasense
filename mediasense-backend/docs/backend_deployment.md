@@ -6,17 +6,18 @@
 3. [代码部署](#代码部署)
 4. [数据库配置](#数据库配置)
 5. [Redis配置](#redis配置)
-6. [环境变量配置](#环境变量配置)
-7. [服务配置](#服务配置)
-8. [启动服务](#启动服务)
-9. [健康检查](#健康检查)
-10. [故障排除](#故障排除)
+6. [Elasticsearch配置](#elasticsearch配置)
+7. [环境变量配置](#环境变量配置)
+8. [服务配置](#服务配置)
+9. [启动服务](#启动服务)
+10. [健康检查](#健康检查)
+11. [故障排除](#故障排除)
 
 ## 系统要求
 
 ### 硬件要求
 - CPU: 4核心及以上
-- 内存: 8GB及以上
+- 内存: 8GB及以上（Elasticsearch建议4GB以上）
 - 磁盘空间: 50GB及以上
 
 ### 软件要求
@@ -25,6 +26,8 @@
 - MySQL: 8.0或更高版本
 - Redis: 6.0或更高版本
 - Nginx: 1.18或更高版本
+- Elasticsearch: 7.17或更高版本
+- Java: OpenJDK 11或更高版本（Elasticsearch依赖）
 
 ## 环境准备
 
@@ -35,7 +38,7 @@ sudo apt update
 sudo apt upgrade -y
 
 # 安装必要的系统包
-sudo apt install -y python3-pip python3-venv mysql-server redis-server nginx supervisor
+sudo apt install -y python3-pip python3-venv mysql-server redis-server nginx supervisor openjdk-11-jdk
 ```
 
 ### Python虚拟环境设置
@@ -92,6 +95,120 @@ maxmemory-policy allkeys-lru
 sudo systemctl restart redis
 ```
 
+## Elasticsearch配置
+
+### 安装Elasticsearch
+```bash
+# 添加Elasticsearch的GPG密钥
+wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | sudo apt-key add -
+
+# 添加Elasticsearch的APT仓库
+echo "deb https://artifacts.elastic.co/packages/7.x/apt stable main" | sudo tee /etc/apt/sources.list.d/elastic-7.x.list
+
+# 更新包列表并安装Elasticsearch
+sudo apt update
+sudo apt install elasticsearch
+```
+
+### 配置Elasticsearch
+```bash
+# 编辑Elasticsearch配置文件
+sudo nano /etc/elasticsearch/elasticsearch.yml
+```
+
+添加以下配置：
+```yaml
+# 集群名称
+cluster.name: mediasense
+# 节点名称
+node.name: mediasense-node-1
+# 数据和日志存储路径
+path.data: /var/lib/elasticsearch
+path.logs: /var/log/elasticsearch
+# 绑定地址
+network.host: 127.0.0.1
+# 监听端口
+http.port: 9200
+# 内存设置（在/etc/elasticsearch/jvm.options中配置）
+# -Xms2g
+# -Xmx2g
+```
+
+### 配置系统限制
+```bash
+# 编辑系统限制配置
+sudo nano /etc/security/limits.conf
+```
+
+添加以下内容：
+```
+elasticsearch soft nofile 65535
+elasticsearch hard nofile 65535
+elasticsearch soft memlock unlimited
+elasticsearch hard memlock unlimited
+```
+
+### 启动Elasticsearch服务
+```bash
+# 设置开机自启动
+sudo systemctl daemon-reload
+sudo systemctl enable elasticsearch
+
+# 启动服务
+sudo systemctl start elasticsearch
+
+# 验证服务状态
+sudo systemctl status elasticsearch
+curl -X GET "localhost:9200/"
+```
+
+### 创建索引和映射
+```bash
+# 创建新闻索引
+curl -X PUT "localhost:9200/news" -H 'Content-Type: application/json' -d'
+{
+  "settings": {
+    "number_of_shards": 1,
+    "number_of_replicas": 0,
+    "analysis": {
+      "analyzer": {
+        "text_analyzer": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": ["lowercase", "stop", "snowball"]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "properties": {
+      "title": {
+        "type": "text",
+        "analyzer": "text_analyzer",
+        "fields": {
+          "keyword": {
+            "type": "keyword"
+          }
+        }
+      },
+      "content": {
+        "type": "text",
+        "analyzer": "text_analyzer"
+      },
+      "published_at": {
+        "type": "date"
+      },
+      "source": {
+        "type": "keyword"
+      },
+      "category": {
+        "type": "keyword"
+      }
+    }
+  }
+}'
+```
+
 ## 环境变量配置
 
 创建 `.env` 文件：
@@ -124,6 +241,12 @@ OPENAI_MAX_TOKENS=2000
 DJANGO_SECRET_KEY=生成一个安全的密钥
 DJANGO_DEBUG=False
 DJANGO_ALLOWED_HOSTS=你的域名,localhost,127.0.0.1
+
+# Elasticsearch设置
+ELASTICSEARCH_HOSTS=http://localhost:9200
+ELASTICSEARCH_INDEX_PREFIX=mediasense
+ELASTICSEARCH_USERNAME=elastic
+ELASTICSEARCH_PASSWORD=你的密码
 ```
 
 ## 服务配置
@@ -247,6 +370,10 @@ sudo systemctl status redis
 
 # 检查MySQL状态
 sudo systemctl status mysql
+
+# 检查Elasticsearch状态
+sudo systemctl status elasticsearch
+curl -X GET "localhost:9200/_cluster/health"
 ```
 
 ### 检查应用日志
@@ -285,6 +412,25 @@ tail -f /var/log/mediasense/celery_beat.out.log
 - 检查Nginx配置中的静态文件路径
 - 验证文件权限是否正确
 
+5. Elasticsearch问题
+- JVM内存不足
+  ```bash
+  # 编辑JVM配置
+  sudo nano /etc/elasticsearch/jvm.options
+  # 修改内存设置（根据服务器实际情况调整）
+  -Xms2g
+  -Xmx2g
+  ```
+- 索引无法创建
+  - 检查磁盘空间
+  - 验证索引设置是否正确
+  - 查看Elasticsearch日志
+
+- 搜索性能问题
+  - 优化索引设置
+  - 调整分片数量
+  - 检查查询语句
+
 ### 重启服务
 ```bash
 # 重启所有服务
@@ -306,4 +452,7 @@ sudo tail -f /var/log/nginx/error.log
 
 # 查看应用错误日志
 sudo tail -f /var/log/mediasense/*.log
+
+# 查看Elasticsearch日志
+sudo tail -f /var/log/elasticsearch/mediasense.log
 ``` 
