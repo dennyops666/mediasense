@@ -75,10 +75,14 @@ class AlertRule(models.Model):
     is_enabled = models.BooleanField("是否启用", default=True)
     created_at = models.DateTimeField("创建时间", auto_now_add=True)
     updated_at = models.DateTimeField("更新时间", auto_now=True)
+    created_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, related_name="alert_rules", verbose_name="创建者"
+    )
 
     class Meta:
         verbose_name = "告警规则"
         verbose_name_plural = verbose_name
+        ordering = ["-created_at"]
 
     def __str__(self):
         return f"{self.name} ({self.get_metric_type_display()})"

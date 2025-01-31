@@ -54,7 +54,7 @@ class TestMonitorIntegration:
             
             url = reverse('api:monitoring:system-metrics-list')
             request = api_client.get(url)
-            force_authenticate(request, user=await test_user)
+            force_authenticate(request, user=test_user)
             
             # 创建测试数据
             required_metrics = ['cpu_usage', 'memory_usage', 'disk_usage', 'network_in']
@@ -76,7 +76,7 @@ class TestMonitorIntegration:
             # 验证API响应
             from monitoring.views import SystemMetricsViewSet
             view = SystemMetricsViewSet.as_view({'get': 'list'})
-            response = view(request)
+            response = await view(request)
             assert response.status_code == status.HTTP_200_OK
             assert len(response.data) == len(required_metrics)
 
@@ -87,9 +87,6 @@ class TestMonitorIntegration:
     async def test_alert_rule_management(self, api_client, test_user):
         """测试告警规则管理功能"""
         try:
-            # 等待获取测试用户
-            user = await test_user
-            
             url = reverse('api:monitoring:alert-rules-list')
             
             # 创建告警规则
@@ -109,30 +106,30 @@ class TestMonitorIntegration:
                 data=json.dumps(rule_data),
                 content_type='application/json'
             )
-            force_authenticate(request, user=user)
+            force_authenticate(request, user=test_user)
             
             from monitoring.views import AlertRuleViewSet
             view = AlertRuleViewSet.as_view({'post': 'create'})
-            response = view(request)
+            response = await view(request)
             
             assert response.status_code == status.HTTP_201_CREATED
             rule_id = response.data['id']
             
             # 获取规则列表
             request = api_client.get(url)
-            force_authenticate(request, user=user)
+            force_authenticate(request, user=test_user)
             view = AlertRuleViewSet.as_view({'get': 'list'})
-            response = view(request)
+            response = await view(request)
             
             assert response.status_code == status.HTTP_200_OK
             assert len(response.data) > 0
             
             # 禁用规则
-            disable_url = reverse('api:monitoring:alert-rule-disable', args=[rule_id])
+            disable_url = reverse('api:monitoring:alert-rules-disable', args=[rule_id])
             request = api_client.post(disable_url)
-            force_authenticate(request, user=user)
+            force_authenticate(request, user=test_user)
             view = AlertRuleViewSet.as_view({'post': 'disable'})
-            response = view(request, pk=rule_id)
+            response = await view(request, pk=rule_id)
             
             assert response.status_code == status.HTTP_200_OK
             assert not response.data['is_enabled']
@@ -144,8 +141,6 @@ class TestMonitorIntegration:
     async def test_alert_history_management(self, api_client, test_user):
         """测试告警历史记录管理功能"""
         try:
-            user = await test_user
-            
             # 首先创建一个监控规则
             rule = await sync_to_async(AlertRule.objects.create)(
                 name='High CPU Usage Alert',
@@ -156,7 +151,7 @@ class TestMonitorIntegration:
                 duration=300,
                 alert_level='critical',
                 is_enabled=True,
-                created_by=user
+                created_by=test_user
             )
             
             # 创建告警记录
@@ -165,17 +160,17 @@ class TestMonitorIntegration:
                 metric_value=95.5,
                 status='active',
                 message='CPU usage exceeded threshold (95.5% > 90.0%)',
-                created_by=user
+                created_by=test_user
             )
             
             # 获取告警历史
             url = reverse('api:monitoring:alert-history-list')
             request = api_client.get(url)
-            force_authenticate(request, user=user)
+            force_authenticate(request, user=test_user)
             
             from monitoring.views import AlertHistoryViewSet
             view = AlertHistoryViewSet.as_view({'get': 'list'})
-            response = view(request)
+            response = await view(request)
             
             assert response.status_code == status.HTTP_200_OK
             assert len(response.data) > 0
@@ -183,9 +178,9 @@ class TestMonitorIntegration:
             # 获取特定告警详情
             detail_url = reverse('api:monitoring:alert-history-detail', args=[alert.id])
             request = api_client.get(detail_url)
-            force_authenticate(request, user=user)
+            force_authenticate(request, user=test_user)
             view = AlertHistoryViewSet.as_view({'get': 'retrieve'})
-            response = view(request, pk=alert.id)
+            response = await view(request, pk=alert.id)
             
             assert response.status_code == status.HTTP_200_OK
             assert response.data['status'] == 'active'
@@ -193,9 +188,9 @@ class TestMonitorIntegration:
             # 解决告警
             resolve_url = reverse('api:monitoring:alert-history-resolve', args=[alert.id])
             request = api_client.post(resolve_url)
-            force_authenticate(request, user=user)
+            force_authenticate(request, user=test_user)
             view = AlertHistoryViewSet.as_view({'post': 'resolve'})
-            response = view(request, pk=alert.id)
+            response = await view(request, pk=alert.id)
             
             assert response.status_code == status.HTTP_200_OK
             assert response.data['status'] == 'resolved'
@@ -207,16 +202,14 @@ class TestMonitorIntegration:
     async def test_system_health_check(self, api_client, test_user):
         """测试系统健康状态检查功能"""
         try:
-            user = await test_user
-            
             # 获取系统健康状态
             url = reverse('api:monitoring:system-status-health')
             request = api_client.get(url)
-            force_authenticate(request, user=user)
+            force_authenticate(request, user=test_user)
             
             from monitoring.views import SystemStatusViewSet
             view = SystemStatusViewSet.as_view({'get': 'health'})
-            response = view(request)
+            response = await view(request)
             
             assert response.status_code == status.HTTP_200_OK
             assert 'status' in response.data
@@ -225,10 +218,10 @@ class TestMonitorIntegration:
             # 获取系统概览
             overview_url = reverse('api:monitoring:system-status-overview')
             request = api_client.get(overview_url)
-            force_authenticate(request, user=user)
+            force_authenticate(request, user=test_user)
             
             view = SystemStatusViewSet.as_view({'get': 'overview'})
-            response = view(request)
+            response = await view(request)
             
             assert response.status_code == status.HTTP_200_OK
             assert 'memory_usage' in response.data
@@ -243,39 +236,40 @@ class TestMonitorIntegration:
     async def test_error_log_management(self, api_client, test_user):
         """测试错误日志管理功能"""
         try:
-            user = await test_user
-
             # 清理所有现有的错误日志
             await sync_to_async(ErrorLog.objects.all().delete)()
 
             # 创建一些测试数据
             await sync_to_async(ErrorLog.objects.create)(
-                message='Test error',
-                severity='ERROR',
+                error_type='TestError',
+                error_message='Test error',
+                severity='error',
                 source='test_source',
-                created_by=user
+                created_by=test_user
             )
             await sync_to_async(ErrorLog.objects.create)(
-                message='Test warning',
-                severity='WARNING',
+                error_type='TestWarning',
+                error_message='Test warning',
+                severity='warning',
                 source='test_source',
-                created_by=user
+                created_by=test_user
             )
             await sync_to_async(ErrorLog.objects.create)(
-                message='Test critical',
-                severity='CRITICAL',
+                error_type='TestCritical',
+                error_message='Test critical',
+                severity='critical',
                 source='test_source',
-                created_by=user
+                created_by=test_user
             )
 
             # 获取错误日志列表
             url = reverse('api:monitoring:error-logs-list')
             request = api_client.get(url)
-            force_authenticate(request, user=user)
+            force_authenticate(request, user=test_user)
 
             from monitoring.views import ErrorLogViewSet
             view = ErrorLogViewSet.as_view({'get': 'list'})
-            response = view(request)
+            response = await view(request)
 
             assert response.status_code == status.HTTP_200_OK
             assert len(response.data) == 3
@@ -283,10 +277,10 @@ class TestMonitorIntegration:
             # 获取统计数据
             stats_url = reverse('api:monitoring:error-logs-statistics')
             request = api_client.get(stats_url)
-            force_authenticate(request, user=user)
+            force_authenticate(request, user=test_user)
 
             view = ErrorLogViewSet.as_view({'get': 'statistics'})
-            response = view(request)
+            response = await view(request)
 
             assert response.status_code == status.HTTP_200_OK
             assert 'statistics' in response.data

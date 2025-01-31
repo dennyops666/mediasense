@@ -305,22 +305,15 @@ class SyncAsyncViewSetMixin(viewsets.ViewSetMixin):
             print(f"Error in create: {str(e)}")  # 调试信息
             raise
 
-    def __call__(self, request, *args, **kwargs):
+    async def __call__(self, request, *args, **kwargs):
         """调用视图"""
         try:
-            # 获取事件循环
-            try:
-                loop = asyncio.get_running_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
             # 调用 dispatch 方法并等待结果
-            response = loop.run_until_complete(self.dispatch(request, *args, **kwargs))
+            response = await self.dispatch(request, *args, **kwargs)
             
             # 如果响应是协程,等待它
             if asyncio.iscoroutine(response):
-                response = loop.run_until_complete(response)
+                response = await response
                 
             # 确保响应有 _resource_closers 属性
             if not hasattr(response, '_resource_closers'):
@@ -331,16 +324,11 @@ class SyncAsyncViewSetMixin(viewsets.ViewSetMixin):
         except Exception as exc:
             # 处理异常
             if asyncio.iscoroutine(exc):
-                exc = loop.run_until_complete(exc)
-            response = self.handle_exception(exc)
+                exc = await exc
+            response = await self.handle_exception(exc)
             if not hasattr(response, '_resource_closers'):
                 response._resource_closers = []
             return response
-            
-        finally:
-            # 关闭事件循环
-            if loop and not loop.is_closed():
-                loop.close()
 
     async def get(self, request, *args, **kwargs):
         """GET 请求"""

@@ -54,7 +54,7 @@ class MonitoringVisualizationSerializer(serializers.ModelSerializer):
     """监控可视化序列化器"""
 
     created_by = serializers.ReadOnlyField(source="created_by.username")
-    chart_type_display = serializers.CharField(source="get_chart_type_display", read_only=True)
+    visualization_type_display = serializers.CharField(source="get_visualization_type_display", read_only=True)
     metric_type_display = serializers.CharField(source="get_metric_type_display", read_only=True)
 
     class Meta:
@@ -63,25 +63,20 @@ class MonitoringVisualizationSerializer(serializers.ModelSerializer):
             "id",
             "name",
             "description",
-            "chart_type",
-            "chart_type_display",
+            "visualization_type",
+            "visualization_type_display",
             "metric_type",
             "metric_type_display",
-            "time_range",
-            "interval",
-            "warning_threshold",
-            "critical_threshold",
+            "config",
             "is_active",
-            "refresh_interval",
             "created_by",
             "created_at",
             "updated_at",
-            "last_generated",
             "cached_data",
         ]
-        read_only_fields = ["id", "created_by", "created_at", "updated_at", "last_generated", "cached_data"]
+        read_only_fields = ["id", "created_by", "created_at", "updated_at", "cached_data"]
 
-    def validate_chart_type(self, value):
+    def validate_visualization_type(self, value):
         """验证图表类型"""
         valid_types = [choice[0] for choice in MonitoringVisualization.ChartType.choices]
         if value not in valid_types:
@@ -340,14 +335,14 @@ class ErrorLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = ErrorLog
         fields = [
-            'id', 'severity', 'severity_display', 'message', 'stack_trace', 
+            'id', 'error_type', 'severity', 'severity_display', 'error_message', 'stack_trace', 
             'source', 'created_by', 'created_by_username', 'created_at'
         ]
         read_only_fields = ['created_by', 'created_by_username', 'created_at']
 
     def validate_severity(self, value):
         """验证严重程度"""
-        valid_severities = [choice[0] for choice in ErrorLog.SEVERITY_CHOICES]
+        valid_severities = [choice[0] for choice in ErrorLog.Severity.choices]
         if value not in valid_severities:
             raise serializers.ValidationError(f"无效的严重程度: {value}")
         return value
