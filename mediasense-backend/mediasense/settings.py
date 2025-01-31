@@ -30,7 +30,7 @@ INSTALLED_APPS = [
     'corsheaders',
     'api_v1',
     'crawler',
-    # 'monitoring',  # 暂时禁用
+    'monitoring',  # 使用新的monitoring应用
     'custom_auth',
 ]
 
@@ -44,7 +44,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'mediasense.middleware.Custom404Middleware',
-    'monitoring.middleware.AsyncMiddleware',
+    # 'monitoring.middleware.AsyncMiddleware',  # 暂时禁用异步中间件
 ]
 
 ROOT_URLCONF = 'mediasense.urls'
@@ -176,12 +176,20 @@ EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 EMAIL_USE_TLS = env.bool('EMAIL_USE_TLS', default=True)
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@example.com')
 
-# OpenAI配置
-OPENAI_API_KEY = env("OPENAI_API_KEY")
-OPENAI_API_BASE = env("OPENAI_API_BASE", default="https://api.openai-proxy.com/v1")
-OPENAI_MODEL = env("OPENAI_MODEL", default="gpt-4")
-OPENAI_TEMPERATURE = float(env("OPENAI_TEMPERATURE", default=0.2))
-OPENAI_MAX_TOKENS = int(env("OPENAI_MAX_TOKENS", default=2000))
+# OpenAI API配置
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+OPENAI_API_BASE = os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1')
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
+OPENAI_TEMPERATURE = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
+OPENAI_MAX_TOKENS = int(os.getenv('OPENAI_MAX_TOKENS', '500'))
+OPENAI_RATE_LIMIT = int(os.getenv('OPENAI_RATE_LIMIT', '60'))
+OPENAI_RATE_LIMIT_WINDOW = int(os.getenv('OPENAI_RATE_LIMIT_WINDOW', '60'))
+OPENAI_CACHE_TTL = int(os.getenv('OPENAI_CACHE_TTL', '3600'))
+
+# Redis配置
+REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
+REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
+REDIS_DB = int(os.getenv('REDIS_DB', '0'))
 
 # AI服务配置
 AUTO_ANALYZE_NEWS = env.bool("AUTO_ANALYZE_NEWS", default=True)

@@ -11,17 +11,41 @@ import openai
 import openpyxl
 import pandas as pd
 from django.conf import settings
-from django.db.models import Q
+from django.db.models import Q, Avg, Count, Max, Min, Sum
 from django.utils import timezone
 from asgiref.sync import sync_to_async
 from django.core.cache import cache
 import redis
 from openai import AsyncOpenAI
 import string
+import os
+import logging
 
 from news.models import NewsArticle, NewsCategory
 
-from .models import AnalysisCache, AnalysisResult, AnalysisRule
+from .models import AnalysisCache, AnalysisResult, AnalysisRule, AnalysisVisualization
+
+# 配置日志
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
+
+# 创建文件处理器
+log_file = '/data/mediasense/mediasense-backend/logs/ai_service.log'
+file_handler = logging.FileHandler(log_file)
+file_handler.setLevel(logging.DEBUG)
+
+# 创建格式化器
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+file_handler.setFormatter(formatter)
+
+# 添加处理器到日志记录器
+logger.addHandler(file_handler)
+
+# 添加控制台处理器
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.DEBUG)
+console_handler.setFormatter(formatter)
+logger.addHandler(console_handler)
 
 class RateLimitExceeded(Exception):
     """速率限制异常"""
@@ -40,31 +64,32 @@ class AIService:
     
     def __init__(self):
         """初始化 AI 服务"""
-        if self._initialized:
+        if hasattr(self, '_initialized') and self._initialized:
             return
             
         self.openai_client = AsyncOpenAI(
-            api_key=settings.OPENAI_API_KEY,
-            timeout=settings.OPENAI_TIMEOUT
+            api_key=os.getenv('OPENAI_API_KEY'),
+            base_url=os.getenv('OPENAI_API_BASE', 'https://api.openai.com/v1'),
+            timeout=30
         )
-        self.openai_model = "gpt-3.5-turbo"
-        self.openai_temperature = 0.7
-        self.openai_max_tokens = 500
-        self.rate_limit = settings.OPENAI_RATE_LIMIT
-        self.rate_limit_window = settings.OPENAI_RATE_LIMIT_WINDOW
-        self.cache_ttl = settings.OPENAI_CACHE_TTL
+        self.openai_model = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
+        self.openai_temperature = float(os.getenv('OPENAI_TEMPERATURE', '0.7'))
+        self.openai_max_tokens = int(os.getenv('OPENAI_MAX_TOKENS', '500'))
+        self.rate_limit = int(os.getenv('OPENAI_RATE_LIMIT', '60'))
+        self.rate_limit_window = int(os.getenv('OPENAI_RATE_LIMIT_WINDOW', '60'))
+        self.cache_ttl = int(os.getenv('OPENAI_CACHE_TTL', '3600'))
         
         # 在测试环境中使用本地内存缓存
-        if getattr(settings, 'TESTING', False):
+        if os.getenv('DJANGO_DEBUG', 'False').lower() == 'true':
             self.redis_client = None
             self.rate_limit_max_requests = 10  # 在测试环境中增加限制
         else:
             self.redis_client = redis.Redis(
-                host=settings.REDIS_HOST,
-                port=settings.REDIS_PORT,
-                db=settings.REDIS_DB
+                host=os.getenv('REDIS_HOST', 'localhost'),
+                port=int(os.getenv('REDIS_PORT', '6379')),
+                db=int(os.getenv('REDIS_DB', '0'))
             )
-            self.rate_limit_max_requests = 5  # 生产环境限制
+            self.rate_limit_max_requests = 50  # 生产环境限制
             
         self.rate_limit_key = "ai_service_rate_limit"
         self._request_count = 0
@@ -111,27 +136,29 @@ class AIService:
         self._request_count += 1
         return True
 
-    async def _get_cached_result(self, cache_key: str, analysis_type: str = None) -> Dict:
-        """获取缓存的分析结果"""
+    async def _get_cached_result(self, cache_key: str) -> Dict:
+        """获取缓存的结果"""
         try:
-            if analysis_type:
-                cache_key = f"{cache_key}:{analysis_type}"
-            cached_result = await sync_to_async(cache.get)(cache_key)
-            if cached_result:
-                return json.loads(cached_result) if isinstance(cached_result, str) else cached_result
-        except Exception:
-            pass
-        return None
+            if self.redis_client:
+                cached = await sync_to_async(self.redis_client.get)(cache_key)
+                if cached:
+                    return json.loads(cached)
+            return None
+        except Exception as e:
+            logger.error(f"获取缓存结果时出错: {str(e)}")
+            return None
 
-    async def _cache_result(self, cache_key: str, result: Dict, analysis_type: str = None) -> None:
-        """缓存分析结果"""
+    async def _cache_result(self, cache_key: str, result: Dict) -> None:
+        """缓存结果"""
         try:
-            if analysis_type:
-                cache_key = f"{cache_key}:{analysis_type}"
-            result_str = json.dumps(result) if isinstance(result, dict) else result
-            await sync_to_async(cache.set)(cache_key, result_str, self.cache_ttl)
-        except Exception:
-            pass
+            if self.redis_client:
+                await sync_to_async(self.redis_client.setex)(
+                    cache_key,
+                    self.cache_ttl,
+                    json.dumps(result)
+                )
+        except Exception as e:
+            logger.error(f"缓存结果时出错: {str(e)}")
 
     async def analyze_sentiment(self, content):
         """分析文本情感"""
@@ -151,14 +178,21 @@ class AIService:
             response = await self.openai_client.chat.completions.create(
                 model=self.openai_model,
                 messages=[
-                    {"role": "system", "content": "你是一个情感分析专家。请分析以下文本的情感倾向，并给出分析结果。"},
-                    {"role": "user", "content": f"请分析以下文本的情感倾向：\n\n{content}\n\n请以JSON格式返回分析结果，包含以下字段：\n- sentiment: 情感倾向（positive/negative/neutral）\n- confidence: 置信度（0-1之间的浮点数）\n- explanation: 分析说明"}
+                    {"role": "system", "content": "你是一个情感分析专家。你的任务是分析文本的情感倾向，并返回一个JSON格式的分析结果。"},
+                    {"role": "user", "content": f"请分析以下文本的情感倾向：\n\n{content}\n\n请以JSON格式返回分析结果，格式如下：\n{{\n  \"sentiment\": \"positive/negative/neutral\",\n  \"confidence\": 0.8,\n  \"explanation\": \"分析说明\"\n}}"}
                 ],
                 temperature=self.openai_temperature,
                 max_tokens=self.openai_max_tokens
             )
             
-            result = json.loads(response.choices[0].message.content)
+            logger.info(f"OpenAI API响应内容: {response.choices[0].message.content}")
+            
+            try:
+                result = json.loads(response.choices[0].message.content)
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON解析错误: {str(e)}")
+                logger.error(f"原始响应内容: {response.choices[0].message.content}")
+                raise ValueError("API返回格式错误")
             
             # 缓存结果
             await self._cache_result(cache_key, result)
@@ -169,8 +203,6 @@ class AIService:
             raise RateLimitExceeded(str(e))
         except openai.APIError as e:
             raise ValueError(f"API错误: {str(e)}")
-        except json.JSONDecodeError:
-            raise ValueError("API返回格式错误")
         except Exception as e:
             raise ValueError(f"分析失败: {str(e)}")
 
@@ -193,23 +225,32 @@ class AIService:
             response = await self.openai_client.chat.completions.create(
                 model=self.openai_model,
                 messages=[
-                    {"role": "system", "content": "你是一个专业的新闻关键词提取助手。请提取5-10个重要关键词,并给出每个关键词的重要性得分(0-1)。"},
-                    {"role": "user", "content": f"请从以下文本中提取关键词：\n\n{content}\n\n请以JSON格式返回结果，包含keywords数组，每个元素包含word和score字段。"}
+                    {"role": "system", "content": "你是一个专业的新闻关键词提取助手。请提取5-10个重要关键词,并给出每个关键词的重要性得分(0-1)。返回格式必须是JSON格式，包含keywords数组，每个元素包含word和score字段。"},
+                    {"role": "user", "content": f"请从以下文本中提取关键词：\n\n{content}\n\n请以JSON格式返回结果，格式示例：\n{{\n  \"keywords\": [\n    {{\n      \"word\": \"示例关键词1\",\n      \"score\": 0.9\n    }},\n    {{\n      \"word\": \"示例关键词2\",\n      \"score\": 0.8\n    }}\n  ]\n}}"}
                 ],
                 temperature=self.openai_temperature,
                 max_tokens=self.openai_max_tokens
             )
 
+            logger.info(f"OpenAI API响应内容: {response.choices[0].message.content}")
+
             # 解析结果
-            result = json.loads(response.choices[0].message.content)
+            try:
+                result = json.loads(response.choices[0].message.content)
+            except json.JSONDecodeError as e:
+                logger.error(f"JSON解析错误: {str(e)}")
+                logger.error(f"原始响应内容: {response.choices[0].message.content}")
+                raise ValueError("API返回格式错误")
 
             # 验证结果格式
             if not isinstance(result, dict) or 'keywords' not in result or not isinstance(result['keywords'], list):
+                logger.error(f"返回格式错误: {result}")
                 raise ValueError("API返回格式错误")
 
             # 验证关键词格式
             for keyword in result['keywords']:
                 if not isinstance(keyword, dict) or 'word' not in keyword or 'score' not in keyword:
+                    logger.error(f"关键词格式错误: {keyword}")
                     raise ValueError("关键词格式错误")
 
             # 缓存结果
@@ -228,6 +269,7 @@ class AIService:
         except ValueError as e:
             raise e
         except Exception as e:
+            logger.error(f"关键词提取出错: {str(e)}", exc_info=True)
             raise ValueError(f"内部错误: {str(e)}")
 
     async def generate_summary(self, content):
@@ -795,47 +837,126 @@ class VisualizationService:
     def generate_chart_data(visualization):
         """生成图表数据"""
         from datetime import timedelta
+        import json
+        import logging
 
         from django.db.models import Avg, Count, Max, Min, Sum
         from django.utils import timezone
 
+        logger = logging.getLogger(__name__)
+
         # 构建基础查询集
         queryset = AnalysisResult.objects.filter(
-            data_type=visualization.data_type, created_at__gte=timezone.now() - timedelta(days=visualization.time_range)
+            analysis_type=visualization.data_type,
+            created_at__gte=timezone.now() - timedelta(days=visualization.time_range)
         )
+        logger.info(f"基础查询集: {queryset.query}")
+        logger.info(f"查询结果数量: {queryset.count()}")
+        logger.info(f"当前时间: {timezone.now()}")
+        logger.info(f"时间范围: {visualization.time_range} 天")
+        logger.info(f"开始时间: {timezone.now() - timedelta(days=visualization.time_range)}")
 
         # 添加分类过滤
         if visualization.categories:
             queryset = queryset.filter(news__category_id__in=visualization.categories)
+            logger.info(f"添加分类过滤后的查询集: {queryset.query}")
 
         # 添加自定义过滤条件
         if visualization.filters:
             queryset = queryset.filter(**visualization.filters)
+            logger.info(f"添加自定义过滤后的查询集: {queryset.query}")
 
         # 准备聚合函数
         aggregation_funcs = {"count": Count, "avg": Avg, "sum": Sum, "max": Max, "min": Min}
+        logger.info(f"聚合方法: {visualization.aggregation_method}")
 
         # 获取聚合函数
-        agg_func = aggregation_funcs[visualization.aggregation_method]
+        agg_func = aggregation_funcs.get(visualization.aggregation_method)
+        if not agg_func:
+            logger.error(f"未知的聚合方法: {visualization.aggregation_method}")
+            return {"xAxis": [], "series": [{"name": "数值", "data": []}]}
+        logger.info(f"使用聚合函数: {agg_func.__name__}")
 
-        # 执行分组和聚合
-        data = (
-            queryset.values(visualization.group_by)
-            .annotate(value=agg_func(visualization.aggregation_field))
-            .order_by(visualization.group_by)
-        )
+        # 如果聚合字段是 result，需要特殊处理
+        if visualization.aggregation_field == 'result':
+            # 获取原始数据
+            raw_data = list(queryset.values(visualization.group_by, 'result'))
+            logger.info(f"原始数据: {raw_data}")
+            
+            # 处理数据
+            processed_data = []
+            for item in raw_data:
+                try:
+                    if isinstance(item['result'], str):
+                        result = json.loads(item['result'])
+                        logger.info(f"解析JSON结果: {result}")
+                    else:
+                        result = item['result']
+                        logger.info(f"使用原始结果: {result}")
+                    logger.info(f"处理数据项: {result}")
+                    
+                    if isinstance(result, dict):
+                        # 如果是情感分析结果，取 confidence 值
+                        if visualization.data_type == 'sentiment':
+                            if 'confidence' in result and 'sentiment' in result:
+                                value = float(result['confidence'])
+                                # 根据情感类型调整值的正负
+                                sentiment_map = {
+                                    'very_negative': -1.0,
+                                    'negative': -0.5,
+                                    'neutral': 0.0,
+                                    'positive': 0.5,
+                                    'very_positive': 1.0
+                                }
+                                sentiment_value = sentiment_map.get(result['sentiment'], 0.0)
+                                value = value * sentiment_value
+                                logger.info(f"情感分析 - confidence: {result['confidence']}, sentiment: {result['sentiment']}, 最终值: {value}")
+                            else:
+                                logger.warning(f"情感分析结果缺少必要字段: {result}")
+                                continue
+                        # 如果是关键词分析结果，取关键词数量
+                        elif visualization.data_type == 'keywords' and isinstance(result.get('keywords'), list):
+                            value = len(result['keywords'])
+                            logger.info(f"关键词数量: {value}")
+                        # 如果是摘要生成结果，取摘要长度
+                        elif visualization.data_type == 'summary' and 'summary' in result:
+                            value = len(str(result['summary']))
+                            logger.info(f"摘要长度: {value}")
+                        else:
+                            logger.warning(f"无法处理的数据类型: {visualization.data_type}")
+                            continue
+                        
+                        processed_data.append({
+                            visualization.group_by: item[visualization.group_by],
+                            'value': value
+                        })
+                        logger.info(f"添加处理后的数据: {processed_data[-1]}")
+                except (json.JSONDecodeError, ValueError, TypeError, KeyError) as e:
+                    logger.error(f"处理数据时出错: {str(e)}")
+                    continue
+            
+            data = processed_data
+            logger.info(f"最终处理后的数据: {data}")
+        else:
+            # 执行分组和聚合
+            data = list(
+                queryset.values(visualization.group_by)
+                .annotate(value=agg_func(visualization.aggregation_field))
+                .order_by(visualization.group_by)
+            )
+            logger.info(f"聚合后的数据: {data}")
 
         # 格式化数据
         if visualization.chart_type == AnalysisVisualization.ChartType.LINE:
             chart_data = {
                 "xAxis": [str(item[visualization.group_by]) for item in data],
-                "series": [{"name": "数值", "data": [item["value"] for item in data]}],
+                "series": [{"name": "数值", "data": [float(item["value"]) for item in data]}],
             }
 
         elif visualization.chart_type == AnalysisVisualization.ChartType.BAR:
             chart_data = {
                 "xAxis": [str(item[visualization.group_by]) for item in data],
-                "series": [{"name": "数值", "data": [item["value"] for item in data]}],
+                "series": [{"name": "数值", "data": [float(item["value"]) for item in data]}],
             }
 
         elif visualization.chart_type == AnalysisVisualization.ChartType.PIE:
@@ -843,7 +964,7 @@ class VisualizationService:
                 "series": [
                     {
                         "name": "数值",
-                        "data": [{"name": str(item[visualization.group_by]), "value": item["value"]} for item in data],
+                        "data": [{"name": str(item[visualization.group_by]), "value": float(item["value"])} for item in data],
                     }
                 ]
             }
@@ -851,8 +972,10 @@ class VisualizationService:
         elif visualization.chart_type == AnalysisVisualization.ChartType.RADAR:
             chart_data = {
                 "indicator": [{"name": str(item[visualization.group_by])} for item in data],
-                "series": [{"name": "数值", "data": [{"value": [item["value"] for item in data]}]}],
+                "series": [{"name": "数值", "data": [{"value": [float(item["value"]) for item in data]}]}],
             }
+
+        logger.info(f"最终图表数据: {chart_data}")
 
         # 更新缓存
         visualization.cached_data = chart_data

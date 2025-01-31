@@ -1,0 +1,9 @@
+bind = "127.0.0.1:8000"
+workers = 4
+worker_class = "sync"
+wsgi_app = "mediasense.wsgi:application"
+timeout = 120
+keepalive = 5
+errorlog = "/data/mediasense/mediasense-backend/logs/gunicorn.log"
+accesslog = "/data/mediasense/mediasense-backend/logs/gunicorn_access.log"
+loglevel = "info" 

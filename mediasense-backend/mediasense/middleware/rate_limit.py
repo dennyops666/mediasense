@@ -11,7 +11,7 @@ class RateLimitMiddleware:
         self.get_response = get_response
         self.rate_limit = getattr(settings, 'RATE_LIMIT', {
             'enabled': True,
-            'requests_per_minute': 60
+            'requests_per_minute': 20
         })
 
     def __call__(self, request):

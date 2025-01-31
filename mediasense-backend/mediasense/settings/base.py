@@ -27,12 +27,11 @@ INSTALLED_APPS = [
     'monitoring.apps.MonitoringConfig',
     'ai_service.apps.AIServiceConfig',
     'crawler.apps.CrawlerConfig',
-    'monitor.apps.MonitorConfig',  # 使用完整的应用配置类
 ]
 
 MIDDLEWARE = [
     'django.contrib.sessions.middleware.SessionMiddleware',
-    'ai_service.middleware.AsyncMiddleware',
+    # 'ai_service.middleware.AsyncMiddleware',  # 暂时禁用异步中间件
     'django.middleware.security.SecurityMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',

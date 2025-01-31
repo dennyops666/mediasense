@@ -14,13 +14,16 @@ def pytest_configure():
             'ENGINE': 'django.db.backends.mysql',
             'NAME': 'mediasense',
             'USER': 'mediasense',
-            'PASSWORD': 'mediasense',
+            'PASSWORD': '123456',
             'HOST': 'localhost',
             'PORT': '3306',
             'TEST': {
                 'NAME': 'mediasense',
+                'MIRROR': None,
+                'CREATE_DB': False,
+                'DEPENDENCIES': [],
                 'MIGRATE': False,
-                'CREATE_DB': False
+                'SERIALIZE': False
             },
         }
     }
@@ -44,5 +47,5 @@ async def test_user(test_password):
 
 @pytest_asyncio.fixture
 async def authenticated_client(api_client, test_user):
-    api_client.force_authenticate(user=test_user)
+    await api_client.force_authenticate(user=test_user)
     return api_client 

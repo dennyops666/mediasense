@@ -6,7 +6,7 @@ from django.utils.dateparse import parse_datetime
 from django.utils.decorators import method_decorator
 from asgiref.sync import async_to_sync, sync_to_async
 from rest_framework import mixins, status, viewsets
-from rest_framework.decorators import action
+from rest_framework.decorators import action, renderer_classes
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.renderers import JSONRenderer
@@ -20,6 +20,8 @@ from rest_framework.parsers import JSONParser, MultiPartParser, FormParser
 from django.db import transaction
 from django.core.cache import cache
 from django.conf import settings
+import time
+import os
 
 from news.models import NewsArticle
 
@@ -49,88 +51,9 @@ from .serializers import (
 )
 from .services import AIService, RateLimitExceeded, VisualizationService
 from .tasks import process_batch_analysis, process_schedule_execution
+from monitoring.async_viewset import AsyncViewSet
 
 logger = logging.getLogger(__name__)
-
-class AsyncViewSet(viewsets.GenericViewSet):
-    renderer_classes = [JSONRenderer]
-    parser_classes = [JSONParser, MultiPartParser, FormParser]
-    logger = logger
-
-    def initialize_request(self, request, *args, **kwargs):
-        """
-        初始化请求对象，确保它具有所需的属性
-        """
-        request = super().initialize_request(request, *args, **kwargs)
-        if not hasattr(request, 'data'):
-            request.data = {}
-        return request
-
-    def dispatch(self, request, *args, **kwargs):
-        request = self.initialize_request(request, *args, **kwargs)
-        if request.method.lower() in self.http_method_names:
-            handler = getattr(self, request.method.lower(), self.http_method_not_allowed)
-        else:
-            handler = self.http_method_not_allowed
-
-        if asyncio.iscoroutinefunction(handler):
-            response = async_to_sync(handler)(request, *args, **kwargs)
-        else:
-            response = handler(request, *args, **kwargs)
-
-        if asyncio.iscoroutine(response):
-            response = async_to_sync(lambda: response)()
-
-        if isinstance(response, (dict, list)):
-            response = Response(response)
-        elif isinstance(response, JsonResponse):
-            response = Response(response.content)
-
-        if not hasattr(response, 'accepted_renderer'):
-            response.accepted_renderer = self.renderer_classes[0]()
-            response.accepted_media_type = "application/json"
-            response.renderer_context = {}
-
-        return response
-
-    def handle_exception(self, exc):
-        """处理异常"""
-        if isinstance(exc, NewsArticle.DoesNotExist):
-            return Response(
-                {'error': 'not_found', 'detail': '新闻不存在'},
-                status=status.HTTP_404_NOT_FOUND
-            )
-        elif isinstance(exc, RateLimitExceeded):
-            return Response(
-                {'error': 'rate_limit_exceeded', 'detail': str(exc)},
-                status=status.HTTP_429_TOO_MANY_REQUESTS
-            )
-        elif isinstance(exc, openai.RateLimitError):
-            return Response(
-                {'error': 'rate_limit_exceeded', 'detail': 'API调用次数超限'},
-                status=status.HTTP_429_TOO_MANY_REQUESTS
-            )
-        elif isinstance(exc, openai.APIStatusError):
-            if exc.response.status == 429:
-                return Response(
-                    {'error': 'rate_limit_exceeded', 'detail': str(exc)},
-                    status=status.HTTP_429_TOO_MANY_REQUESTS
-                )
-            return Response(
-                {'error': 'openai_error', 'detail': str(exc)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-        elif isinstance(exc, ValueError):
-            return Response(
-                {'error': 'invalid_input', 'detail': str(exc)},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-        else:
-            self.logger.error(f"系统错误: {str(exc)}")
-            return Response(
-                {'error': 'internal_error', 'detail': str(exc)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
 
 class AIServiceViewSet(AsyncViewSet):
     """AI服务视图集"""
@@ -140,15 +63,29 @@ class AIServiceViewSet(AsyncViewSet):
     async def analyze(self, request, pk=None):
         """分析文章"""
         try:
+            # 获取用户
+            user = await sync_to_async(lambda: request.user)()
+            if not user.is_authenticated:
+                return Response({
+                    'error': 'authentication_required',
+                    'detail': '需要认证'
+                }, status=status.HTTP_401_UNAUTHORIZED)
+
             # 检查速率限制
-            if not await self._check_rate_limit(request):
+            if not await self._check_rate_limit():
                 return Response({
                     'error': 'rate_limit_exceeded',
                     'detail': '请求过于频繁，请稍后再试'
                 }, status=status.HTTP_429_TOO_MANY_REQUESTS)
 
             # 获取文章
-            article = await sync_to_async(get_object_or_404)(NewsArticle, pk=pk)
+            try:
+                article = await sync_to_async(NewsArticle.objects.select_related('category').get)(pk=pk)
+            except NewsArticle.DoesNotExist:
+                return Response({
+                    'error': 'news_not_found',
+                    'detail': f'ID为{pk}的新闻不存在'
+                }, status=status.HTTP_404_NOT_FOUND)
             
             # 获取分析类型
             analysis_types = request.data.get('analysis_types', ['sentiment'])
@@ -168,7 +105,7 @@ class AIServiceViewSet(AsyncViewSet):
                     'error': 'empty_analysis_types',
                     'detail': '分析类型列表不能为空'
                 }, status=status.HTTP_400_BAD_REQUEST)
-            
+
             # 检查文章内容
             if not article.content:
                 return Response({
@@ -194,12 +131,29 @@ class AIServiceViewSet(AsyncViewSet):
                         continue
                         
                     # 保存分析结果
-                    analysis_result = await sync_to_async(AnalysisResult.objects.create)(
-                        news=article,
-                        analysis_type=analysis_type,
-                        result=result,
-                        created_by=request.user
-                    )
+                    @sync_to_async
+                    def create_analysis_result():
+                        # 先尝试获取已存在的结果
+                        try:
+                            analysis_result = AnalysisResult.objects.get(
+                                news=article,
+                                analysis_type=analysis_type
+                            )
+                            # 更新已存在的结果
+                            analysis_result.result = result
+                            analysis_result.created_by = user
+                            analysis_result.save()
+                        except AnalysisResult.DoesNotExist:
+                            # 创建新的结果
+                            analysis_result = AnalysisResult.objects.create(
+                                news=article,
+                                analysis_type=analysis_type,
+                                result=result,
+                                created_by=user
+                            )
+                        return analysis_result
+                    
+                    analysis_result = await create_analysis_result()
                     
                     results[analysis_type] = result
                     result_ids.append(analysis_result.id)
@@ -223,7 +177,7 @@ class AIServiceViewSet(AsyncViewSet):
                 'detail': str(e)
             }, status=status.HTTP_429_TOO_MANY_REQUESTS)
         except Exception as e:
-            logger.error(f"分析文章时出错: {str(e)}", exc_info=True)
+            logger.error(f"分析过程中出现未知错误: {str(e)}", exc_info=True)
             return Response({
                 'error': 'analysis_failed',
                 'detail': str(e)
@@ -262,38 +216,39 @@ class AIServiceViewSet(AsyncViewSet):
                 'detail': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-    async def _check_rate_limit(self, request):
+    async def _check_rate_limit(self):
         """检查速率限制"""
-        try:
-            # 在测试环境中禁用速率限制
-            if settings.TESTING:
-                service = AIService()
-                return await service._check_rate_limit()
-                
-            # 获取用户特定的速率限制键
-            rate_limit_key = f"ai_analysis_rate_limit:{request.user.id}"
-            
-            # 获取当前计数
-            current_count = await sync_to_async(cache.get)(rate_limit_key) or 0
-            
-            # 检查是否超过限制
-            if current_count >= settings.AI_ANALYSIS_RATE_LIMIT:
-                raise RateLimitExceeded('已达到速率限制')
-            
-            # 增加计数并设置过期时间
-            await sync_to_async(cache.set)(
-                rate_limit_key,
-                current_count + 1,
-                settings.AI_ANALYSIS_RATE_LIMIT_WINDOW
-            )
-            
+        # 在测试环境中禁用速率限制
+        if os.getenv('DJANGO_DEBUG', 'False').lower() == 'true':
             return True
             
-        except RateLimitExceeded:
-            return False
-        except Exception as e:
-            logger.error(f"检查速率限制时出错: {str(e)}", exc_info=True)
-            return False
+        # 获取用户标识
+        if self.request.user.is_authenticated:
+            key = f"rate_limit_user_{self.request.user.id}"
+        else:
+            key = f"rate_limit_ip_{self.request.META.get('REMOTE_ADDR')}"
+
+        # 获取当前时间戳
+        now = time.time()
+        window_start = now - 60  # 1分钟窗口
+
+        # 获取请求历史
+        request_history = cache.get(key, [])
+        if not isinstance(request_history, list):
+            request_history = []
+        
+        # 清理过期记录
+        request_history = [ts for ts in request_history if ts > window_start]
+        
+        # 检查是否超过限制
+        if len(request_history) >= 50:  # 每分钟50次请求限制
+            raise RateLimitExceeded("请求过于频繁，请稍后再试")
+
+        # 添加新请求记录
+        request_history.append(now)
+        cache.set(key, request_history, 60)  # 60秒过期
+        
+        return True
 
     @action(detail=True, methods=['post'])
     async def analyze_with_rules(self, request, pk=None):
@@ -599,169 +554,34 @@ class AnalysisScheduleViewSet(viewsets.ModelViewSet):
                 'detail': str(e)
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-class AnalysisVisualizationViewSet(AsyncViewSet):
-    """分析可视化视图集"""
-    permission_classes = [IsAuthenticated]
+class VisualizationViewSet(viewsets.ModelViewSet):
+    """可视化视图集"""
+    queryset = AnalysisVisualization.objects.all()
     serializer_class = AnalysisVisualizationSerializer
+    permission_classes = [IsAuthenticated]
 
-    async def create(self, request):
-        """创建可视化"""
-        try:
-            # 验证输入数据
-            serializer = AnalysisVisualizationSerializer(data=request.data)
-            if not await sync_to_async(serializer.is_valid)():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
-            # 创建可视化
-            visualization = await sync_to_async(serializer.save)(created_by=request.user)
-            
-            return Response({
-                'message': '可视化创建成功',
-                'data': serializer.data
-            }, status=status.HTTP_201_CREATED)
-            
-        except Exception as e:
-            logger.error(f"创建分析可视化时出错: {str(e)}", exc_info=True)
-            return Response({
-                'error': 'create_failed',
-                'detail': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    def get_queryset(self):
+        """获取查询集"""
+        return self.queryset.filter(created_by=self.request.user)
 
-    async def list(self, request):
-        """获取可视化列表"""
-        try:
-            # 获取用户的可视化
-            visualizations = await sync_to_async(list)(
-                AnalysisVisualization.objects.filter(created_by=request.user).order_by('-created_at')
-            )
-            
-            # 序列化数据
-            serializer = AnalysisVisualizationSerializer(visualizations, many=True)
-            
-            return Response({
-                'message': '获取成功',
-                'data': serializer.data
-            })
-            
-        except Exception as e:
-            logger.error(f"获取分析可视化列表时出错: {str(e)}", exc_info=True)
-            return Response({
-                'error': 'fetch_failed',
-                'detail': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+    def perform_create(self, serializer):
+        """创建时设置创建者"""
+        serializer.save(created_by=self.request.user)
 
-    async def retrieve(self, request, pk=None):
-        """获取可视化详情"""
+    @action(detail=True, methods=["get"])
+    @renderer_classes([JSONRenderer])
+    def data(self, request, pk=None):
+        """获取可视化数据"""
         try:
-            # 获取可视化
-            visualization = await sync_to_async(get_object_or_404)(
-                AnalysisVisualization, pk=pk, created_by=request.user
-            )
-            
-            # 序列化数据
-            serializer = AnalysisVisualizationSerializer(visualization)
-            
-            return Response({
-                'message': '获取成功',
-                'data': serializer.data
-            })
-            
+            visualization = self.get_object()
+            data = VisualizationService.get_chart_data(visualization)
+            return Response(data)
         except Exception as e:
-            logger.error(f"获取分析可视化详情时出错: {str(e)}", exc_info=True)
-            return Response({
-                'error': 'fetch_failed',
-                'detail': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    async def update(self, request, pk=None):
-        """更新可视化"""
-        try:
-            # 获取可视化
-            visualization = await sync_to_async(get_object_or_404)(
-                AnalysisVisualization, pk=pk, created_by=request.user
+            logger.error(f"获取可视化数据失败: {str(e)}", exc_info=True)
+            return Response(
+                {"error": "get_data_failed", "detail": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
-            
-            # 验证并更新数据
-            serializer = AnalysisVisualizationSerializer(
-                visualization, data=request.data, partial=True
-            )
-            if not await sync_to_async(serializer.is_valid)():
-                return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-            
-            await sync_to_async(serializer.save)()
-            
-            return Response({
-                'message': '更新成功',
-                'data': serializer.data
-            })
-            
-        except Exception as e:
-            logger.error(f"更新分析可视化时出错: {str(e)}", exc_info=True)
-            return Response({
-                'error': 'update_failed',
-                'detail': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    async def destroy(self, request, pk=None):
-        """删除可视化"""
-        try:
-            # 获取可视化
-            visualization = await sync_to_async(get_object_or_404)(
-                AnalysisVisualization, pk=pk, created_by=request.user
-            )
-            
-            # 删除可视化
-            await sync_to_async(visualization.delete)()
-            
-            return Response({
-                'message': '删除成功'
-            }, status=status.HTTP_204_NO_CONTENT)
-            
-        except Exception as e:
-            logger.error(f"删除分析可视化时出错: {str(e)}", exc_info=True)
-            return Response({
-                'error': 'delete_failed',
-                'detail': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-    @action(detail=True, methods=['post'])
-    async def generate_visualization(self, request, pk=None):
-        """生成可视化"""
-        try:
-            # 获取可视化
-            visualization = await sync_to_async(get_object_or_404)(
-                AnalysisVisualization, pk=pk, created_by=request.user
-            )
-            
-            # 获取分析结果
-            result = await sync_to_async(get_object_or_404)(
-                AnalysisResult, pk=visualization.analysis_result_id
-            )
-            
-            # 生成可视化
-            service = VisualizationService()
-            visualization_data = await service.generate_visualization(
-                result.result,
-                visualization.visualization_type,
-                visualization.config
-            )
-            
-            # 更新可视化数据
-            visualization.data = visualization_data
-            visualization.status = 'completed'
-            await sync_to_async(visualization.save)()
-            
-            return Response({
-                'message': '可视化生成成功',
-                'data': AnalysisVisualizationSerializer(visualization).data
-            })
-            
-        except Exception as e:
-            logger.error(f"生成分析可视化时出错: {str(e)}", exc_info=True)
-            return Response({
-                'error': 'generation_failed',
-                'detail': str(e)
-            }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 class BatchAnalysisTaskViewSet(viewsets.ModelViewSet):
     """批量分析任务视图集"""

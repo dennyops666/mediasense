@@ -46,7 +46,7 @@ class TestAuthIntegration:
             'password': 'testpass123',
             'confirm_password': 'testpass123'
         }
-        register_url = reverse('auth:register')
+        register_url = reverse('api:auth:register')
         response = api_client.post(register_url, register_data)
         assert response.status_code == status.HTTP_201_CREATED
         assert User.objects.filter(username='newuser').exists()
@@ -56,7 +56,7 @@ class TestAuthIntegration:
             'username': 'newuser',
             'password': 'testpass123'
         }
-        login_url = reverse('auth:login')
+        login_url = reverse('api:auth:token_obtain')
         response = api_client.post(login_url, login_data)
         assert response.status_code == status.HTTP_200_OK
         assert 'access' in response.data
@@ -70,7 +70,7 @@ class TestAuthIntegration:
         
         # 2. 验证用户权限
         api_client.force_authenticate(user=test_user)
-        permission_url = reverse('auth:check-permission')
+        permission_url = reverse('api:auth:check_permission')
         response = api_client.post(permission_url, {'permission': 'news_manage'})
         assert response.status_code == status.HTTP_200_OK
         assert response.data['has_permission'] is True
@@ -82,13 +82,13 @@ class TestAuthIntegration:
             'username': test_user.username,
             'password': 'password123'  # UserFactory默认密码
         }
-        login_url = reverse('auth:login')
+        login_url = reverse('api:auth:token_obtain')
         response = api_client.post(login_url, login_data)
         assert response.status_code == status.HTTP_200_OK
         refresh_token = response.data['refresh']
 
         # 2. 使用refresh token获取新的access token
-        refresh_url = reverse('auth:token-refresh')
+        refresh_url = reverse('api:auth:token_refresh')
         response = api_client.post(refresh_url, {'refresh': refresh_token})
         assert response.status_code == status.HTTP_200_OK
         assert 'access' in response.data
@@ -97,13 +97,13 @@ class TestAuthIntegration:
         """测试会话管理"""
         # 1. 用户登录并获取session
         api_client.force_authenticate(user=test_user)
-        session_url = reverse('auth:session-info')
+        session_url = reverse('api:auth:session_info')
         response = api_client.get(session_url)
         assert response.status_code == status.HTTP_200_OK
         assert response.data['is_authenticated'] is True
 
         # 2. 测试会话注销
-        logout_url = reverse('auth:logout')
+        logout_url = reverse('api:auth:logout')
         response = api_client.post(logout_url)
         assert response.status_code == status.HTTP_200_OK
 
@@ -122,7 +122,7 @@ class TestAuthIntegration:
 
         # 2. 验证继承的权限
         api_client.force_authenticate(user=test_user)
-        permission_url = reverse('auth:check-permission')
+        permission_url = reverse('api:auth:check_permission')
         response = api_client.post(permission_url, {'permission': 'news_manage'})
         assert response.status_code == status.HTTP_200_OK
         assert response.data['has_permission'] is True 
