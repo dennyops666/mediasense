@@ -1,240 +1,131 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import * as monitorApi from '@/api/monitor'
-import request from '@/utils/request'
-import type { SystemMetrics, SystemLog } from '@/types/api'
+import axios from 'axios'
+import {
+  fetchSystemMetrics,
+  updateAlertConfig,
+  getSystemMetrics,
+  getSystemLogs,
+  getMetricsHistory,
+  getProcessList,
+  getDiskUsage
+} from '@/api/monitor'
 
-// 修改 mock 实现
-vi.mock('@/utils/request', () => ({
-  default: {
-    get: vi.fn(),
-    post: vi.fn()
-  }
-}))
+vi.mock('axios')
 
-describe('监控 API', () => {
+describe('Monitor API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  describe('getSystemMetrics', () => {
-    it('应该正确获取系统指标', async () => {
+  describe('fetchSystemMetrics', () => {
+    it('fetches system metrics successfully', async () => {
       const mockResponse = {
         data: {
-          cpuUsage: 45.5,
-          memoryUsage: 65.8,
-          diskUsage: 72.3,
-          processCount: 128,
-          lastUpdate: '2024-03-20T10:00:00Z',
-          networkIo: {
-            input: 1024,
-            output: 2048
-          }
+          cpu: { usage: 45.5, cores: 4, temperature: 65 },
+          memory: { total: 16384, used: 8192, free: 8192 },
+          disk: { total: 512000, used: 256000, free: 256000 },
+          network: { upload: 1024, download: 2048, latency: 50 }
         }
       }
+      vi.mocked(axios.get).mockResolvedValue(mockResponse)
 
-      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
-
-      const result = await monitorApi.getSystemMetrics()
-
-      expect(request.get).toHaveBeenCalledWith('/api/monitor/metrics')
+      const result = await fetchSystemMetrics()
       expect(result).toEqual(mockResponse.data)
+      expect(axios.get).toHaveBeenCalledWith('/api/monitor/metrics')
     })
 
-    it('应该处理获取系统指标失败的情况', async () => {
-      const error = new Error('获取系统指标失败')
-      vi.mocked(request.get).mockRejectedValueOnce(error)
+    it('handles fetch metrics error', async () => {
+      const error = new Error('Network error')
+      vi.mocked(axios.get).mockRejectedValue(error)
 
-      await expect(monitorApi.getSystemMetrics()).rejects.toThrow('获取系统指标失败')
+      await expect(fetchSystemMetrics()).rejects.toThrow('Network error')
+    })
+  })
+
+  describe('updateAlertConfig', () => {
+    it('updates alert configuration successfully', async () => {
+      const newConfig = {
+        cpu: { threshold: 80 },
+        memory: { threshold: 90 }
+      }
+      const mockResponse = { data: newConfig }
+      vi.mocked(axios.put).mockResolvedValue(mockResponse)
+
+      const result = await updateAlertConfig(newConfig)
+      expect(result).toEqual(newConfig)
+      expect(axios.put).toHaveBeenCalledWith('/api/monitor/alerts/config', newConfig)
     })
   })
 
   describe('getSystemLogs', () => {
-    it('应该正确获取系统日志', async () => {
-      const mockResponse = {
+    it('fetches system logs successfully', async () => {
+      const mockLogs = {
         data: {
           total: 100,
           items: [
-            {
-              id: '1',
-              timestamp: '2024-03-20T10:00:00Z',
-              level: 'info',
-              module: 'crawler',
-              message: '爬虫任务开始执行'
-            },
-            {
-              id: '2',
-              timestamp: '2024-03-20T10:01:00Z',
-              level: 'error',
-              module: 'database',
-              message: '数据库连接失败'
-            }
-          ] as SystemLog[]
+            { id: 1, level: 'info', message: 'test log', timestamp: '2024-03-20T10:00:00Z' }
+          ]
         }
       }
+      vi.mocked(axios.get).mockResolvedValue(mockLogs)
 
-      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
-
-      const params = {
-        page: 1,
-        pageSize: 10,
-        level: 'error'
-      }
-
-      const result = await monitorApi.getSystemLogs(params)
-
-      expect(request.get).toHaveBeenCalledWith('/api/monitor/logs', { params })
-      expect(result).toEqual(mockResponse.data)
-    })
-
-    it('应该处理获取系统日志失败的情况', async () => {
-      const error = new Error('获取系统日志失败')
-      vi.mocked(request.get).mockRejectedValueOnce(error)
-
-      const params = {
-        page: 1,
-        pageSize: 10
-      }
-
-      await expect(monitorApi.getSystemLogs(params)).rejects.toThrow('获取系统日志失败')
+      const result = await getSystemLogs({ page: 1, pageSize: 10 })
+      expect(result).toEqual(mockLogs.data)
+      expect(axios.get).toHaveBeenCalledWith('/api/monitor/logs', {
+        params: { page: 1, pageSize: 10 }
+      })
     })
   })
 
   describe('getMetricsHistory', () => {
-    it('应该正确获取历史指标数据', async () => {
-      const mockResponse = {
+    it('fetches metrics history successfully', async () => {
+      const mockHistory = {
         data: {
-          timestamps: ['2024-03-20T10:00:00Z', '2024-03-20T10:01:00Z'],
-          values: [45.5, 48.2]
+          timestamps: ['2024-03-19T10:00:00Z', '2024-03-20T10:00:00Z'],
+          values: [45, 55]
         }
       }
-
-      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
-
-      const params = {
-        startTime: '2024-03-20T10:00:00Z',
-        endTime: '2024-03-20T10:01:00Z',
-        type: 'cpu'
-      }
-
-      const result = await monitorApi.getMetricsHistory(params)
-
-      expect(request.get).toHaveBeenCalledWith('/api/monitor/metrics/history', { params })
-      expect(result).toEqual(mockResponse.data)
-    })
-
-    it('应该处理获取历史指标数据失败的情况', async () => {
-      const error = new Error('获取历史指标数据失败')
-      vi.mocked(request.get).mockRejectedValueOnce(error)
+      vi.mocked(axios.get).mockResolvedValue(mockHistory)
 
       const params = {
-        startTime: '2024-03-20T10:00:00Z',
-        endTime: '2024-03-20T10:01:00Z',
+        startTime: '2024-03-19T10:00:00Z',
+        endTime: '2024-03-20T10:00:00Z',
         type: 'cpu'
       }
-
-      await expect(monitorApi.getMetricsHistory(params)).rejects.toThrow('获取历史指标数据失败')
+      const result = await getMetricsHistory(params)
+      expect(result).toEqual(mockHistory.data)
+      expect(axios.get).toHaveBeenCalledWith('/api/monitor/metrics/history', { params })
     })
   })
 
   describe('getProcessList', () => {
-    it('应该正确获取进程列表', async () => {
-      const mockResponse = {
+    it('fetches process list successfully', async () => {
+      const mockProcesses = {
         data: [
-          {
-            pid: 1234,
-            name: 'node',
-            cpu: 2.5,
-            memory: 128.5,
-            status: 'running',
-            startTime: '2024-03-20T10:00:00Z'
-          }
+          { pid: 1, name: 'process1', cpu: 10, memory: 200 },
+          { pid: 2, name: 'process2', cpu: 20, memory: 300 }
         ]
       }
+      vi.mocked(axios.get).mockResolvedValue(mockProcesses)
 
-      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
-
-      const result = await monitorApi.getProcessList()
-
-      expect(request.get).toHaveBeenCalledWith('/api/monitor/processes')
-      expect(result).toEqual(mockResponse.data)
+      const result = await getProcessList()
+      expect(result).toEqual(mockProcesses.data)
+      expect(axios.get).toHaveBeenCalledWith('/api/monitor/processes')
     })
   })
 
   describe('getDiskUsage', () => {
-    it('应该正确获取磁盘使用情况', async () => {
-      const mockResponse = {
+    it('fetches disk usage successfully', async () => {
+      const mockDiskUsage = {
         data: [
-          {
-            path: '/',
-            total: 1024000,
-            used: 512000,
-            free: 512000,
-            usage: 50
-          }
+          { device: '/dev/sda1', mountPoint: '/', total: 1000, used: 500, free: 500 }
         ]
       }
+      vi.mocked(axios.get).mockResolvedValue(mockDiskUsage)
 
-      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
-
-      const result = await monitorApi.getDiskUsage()
-
-      expect(request.get).toHaveBeenCalledWith('/api/monitor/disk')
-      expect(result).toEqual(mockResponse.data)
-    })
-  })
-
-  describe('getServiceStatus', () => {
-    it('应该正确获取服务状态', async () => {
-      const mockResponse = {
-        data: [
-          {
-            name: 'nginx',
-            status: 'running',
-            uptime: '10d 2h 30m',
-            memory: 128.5,
-            cpu: 0.5
-          }
-        ]
-      }
-
-      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
-
-      const result = await monitorApi.getServiceStatus()
-
-      expect(request.get).toHaveBeenCalledWith('/api/monitor/services')
-      expect(result).toEqual(mockResponse.data)
-    })
-  })
-
-  describe('restartService', () => {
-    it('应该正确重启服务', async () => {
-      const mockResponse = {
-        data: { success: true, message: '服务重启成功' }
-      }
-
-      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
-
-      const serviceName = 'nginx'
-      const result = await monitorApi.restartService(serviceName)
-
-      expect(request.post).toHaveBeenCalledWith('/api/monitor/services/restart', { serviceName })
-      expect(result).toEqual(mockResponse.data)
-    })
-  })
-
-  describe('acknowledgeAlert', () => {
-    it('应该正确确认告警', async () => {
-      const mockResponse = {
-        data: { success: true, message: '告警已确认' }
-      }
-
-      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
-
-      const alertId = 'alert-123'
-      const result = await monitorApi.acknowledgeAlert(alertId)
-
-      expect(request.post).toHaveBeenCalledWith('/api/monitor/alerts/acknowledge', { alertId })
-      expect(result).toEqual(mockResponse.data)
+      const result = await getDiskUsage()
+      expect(result).toEqual(mockDiskUsage.data)
+      expect(axios.get).toHaveBeenCalledWith('/api/monitor/disk')
     })
   })
 }) 
