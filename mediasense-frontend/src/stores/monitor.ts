@@ -207,6 +207,20 @@ export const useMonitorStore = defineStore('monitor', () => {
     error.value = null
   }
 
+  // 终止进程
+  const killProcess = async (pid: number) => {
+    try {
+      loading.value = true
+      error.value = null
+      await monitorApi.killProcess(pid)
+    } catch (err) {
+      error.value = '终止进程失败'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     // 状态
     metrics,
@@ -228,6 +242,7 @@ export const useMonitorStore = defineStore('monitor', () => {
     startMonitoring,
     stopMonitoring,
     exportMonitoringData,
-    clearError
+    clearError,
+    killProcess
   }
 })
