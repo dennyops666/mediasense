@@ -312,9 +312,9 @@ docker-compose ps
 ```bash
 # 后端环境变量
 DJANGO_SETTINGS_MODULE=config.settings.production
-DATABASE_URL=mysql://user:pass@host:3306/dbname
-REDIS_URL=redis://host:6379/0
-ELASTICSEARCH_URL=http://host:9200
+DATABASE_URL=mysql://user:pass@localhost:3306/dbname
+REDIS_URL=redis://localhost:6379/0
+ELASTICSEARCH_URL=http://localhost:9200
 
 # 前端环境变量
 VITE_API_BASE_URL=http://backend.mediasense.com
@@ -434,11 +434,6 @@ python manage.py test --tag=integration
 - 优化搜索性能
 - 修复已知bug
 
-PI网关集成
-
-## 许可证
-
-本项目采用 MIT 许可证 - 查看 [LICENSE](LICENSE) 文件了解详情
 
 ## 联系方式
 
