@@ -2,7 +2,10 @@
   <div class="login-container">
     <el-card class="login-card">
       <template #header>
-        <h2 class="card-title">登录</h2>
+        <div class="login-header">
+          <img src="@/assets/logo.png" alt="Logo" class="logo">
+          <h2>MediaSense 监控平台</h2>
+        </div>
       </template>
       
       <el-form
@@ -42,18 +45,88 @@
           >
             登录
           </el-button>
-          <el-link 
-            type="primary" 
-            @click="router.push('/auth/register')"
-            data-test="register-link"
-          >
-            还没有账号？立即注册
-          </el-link>
+          <div class="action-links">
+            <el-link type="primary" @click="router.push('/auth/register')">
+              注册账号
+            </el-link>
+            <el-divider direction="vertical" />
+            <el-link type="primary" @click="router.push('/auth/forgot-password')">
+              忘记密码
+            </el-link>
+          </div>
         </div>
       </el-form>
     </el-card>
   </div>
 </template>
+
+<style scoped>
+.login-container {
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, var(--el-color-primary-light-8) 0%, var(--el-color-primary-light-9) 100%);
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  margin: 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+.login-header {
+  text-align: center;
+  padding: 20px 0;
+}
+
+.logo {
+  width: 64px;
+  height: 64px;
+  margin-bottom: 16px;
+}
+
+.login-header h2 {
+  margin: 0;
+  color: var(--el-text-color-primary);
+  font-size: 24px;
+}
+
+.form-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.submit-btn {
+  width: 100%;
+  height: 40px;
+  font-size: 16px;
+}
+
+.action-links {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+:deep(.el-input__wrapper) {
+  padding: 8px 12px;
+}
+
+:deep(.el-input__inner) {
+  height: 40px;
+}
+
+:deep(.el-form-item__label) {
+  font-size: 14px;
+  padding-bottom: 8px;
+}
+</style>
 
 <script setup lang="ts">
 import { ref, reactive } from 'vue'
@@ -89,47 +162,15 @@ const handleSubmit = async () => {
   try {
     await formRef.value.validate()
     await authStore.login(form.username, form.password)
-    router.push('/')
+    const redirect = router.currentRoute.value.query.redirect as string
+    await router.push(redirect || '/dashboard')
+    ElMessage.success('登录成功')
   } catch (error) {
     if (error instanceof Error) {
       ElMessage.error(error.message)
     } else {
-      ElMessage.error('登录失败')
+      ElMessage.error('登录失败,请检查用户名和密码')
     }
   }
 }
-</script>
-
-<style scoped>
-.login-container {
-  min-height: 100vh;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  background: linear-gradient(135deg, var(--el-color-primary-light-8) 0%, var(--el-color-primary-light-9) 100%);
-}
-
-.login-card {
-  width: 100%;
-  max-width: 400px;
-  margin: 20px;
-}
-
-.card-title {
-  text-align: center;
-  color: var(--el-text-color-primary);
-  margin: 0;
-}
-
-.form-actions {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 16px;
-  margin-top: 24px;
-}
-
-.submit-btn {
-  width: 100%;
-}
-</style> 
+</script> 

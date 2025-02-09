@@ -1,20 +1,18 @@
 /**
  * 新闻项
  */
-export interface NewsItem {
+export interface News {
   id: string
   title: string
   content: string
-  summary?: string
   category: string
-  source: string
-  author?: string
   publishTime: string
-  status: 'draft' | 'published' | 'archived'
+  author: string
+  views: number
+  summary?: string
   tags?: string[]
-  url?: string
-  createdAt?: string
-  updatedAt?: string
+  source?: string
+  imageUrl?: string
 }
 
 /**
@@ -23,7 +21,6 @@ export interface NewsItem {
 export interface NewsCategory {
   id: string
   name: string
-  description?: string
 }
 
 /**
@@ -55,6 +52,19 @@ export interface NewsFilter {
  * 新闻列表响应
  */
 export interface NewsListResponse {
-  list: NewsItem[]
+  items: News[]
   total: number
+  page: number
+  pageSize: number
+}
+
+export interface NewsSearchParams {
+  page: number
+  pageSize: number
+  category?: string
+  keyword?: string
+  startDate?: string
+  endDate?: string
+  sortBy?: 'publishTime' | 'views'
+  sortOrder?: 'asc' | 'desc'
 } 

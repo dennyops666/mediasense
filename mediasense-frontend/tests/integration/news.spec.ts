@@ -5,11 +5,48 @@ import { createRouter, createWebHistory } from 'vue-router'
 import NewsList from '@/views/news/NewsList.vue'
 import NewsDetail from '@/views/news/NewsDetail.vue'
 import { useNewsStore } from '@/stores/news'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import CrawlerConfigForm from '@/components/crawler/CrawlerConfigForm.vue'
+import CrawlerTaskList from '@/components/crawler/CrawlerTaskList.vue'
+import CrawlerDataList from '@/components/crawler/CrawlerDataList.vue'
+import { useCrawlerStore } from '@/stores/crawler'
+import * as crawlerApi from '@/api/crawler'
 
-vi.mock('element-plus')
+vi.mock('element-plus', () => ({
+  ElMessage: {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn()
+  },
+  ElMessageBox: {
+    confirm: vi.fn().mockResolvedValue(true)
+  }
+}))
 
-describe('新闻管理流程集成测试', () => {
+const mockNews = [
+  {
+    id: '1',
+    title: '测试新闻1',
+    content: '内容1',
+    category: '科技',
+    source: '来源1',
+    publishTime: '2024-03-20T10:00:00Z',
+    url: 'http://example.com/news/1',
+    isFavorite: false
+  },
+  {
+    id: '2',
+    title: '测试新闻2',
+    content: '内容2',
+    category: '财经',
+    source: '来源2',
+    publishTime: '2024-03-20T11:00:00Z',
+    url: 'http://example.com/news/2',
+    isFavorite: true
+  }
+]
+
+describe('新闻管理集成测试', () => {
   const router = createRouter({
     history: createWebHistory(),
     routes: [
@@ -27,274 +64,737 @@ describe('新闻管理流程集成测试', () => {
     ]
   })
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     router.push('/news')
+    await router.isReady()
   })
 
-  describe('新闻列表流程', () => {
-    it('应该完成新闻列表加载和过滤', async () => {
+  describe('新闻列表页面', () => {
+    it('应该正确显示新闻列表', async () => {
       const wrapper = mount(NewsList, {
         global: {
           plugins: [
+            router,
             createTestingPinia({
-              createSpy: vi.fn
-            }),
-            router
-          ]
+              createSpy: vi.fn,
+              initialState: {
+                news: {
+                  newsList: mockNews,
+                  loading: false,
+                  categories: ['科技', '财经']
+                }
+              }
+            })
+          ],
+          stubs: {
+            'el-table': {
+              template: `
+                <div class="el-table">
+                  <div v-for="item in data" :key="item.id" class="news-item">
+                    <slot :row="item"></slot>
+                  </div>
+                </div>
+              `,
+              props: ['data']
+            },
+            'el-table-column': {
+              template: '<div class="el-table-column"><slot :row="$parent.row"></slot></div>'
+            },
+            'el-button': {
+              template: '<button class="el-button" @click="$emit(\'click\')"><slot/></button>'
+            },
+            'el-tag': {
+              template: '<span class="el-tag"><slot/></span>'
+            },
+            'el-select': {
+              template: '<select class="el-select" @change="$emit(\'update:modelValue\', $event.target.value)"><slot/></select>'
+            },
+            'el-option': {
+              template: '<option :value="value"><slot/></option>',
+              props: ['value']
+            },
+            'el-input': {
+              template: '<input class="el-input" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+              props: ['modelValue']
+            }
+          }
         }
       })
 
-      const store = useNewsStore()
-      const mockNews = [
-        {
-          id: '1',
-          title: '测试新闻1',
-          content: '内容1',
-          category: '科技',
-          source: '来源1',
-          publishTime: '2024-03-20T10:00:00Z'
-        }
-      ]
-
-      // 模拟获取新闻列表
-      vi.mocked(store.fetchNewsList).mockResolvedValueOnce({
-        list: mockNews,
-        total: 100
-      })
-
-      // 模拟获取分类和来源
-      vi.mocked(store.fetchCategories).mockResolvedValueOnce(['科技', '财经'])
-      vi.mocked(store.fetchSources).mockResolvedValueOnce(['来源1', '来源2'])
-
-      await wrapper.vm.$nextTick()
-
-      // 验证初始加载
-      expect(store.fetchNewsList).toHaveBeenCalled()
-      expect(store.fetchCategories).toHaveBeenCalled()
-      expect(store.fetchSources).toHaveBeenCalled()
-
-      // 应用过滤条件
-      await wrapper.find('.category-select').trigger('click')
-      await wrapper.find('.category-option').trigger('click')
-
-      expect(store.applyFilter).toHaveBeenCalledWith(expect.objectContaining({
-        category: '科技'
-      }))
-
-      // 验证分页
-      const pagination = wrapper.findComponent({ name: 'el-pagination' })
-      await pagination.vm.$emit('current-change', 2)
-
-      expect(store.fetchNewsList).toHaveBeenCalledWith(expect.objectContaining({
-        page: 2
-      }))
+      const newsItems = wrapper.findAll('.news-item')
+      expect(newsItems).toHaveLength(2)
+      expect(newsItems[0].text()).toContain('测试新闻1')
+      expect(newsItems[1].text()).toContain('测试新闻2')
     })
 
-    it('应该正确处理新闻详情跳转', async () => {
+    it('应该能按分类筛选新闻', async () => {
       const wrapper = mount(NewsList, {
         global: {
           plugins: [
+            router,
             createTestingPinia({
               createSpy: vi.fn,
               initialState: {
                 news: {
-                  newsList: [
-                    {
-                      id: '1',
-                      title: '测试新闻1'
-                    }
-                  ]
+                  newsList: mockNews,
+                  loading: false,
+                  categories: ['科技', '财经']
                 }
               }
-            }),
-            router
-          ]
+            })
+          ],
+          stubs: {
+            'el-table': {
+              template: '<div class="el-table"><slot/></div>'
+            },
+            'el-table-column': {
+              template: '<div class="el-table-column"><slot/></div>'
+            },
+            'el-button': {
+              template: '<button class="el-button" @click="$emit(\'click\')"><slot/></button>'
+            },
+            'el-tag': {
+              template: '<span class="el-tag"><slot/></span>'
+            },
+            'el-select': {
+              template: '<select class="el-select" @change="$emit(\'update:modelValue\', $event.target.value)"><slot/></select>'
+            },
+            'el-option': {
+              template: '<option :value="value"><slot/></option>',
+              props: ['value']
+            }
+          }
         }
       })
 
-      await wrapper.find('.news-title-link').trigger('click')
-      expect(router.currentRoute.value.path).toBe('/news/1')
+      const categorySelect = wrapper.find('.el-select')
+      await categorySelect.setValue('科技')
+      await categorySelect.trigger('change')
+
+      const store = useNewsStore()
+      expect(store.filterNewsByCategory).toHaveBeenCalledWith('科技')
+    })
+
+    it('应该能搜索新闻', async () => {
+      const wrapper = mount(NewsList, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                news: {
+                  newsList: mockNews,
+                  loading: false,
+                  categories: ['科技', '财经']
+                }
+              }
+            })
+          ],
+          stubs: {
+            'el-table': {
+              template: '<div class="el-table"><slot/></div>'
+            },
+            'el-table-column': {
+              template: '<div class="el-table-column"><slot/></div>'
+            },
+            'el-button': {
+              template: '<button class="el-button" @click="$emit(\'click\')"><slot/></button>'
+            },
+            'el-tag': {
+              template: '<span class="el-tag"><slot/></span>'
+            },
+            'el-input': {
+              template: '<input class="el-input" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+              props: ['modelValue']
+            }
+          }
+        }
+      })
+
+      const searchInput = wrapper.find('.el-input')
+      await searchInput.setValue('测试新闻1')
+      await searchInput.trigger('input')
+
+      const store = useNewsStore()
+      expect(store.searchNews).toHaveBeenCalledWith('测试新闻1')
     })
   })
 
-  describe('新闻详情流程', () => {
-    it('应该完成新闻详情查看和编辑', async () => {
-      await router.push('/news/1')
-
+  describe('新闻详情页面', () => {
+    it('应该正确显示新闻详情', async () => {
       const wrapper = mount(NewsDetail, {
         global: {
           plugins: [
-            createTestingPinia({
-              createSpy: vi.fn
-            }),
-            router
-          ]
-        }
-      })
-
-      const store = useNewsStore()
-      const mockNews = {
-        id: '1',
-        title: '测试新闻1',
-        content: '内容1',
-        category: '科技',
-        source: '来源1',
-        publishTime: '2024-03-20T10:00:00Z'
-      }
-
-      // 模拟获取新闻详情
-      vi.mocked(store.fetchNewsDetail).mockResolvedValueOnce(mockNews)
-      await wrapper.vm.$nextTick()
-
-      expect(store.fetchNewsDetail).toHaveBeenCalledWith('1')
-
-      // 进入编辑模式
-      await wrapper.find('.edit-news-btn').trigger('click')
-      
-      // 修改内容
-      await wrapper.find('input[name="title"]').setValue('更新后的标题')
-      await wrapper.find('textarea[name="content"]').setValue('更新后的内容')
-
-      // 保存更改
-      await wrapper.find('.save-news-btn').trigger('click')
-
-      expect(store.updateNews).toHaveBeenCalledWith('1', {
-        title: '更新后的标题',
-        content: '更新后的内容'
-      })
-    })
-
-    it('应该正确处理新闻删除', async () => {
-      await router.push('/news/1')
-
-      const wrapper = mount(NewsDetail, {
-        global: {
-          plugins: [
+            router,
             createTestingPinia({
               createSpy: vi.fn,
               initialState: {
                 news: {
-                  currentNews: {
-                    id: '1',
-                    title: '测试新闻1'
-                  }
+                  currentNews: mockNews[0],
+                  loading: false
                 }
               }
-            }),
-            router
-          ]
+            })
+          ],
+          stubs: {
+            'el-card': {
+              template: '<div class="el-card"><slot/></div>'
+            },
+            'el-button': {
+              template: '<button class="el-button" @click="$emit(\'click\')"><slot/></button>'
+            },
+            'el-tag': {
+              template: '<span class="el-tag"><slot/></span>'
+            }
+          }
+        },
+        props: {
+          id: '1'
         }
       })
 
-      const store = useNewsStore()
-      vi.mocked(store.deleteNews).mockResolvedValueOnce()
+      expect(wrapper.find('.news-title').text()).toBe('测试新闻1')
+      expect(wrapper.find('.news-content').text()).toBe('内容1')
+      expect(wrapper.find('.news-source').text()).toContain('来源1')
+      expect(wrapper.find('.news-category').text()).toContain('科技')
+    })
 
-      // 点击删除按钮
-      await wrapper.find('.delete-news-btn').trigger('click')
-      
-      // 确认删除
-      await wrapper.find('.confirm-delete-btn').trigger('click')
+    it('应该在加载失败时显示错误信息', async () => {
+      const wrapper = mount(NewsDetail, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                news: {
+                  currentNews: null,
+                  loading: false,
+                  error: '加载失败'
+                }
+              }
+            })
+          ],
+          stubs: {
+            'el-alert': {
+              template: '<div class="el-alert error-message"><slot/></div>'
+            }
+          }
+        },
+        props: {
+          id: '1'
+        }
+      })
 
-      expect(store.deleteNews).toHaveBeenCalledWith('1')
-      expect(router.currentRoute.value.path).toBe('/news')
+      expect(wrapper.find('.error-message').exists()).toBe(true)
+      expect(wrapper.find('.error-message').text()).toContain('加载失败')
     })
   })
 
-  describe('新闻分享功能', () => {
-    it('应该正确处理新闻分享', async () => {
-      await router.push('/news/1')
-
+  describe('新闻操作', () => {
+    it('应该能分享新闻', async () => {
       const wrapper = mount(NewsDetail, {
         global: {
           plugins: [
+            router,
             createTestingPinia({
               createSpy: vi.fn,
               initialState: {
                 news: {
-                  currentNews: {
-                    id: '1',
-                    title: '测试新闻1'
-                  }
+                  currentNews: mockNews[0],
+                  loading: false
                 }
               }
-            }),
-            router
-          ]
+            })
+          ],
+          stubs: {
+            'el-card': {
+              template: '<div class="el-card"><slot/></div>'
+            },
+            'el-button': {
+              template: '<button class="el-button" @click="$emit(\'click\')"><slot/></button>'
+            }
+          }
+        },
+        props: {
+          id: '1'
         }
       })
 
-      const mockClipboard = {
-        writeText: vi.fn().mockResolvedValue(undefined)
-      }
-      global.navigator.clipboard = mockClipboard
+      const shareButton = wrapper.find('.share-button')
+      await shareButton.trigger('click')
 
-      await wrapper.find('.share-news-btn').trigger('click')
-
-      expect(mockClipboard.writeText).toHaveBeenCalledWith(expect.stringContaining('/news/1'))
       expect(ElMessage.success).toHaveBeenCalledWith('分享链接已复制到剪贴板')
     })
-  })
 
-  describe('错误处理', () => {
-    it('应该正确处理新闻不存在的情况', async () => {
-      await router.push('/news/999')
-
+    it('应该能收藏新闻', async () => {
       const wrapper = mount(NewsDetail, {
         global: {
           plugins: [
-            createTestingPinia({
-              createSpy: vi.fn
-            }),
-            router
-          ]
-        }
-      })
-
-      const store = useNewsStore()
-      vi.mocked(store.fetchNewsDetail).mockRejectedValueOnce(new Error('新闻不存在'))
-
-      await wrapper.vm.$nextTick()
-
-      expect(ElMessage.error).toHaveBeenCalledWith('新闻不存在')
-      expect(router.currentRoute.value.path).toBe('/news')
-    })
-
-    it('应该正确处理更新失败的情况', async () => {
-      await router.push('/news/1')
-
-      const wrapper = mount(NewsDetail, {
-        global: {
-          plugins: [
+            router,
             createTestingPinia({
               createSpy: vi.fn,
               initialState: {
                 news: {
-                  currentNews: {
-                    id: '1',
-                    title: '测试新闻1'
-                  }
+                  currentNews: mockNews[0],
+                  loading: false
                 }
               }
-            }),
-            router
+            })
+          ],
+          stubs: {
+            'el-card': {
+              template: '<div class="el-card"><slot/></div>'
+            },
+            'el-button': {
+              template: '<button class="el-button" @click="$emit(\'click\')"><slot/></button>'
+            }
+          }
+        },
+        props: {
+          id: '1'
+        }
+      })
+
+      const favoriteButton = wrapper.find('.favorite-button')
+      await favoriteButton.trigger('click')
+
+      const store = useNewsStore()
+      expect(store.toggleFavorite).toHaveBeenCalledWith('1')
+      expect(ElMessage.success).toHaveBeenCalledWith('收藏成功')
+    })
+  })
+})
+
+describe('新闻爬虫集成测试', () => {
+  const router = createRouter({
+    history: createWebHistory(),
+    routes: [
+      {
+        path: '/crawler',
+        children: [
+          {
+            path: 'config',
+            component: CrawlerConfigForm
+          },
+          {
+            path: 'list',
+            component: CrawlerTaskList
+          },
+          {
+            path: 'data',
+            component: CrawlerDataList
+          }
+        ]
+      }
+    ]
+  })
+
+  const mockConfig = {
+    name: '测试新闻爬虫',
+    type: 'news',
+    url: 'http://example.com/news',
+    enabled: true,
+    targetUrl: 'http://example.com/news',
+    method: 'GET',
+    headers: [],
+    selectors: [
+      { field: 'title', selector: '.news-title', type: 'css' },
+      { field: 'content', selector: '.news-content', type: 'css' },
+      { field: 'date', selector: '.news-date', type: 'css' }
+    ],
+    timeout: 30,
+    retries: 3,
+    concurrency: 1,
+    selector: {
+      title: '.news-title',
+      content: '.news-content'
+    },
+    userAgent: 'Mozilla/5.0'
+  }
+
+  const mockTask = {
+    id: '1',
+    name: '测试新闻爬虫任务',
+    type: 'news',
+    schedule: '0 0 * * *',
+    config: mockConfig,
+    status: 'running',
+    lastRunTime: '2024-03-20T10:00:00Z',
+    count: 100,
+    configId: '1',
+    startTime: '2024-03-20T10:00:00Z',
+    totalItems: 100,
+    successItems: 80,
+    failedItems: 20,
+    createdAt: '2024-03-20T10:00:00Z',
+    updatedAt: '2024-03-20T10:00:00Z'
+  }
+
+  const mockData = [
+    {
+      id: '1',
+      taskId: '1',
+      title: '测试新闻1',
+      content: '测试内容1',
+      url: 'http://example.com/news/1',
+      source: '测试来源',
+      category: '测试分类',
+      publishTime: '2024-03-20T10:00:00Z',
+      crawlTime: '2024-03-20T10:00:00Z',
+      rawData: {}
+    },
+    {
+      id: '2',
+      taskId: '1',
+      title: '测试新闻2',
+      content: '测试内容2',
+      url: 'http://example.com/news/2',
+      source: '测试来源',
+      category: '测试分类',
+      publishTime: '2024-03-20T11:00:00Z',
+      crawlTime: '2024-03-20T11:00:00Z',
+      rawData: {}
+    }
+  ]
+
+  beforeEach(async () => {
+    vi.clearAllMocks()
+    await router.push('/crawler/config')
+  })
+
+  describe('爬虫配置流程', () => {
+    it('应该能成功创建新闻爬虫配置', async () => {
+      const wrapper = mount(CrawlerConfigForm, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                crawler: {
+                  configs: [],
+                  loading: false
+                }
+              }
+            })
+          ]
+        },
+        props: {
+          mode: 'create'
+        }
+      })
+
+      vi.mocked(crawlerApi.createCrawlerConfig).mockResolvedValue(mockConfig)
+
+      await wrapper.setData({
+        formData: mockConfig
+      })
+
+      const submitButton = wrapper.find('[data-test="submit-button"]')
+      await submitButton.trigger('click')
+
+      expect(crawlerApi.createCrawlerConfig).toHaveBeenCalledWith(mockConfig)
+      expect(ElMessage.success).toHaveBeenCalledWith('创建爬虫配置成功')
+    })
+
+    it('应该能验证配置的有效性', async () => {
+      const wrapper = mount(CrawlerConfigForm, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn
+            })
+          ]
+        },
+        props: {
+          mode: 'create'
+        }
+      })
+
+      vi.mocked(crawlerApi.testConfig).mockResolvedValue({ success: true })
+
+      await wrapper.setData({
+        formData: mockConfig
+      })
+
+      const testButton = wrapper.find('[data-test="test-button"]')
+      await testButton.trigger('click')
+
+      expect(crawlerApi.testConfig).toHaveBeenCalledWith(mockConfig)
+      expect(ElMessage.success).toHaveBeenCalledWith('测试成功')
+    })
+  })
+
+  describe('任务管理流程', () => {
+    it('应该能启动爬虫任务', async () => {
+      const wrapper = mount(CrawlerTaskList, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                crawler: {
+                  tasks: [mockTask],
+                  loading: false
+                }
+              }
+            })
           ]
         }
       })
 
-      const store = useNewsStore()
-      vi.mocked(store.updateNews).mockRejectedValueOnce(new Error('更新失败'))
+      vi.mocked(crawlerApi.startTask).mockResolvedValue({ success: true })
 
-      // 进入编辑模式
-      await wrapper.find('.edit-news-btn').trigger('click')
-      
-      // 修改内容
-      await wrapper.find('input[name="title"]').setValue('更新后的标题')
+      const startButton = wrapper.find('[data-test="start-task-1"]')
+      await startButton.trigger('click')
 
-      // 保存更改
-      await wrapper.find('.save-news-btn').trigger('click')
+      expect(crawlerApi.startTask).toHaveBeenCalledWith('1')
+      expect(ElMessage.success).toHaveBeenCalledWith('启动任务成功')
+    })
 
-      expect(ElMessage.error).toHaveBeenCalledWith('更新失败')
+    it('应该能监控任务进度', async () => {
+      const wrapper = mount(CrawlerTaskList, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                crawler: {
+                  tasks: [mockTask],
+                  loading: false
+                }
+              }
+            })
+          ]
+        }
+      })
+
+      const progressBar = wrapper.find('[data-test="task-progress"]')
+      expect(progressBar.attributes('percentage')).toBe('80')
+    })
+  })
+
+  describe('数据管理流程', () => {
+    it('应该能查看采集到的数据', async () => {
+      // Mock crawlerApi
+      vi.mock('@/api/crawler', () => ({
+        getTaskData: vi.fn().mockResolvedValue({
+          items: mockData,
+          total: 2
+        })
+      }))
+
+      const wrapper = mount(CrawlerDataList, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                crawler: {
+                  currentTaskData: mockData,
+                  loading: false
+                }
+              }
+            })
+          ],
+          stubs: {
+            'el-table': {
+              template: '<div class="el-table"><slot></slot></div>'
+            },
+            'el-table-column': {
+              template: '<div class="el-table-column"><slot></slot></div>'
+            },
+            'el-button': {
+              template: '<button class="el-button" @click="$emit(\'click\')"><slot></slot></button>'
+            },
+            'el-tag': {
+              template: '<span class="el-tag"><slot></slot></span>'
+            }
+          }
+        },
+        props: {
+          taskId: '1'
+        }
+      })
+
+      await wrapper.vm.$nextTick()
+
+      const store = useCrawlerStore()
+      expect(store.fetchTaskData).toHaveBeenCalledWith('1')
+      expect(wrapper.findAll('.el-table-column')).toHaveLength(2)
+    })
+
+    it('应该能导出采集数据', async () => {
+      // Mock crawlerApi
+      vi.mock('@/api/crawler', () => ({
+        exportTaskData: vi.fn().mockResolvedValue({
+          success: true,
+          url: 'http://example.com/export/1'
+        })
+      }))
+
+      const wrapper = mount(CrawlerDataList, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                crawler: {
+                  currentTaskData: mockData,
+                  loading: false
+                }
+              }
+            })
+          ],
+          stubs: {
+            'el-table': {
+              template: '<div class="el-table"><slot></slot></div>'
+            },
+            'el-table-column': {
+              template: '<div class="el-table-column"><slot></slot></div>'
+            },
+            'el-button': {
+              template: '<button class="el-button export-button" @click="$emit(\'click\')"><slot></slot></button>'
+            },
+            'el-tag': {
+              template: '<span class="el-tag"><slot></slot></span>'
+            }
+          }
+        },
+        props: {
+          taskId: '1'
+        }
+      })
+
+      await wrapper.vm.$nextTick()
+
+      const exportButton = wrapper.find('.export-button')
+      await exportButton.trigger('click')
+
+      const store = useCrawlerStore()
+      expect(store.exportTaskData).toHaveBeenCalledWith('1')
+      expect(ElMessage.success).toHaveBeenCalledWith('数据导出成功')
+    })
+  })
+
+  describe('错误处理流程', () => {
+    it('应该处理配置创建失败', async () => {
+      // Mock crawlerApi
+      vi.mock('@/api/crawler', () => ({
+        createCrawlerConfig: vi.fn().mockRejectedValue(new Error('创建失败'))
+      }))
+
+      const wrapper = mount(CrawlerConfigForm, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                crawler: {
+                  configs: [],
+                  loading: false,
+                  error: null
+                }
+              }
+            })
+          ],
+          stubs: {
+            'el-form': {
+              template: '<form class="el-form" @submit.prevent><slot></slot></form>'
+            },
+            'el-form-item': {
+              template: '<div class="el-form-item"><slot></slot></div>'
+            },
+            'el-input': {
+              template: '<input class="el-input" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)" />',
+              props: ['modelValue'],
+              emits: ['update:modelValue']
+            },
+            'el-button': {
+              template: '<button class="el-button submit-button" @click="$emit(\'click\')"><slot></slot></button>'
+            },
+            'el-alert': {
+              template: '<div class="el-alert error-message"><slot></slot></div>'
+            }
+          }
+        },
+        props: {
+          mode: 'create'
+        }
+      })
+
+      await wrapper.setData({
+        formData: mockConfig
+      })
+
+      const submitButton = wrapper.find('.submit-button')
+      await submitButton.trigger('click')
+
+      const store = useCrawlerStore()
+      expect(store.createConfig).toHaveBeenCalledWith(mockConfig)
+      expect(ElMessage.error).toHaveBeenCalledWith('创建爬虫配置失败')
+      expect(wrapper.find('.error-message').exists()).toBe(true)
+    })
+
+    it('应该处理任务启动失败', async () => {
+      // Mock crawlerApi
+      vi.mock('@/api/crawler', () => ({
+        startTask: vi.fn().mockRejectedValue(new Error('启动失败'))
+      }))
+
+      const wrapper = mount(CrawlerTaskList, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                crawler: {
+                  tasks: [mockTask],
+                  loading: false,
+                  error: null
+                }
+              }
+            })
+          ],
+          stubs: {
+            'el-table': {
+              template: '<div class="el-table"><slot></slot></div>'
+            },
+            'el-table-column': {
+              template: '<div class="el-table-column"><slot></slot></div>'
+            },
+            'el-button': {
+              template: '<button class="el-button start-button" @click="$emit(\'click\')"><slot></slot></button>'
+            },
+            'el-tag': {
+              template: '<span class="el-tag"><slot></slot></span>'
+            },
+            'el-alert': {
+              template: '<div class="el-alert error-message"><slot></slot></div>'
+            }
+          }
+        }
+      })
+
+      await wrapper.vm.$nextTick()
+
+      const startButton = wrapper.find('.start-button')
+      await startButton.trigger('click')
+
+      const store = useCrawlerStore()
+      expect(store.startTask).toHaveBeenCalledWith('1')
+      expect(ElMessage.error).toHaveBeenCalledWith('启动任务失败')
+      expect(wrapper.find('.error-message').exists()).toBe(true)
     })
   })
 }) 

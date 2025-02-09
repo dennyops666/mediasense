@@ -1,82 +1,87 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { ElMessage } from 'element-plus'
-import { RouteRecordRaw } from 'vue-router'
+import MainLayout from '@/layout/MainLayout.vue'
 
-const routes: RouteRecordRaw[] = [
+const routes: Array<RouteRecordRaw> = [
   {
-    path: '/',
-    component: () => import('@/views/layout/MainLayout.vue'),
+    path: '/auth',
     children: [
       {
-        path: '',
-        name: 'home',
-        component: () => import('@/views/Home.vue'),
-        meta: { title: '首页' }
-      },
+        path: 'login',
+        name: 'Login',
+        component: () => import('@/components/auth/Login.vue'),
+        meta: { title: '登录' }
+      }
+    ]
+  },
+  {
+    path: '/',
+    component: MainLayout,
+    redirect: '/dashboard',
+    children: [
       {
-        path: 'news',
-        name: 'news-list',
-        component: () => import('@/views/news/NewsList.vue'),
-        meta: { title: '新闻列表' }
-      },
-      {
-        path: 'news/:id',
-        name: 'news-detail',
-        component: () => import('@/views/news/NewsDetail.vue'),
-        meta: { title: '新闻详情' }
-      },
-      {
-        path: 'search',
-        name: 'search',
-        component: () => import('@/views/search/Search.vue'),
-        meta: { title: '新闻搜索' }
+        path: 'dashboard',
+        name: 'Dashboard',
+        component: () => import('@/views/dashboard/Dashboard.vue'),
+        meta: { title: '仪表盘', requiresAuth: true }
       },
       {
         path: 'monitor',
-        name: 'monitor',
+        name: 'Monitor',
         component: () => import('@/views/monitor/Monitor.vue'),
-        meta: { 
-          title: '系统监控',
-          requiresAuth: true,
-          requiresAdmin: true
-        }
+        meta: { title: '系统监控', requiresAuth: true }
       },
       {
-        path: '/ai',
-        component: () => import('@/views/layout/MainLayout.vue'),
-        meta: { requiresAuth: true },
+        path: 'alerts',
+        name: 'Alerts',
+        component: () => import('@/views/alerts/Alerts.vue'),
+        meta: { title: '告警管理', requiresAuth: true }
+      },
+      {
+        path: 'settings',
+        name: 'Settings',
+        component: () => import('@/views/settings/Settings.vue'),
+        meta: { title: '系统设置', requiresAuth: true }
+      },
+      {
+        path: 'profile',
+        name: 'Profile',
+        component: () => import('@/views/profile/Profile.vue'),
+        meta: { title: '个人信息', requiresAuth: true }
+      },
+      {
+        path: 'crawler',
+        name: 'Crawler',
+        redirect: '/crawler/list',
+        meta: { title: '爬虫管理', requiresAuth: true },
         children: [
           {
-            path: '',
-            name: 'AIAnalysis',
-            component: () => import('@/views/ai/AIAnalysis.vue'),
-            meta: {
-              title: 'AI 分析',
-              icon: 'brain'
-            }
+            path: 'list',
+            name: 'CrawlerList',
+            component: () => import('@/views/crawler/CrawlerList.vue'),
+            meta: { title: '任务列表', requiresAuth: true }
+          },
+          {
+            path: 'config/:id?',
+            name: 'CrawlerConfig',
+            component: () => import('@/views/crawler/CrawlerConfig.vue'),
+            meta: { title: '爬虫配置', requiresAuth: true }
+          },
+          {
+            path: 'data',
+            name: 'CrawlerData',
+            component: () => import('@/views/crawler/CrawlerData.vue'),
+            meta: { title: '数据管理', requiresAuth: true }
           }
         ]
       }
     ]
   },
   {
-    path: '/auth',
-    component: () => import('@/views/layout/AuthLayout.vue'),
-    children: [
-      {
-        path: 'login',
-        name: 'login',
-        component: () => import('@/views/auth/Login.vue'),
-        meta: { title: '登录' }
-      },
-      {
-        path: 'register',
-        name: 'register',
-        component: () => import('@/views/auth/Register.vue'),
-        meta: { title: '注册' }
-      }
-    ]
+    path: '/:pathMatch(.*)*',
+    name: 'NotFound',
+    component: () => import('@/views/error/NotFound.vue'),
+    meta: { title: '404' }
   }
 ]
 
@@ -86,30 +91,21 @@ const router = createRouter({
 })
 
 // 路由守卫
-router.beforeEach((to, from, next) => {
+router.beforeEach(async (to, from, next) => {
   const authStore = useAuthStore()
   
   // 设置页面标题
-  document.title = `${to.meta.title} - MediaSense`
-
-  // 检查是否需要认证
+  document.title = `${to.meta.title} - MediaSense监控平台`
+  
   if (to.meta.requiresAuth && !authStore.isAuthenticated) {
-    ElMessage.warning('请先登录')
-    next({ 
-      name: 'login',
-      query: { redirect: to.fullPath }
-    })
-    return
+    // 需要认证但未登录,跳转到登录页
+    next({ name: 'Login', query: { redirect: to.fullPath } })
+  } else if (to.name === 'Login' && authStore.isAuthenticated) {
+    // 已登录时访问登录页,跳转到首页
+    next({ name: 'Dashboard' })
+  } else {
+    next()
   }
-
-  // 检查是否需要管理员权限
-  if (to.meta.requiresAdmin && !authStore.isAdmin) {
-    ElMessage.error('需要管理员权限')
-    next({ name: 'home' })
-    return
-  }
-
-  next()
 })
 
 export default router 

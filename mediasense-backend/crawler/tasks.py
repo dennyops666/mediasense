@@ -18,18 +18,32 @@ logger.addHandler(file_handler)
 
 
 @shared_task(bind=True)
-def run_crawler(self, task_id):
+def run_crawler(self, config_id=None, task_id=None):
     """
     运行爬虫任务
+    :param config_id: 配置ID
     :param task_id: 任务ID
     :return: 爬虫结果
     """
+    task = None  # 初始化task变量
     try:
-        # 获取任务
-        task = CrawlerTask.objects.get(task_id=task_id)
-        if not task:
-            logger.error(f"任务不存在: {task_id}")
-            return
+        # 获取任务或创建新任务
+        if task_id:
+            task = CrawlerTask.objects.get(task_id=task_id)
+        elif config_id:
+            config = CrawlerConfig.objects.get(id=config_id)
+            task = CrawlerTask.objects.create(
+                config=config,
+                task_id=str(uuid.uuid4()),
+                status=0,  # pending
+                is_test=True
+            )
+        else:
+            logger.error("未提供config_id或task_id")
+            return {
+                'status': 'error',
+                'message': '未提供config_id或task_id'
+            }
             
         # 更新任务状态
         task.status = 1  # running
@@ -54,7 +68,7 @@ def run_crawler(self, task_id):
         
     except Exception as e:
         logger.error(f"爬虫任务执行失败: {str(e)}", exc_info=True)
-        if task:
+        if task:  # 只有在task存在时才更新状态
             task.status = 4  # failed
             task.error_message = str(e)
             task.end_time = timezone.now()
@@ -90,6 +104,7 @@ def schedule_crawlers():
             # 创建任务
             task = CrawlerTask.objects.create(
                 config=config,
+                task_id=str(uuid.uuid4()),
                 status=0  # pending
             )
             
@@ -98,7 +113,7 @@ def schedule_crawlers():
             config.save()
             
             # 启动任务
-            run_crawler.delay(task.task_id)
+            run_crawler.delay(task_id=task.task_id)
             logger.info(f"已创建爬虫任务: {config.name}")
             
         except Exception as e:

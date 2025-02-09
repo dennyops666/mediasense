@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { createTestingPinia } from '@pinia/testing'
 import { createRouter, createWebHistory } from 'vue-router'
 import Login from '@/views/auth/Login.vue'
@@ -7,242 +7,267 @@ import Register from '@/views/auth/Register.vue'
 import { useAuthStore } from '@/stores/auth'
 import { ElMessage } from 'element-plus'
 
-vi.mock('element-plus')
+vi.mock('element-plus', () => ({
+  ElMessage: {
+    success: vi.fn(),
+    error: vi.fn()
+  }
+}))
 
 describe('认证流程集成测试', () => {
-  const router = createRouter({
-    history: createWebHistory(),
-    routes: [
-      {
-        path: '/auth/login',
-        name: 'login',
-        component: Login
-      },
-      {
-        path: '/auth/register',
-        name: 'register',
-        component: Register
-      },
-      {
-        path: '/',
-        name: 'home'
-      }
-    ]
-  })
+  let router: any
+  let store: any
 
   beforeEach(() => {
-    vi.clearAllMocks()
-    router.push('/auth/login')
+    router = createRouter({
+      history: createWebHistory(),
+      routes: [
+        {
+          path: '/auth/login',
+          name: 'Login',
+          component: Login
+        },
+        {
+          path: '/auth/register',
+          name: 'Register',
+          component: Register
+        },
+        {
+          path: '/dashboard',
+          name: 'Dashboard',
+          component: { template: '<div>Dashboard</div>' }
+        }
+      ]
+    })
+
+    const pinia = createTestingPinia({
+      createSpy: vi.fn,
+      initialState: {
+        auth: {
+          token: null,
+          user: null,
+          loading: false
+        }
+      }
+    })
+
+    store = useAuthStore()
   })
 
   describe('登录流程', () => {
-    it('应该完成完整的登录流程', async () => {
-      const wrapper = mount(Login, {
+    let wrapper: any
+
+    beforeEach(() => {
+      wrapper = mount(Login, {
         global: {
-          plugins: [
-            createTestingPinia({
-              createSpy: vi.fn,
-              initialState: {
-                auth: {
-                  token: null,
-                  user: null
-                }
-              }
-            }),
-            router
-          ]
+          plugins: [router, createTestingPinia({ createSpy: vi.fn })],
+          stubs: {
+            'el-card': true,
+            'el-form': true,
+            'el-form-item': true,
+            'el-input': true,
+            'el-button': true,
+            'el-link': true
+          }
         }
       })
-
-      const store = useAuthStore()
-      const mockUser = {
-        id: '1',
-        username: 'testuser',
-        email: 'test@example.com',
-        role: 'user',
-        createdAt: '2024-03-20'
-      }
-
-      // 模拟登录成功
-      vi.mocked(store.login).mockResolvedValueOnce({
-        token: 'mock-token',
-        user: mockUser
-      })
-
-      // 填写登录表单
-      await wrapper.find('input[name="username"]').setValue('testuser')
-      await wrapper.find('input[name="password"]').setValue('password123')
-
-      // 提交表单
-      await wrapper.find('form').trigger('submit.prevent')
-
-      // 验证登录调用
-      expect(store.login).toHaveBeenCalledWith({
-        username: 'testuser',
-        password: 'password123'
-      })
-
-      // 验证路由跳转
-      expect(router.currentRoute.value.path).toBe('/')
-
-      // 验证存储状态
-      expect(store.isAuthenticated).toBe(true)
-      expect(store.user).toEqual(mockUser)
-      expect(localStorage.getItem('token')).toBe('mock-token')
     })
 
-    it('应该正确处理登录失败', async () => {
-      const wrapper = mount(Login, {
-        global: {
-          plugins: [
-            createTestingPinia({
-              createSpy: vi.fn
-            }),
-            router
-          ]
-        }
-      })
+    it('应该能成功登录并跳转到仪表盘', async () => {
+      const form = wrapper.find('[data-test="login-form"]')
+      const usernameInput = wrapper.find('[data-test="username-input"]')
+      const passwordInput = wrapper.find('[data-test="password-input"]')
+      const submitButton = wrapper.find('[data-test="login-button"]')
 
-      const store = useAuthStore()
-      vi.mocked(store.login).mockRejectedValueOnce(new Error('登录失败'))
+      await usernameInput.setValue('testuser')
+      await passwordInput.setValue('password123')
+      await form.trigger('submit')
 
-      // 填写登录表单
-      await wrapper.find('input[name="username"]').setValue('wronguser')
-      await wrapper.find('input[name="password"]').setValue('wrongpass')
+      expect(store.login).toHaveBeenCalledWith('testuser', 'password123')
+      expect(router.currentRoute.value.path).toBe('/dashboard')
+      expect(ElMessage.success).toHaveBeenCalledWith('登录成功')
+    })
 
-      // 提交表单
-      await wrapper.find('form').trigger('submit.prevent')
+    it('应该显示登录错误信息', async () => {
+      store.login.mockRejectedValue(new Error('用户名或密码错误'))
 
-      // 验证错误提示
-      expect(ElMessage.error).toHaveBeenCalledWith('登录失败')
+      const form = wrapper.find('[data-test="login-form"]')
+      await form.trigger('submit')
 
-      // 验证未跳转
+      expect(ElMessage.error).toHaveBeenCalledWith('用户名或密码错误')
       expect(router.currentRoute.value.path).toBe('/auth/login')
+    })
 
-      // 验证状态未改变
-      expect(store.isAuthenticated).toBe(false)
-      expect(store.user).toBeNull()
-      expect(localStorage.getItem('token')).toBeNull()
+    it('应该验证表单字段', async () => {
+      const form = wrapper.find('[data-test="login-form"]')
+      await form.trigger('submit')
+
+      const errors = wrapper.findAll('.el-form-item__error')
+      expect(errors.length).toBeGreaterThan(0)
+      expect(store.login).not.toHaveBeenCalled()
     })
   })
 
   describe('注册流程', () => {
-    it('应该完成完整的注册流程', async () => {
-      await router.push('/auth/register')
-      
-      const wrapper = mount(Register, {
+    let wrapper: any
+
+    beforeEach(() => {
+      wrapper = mount(Register, {
         global: {
-          plugins: [
-            createTestingPinia({
-              createSpy: vi.fn
-            }),
-            router
-          ]
+          plugins: [router, createTestingPinia({ createSpy: vi.fn })],
+          stubs: {
+            'el-card': true,
+            'el-form': true,
+            'el-form-item': true,
+            'el-input': true,
+            'el-button': true,
+            'el-link': true
+          }
+        }
+      })
+    })
+
+    it('应该能成功注册并跳转到登录页', async () => {
+      const form = wrapper.find('[data-test="register-form"]')
+      const usernameInput = wrapper.find('[data-test="username-input"]')
+      const emailInput = wrapper.find('[data-test="email-input"]')
+      const passwordInput = wrapper.find('[data-test="password-input"]')
+      const confirmPasswordInput = wrapper.find('[data-test="confirm-password-input"]')
+
+      await usernameInput.setValue('newuser')
+      await emailInput.setValue('newuser@example.com')
+      await passwordInput.setValue('password123')
+      await confirmPasswordInput.setValue('password123')
+      await form.trigger('submit')
+
+      expect(store.register).toHaveBeenCalledWith({
+        username: 'newuser',
+        email: 'newuser@example.com',
+        password: 'password123'
+      })
+      expect(router.currentRoute.value.path).toBe('/auth/login')
+      expect(ElMessage.success).toHaveBeenCalledWith('注册成功')
+    })
+
+    it('应该显示注册错误信息', async () => {
+      store.register.mockRejectedValue(new Error('用户名已存在'))
+
+      const form = wrapper.find('[data-test="register-form"]')
+      await form.trigger('submit')
+
+      expect(ElMessage.error).toHaveBeenCalledWith('用户名已存在')
+      expect(router.currentRoute.value.path).toBe('/auth/register')
+    })
+
+    it('应该验证密码确认', async () => {
+      const form = wrapper.find('[data-test="register-form"]')
+      const passwordInput = wrapper.find('[data-test="password-input"]')
+      const confirmPasswordInput = wrapper.find('[data-test="confirm-password-input"]')
+
+      await passwordInput.setValue('password123')
+      await confirmPasswordInput.setValue('password456')
+      await form.trigger('submit')
+
+      const errors = wrapper.findAll('.el-form-item__error')
+      expect(errors.length).toBeGreaterThan(0)
+      expect(store.register).not.toHaveBeenCalled()
+    })
+  })
+
+  describe('认证状态管理', () => {
+    it('应该在登录成功后更新认证状态', async () => {
+      const mockUser = {
+        id: 1,
+        username: 'testuser',
+        email: 'test@example.com'
+      }
+
+      store.login.mockResolvedValue({ user: mockUser, token: 'mock-token' })
+      
+      const wrapper = mount(Login, {
+        global: {
+          plugins: [router, createTestingPinia({ createSpy: vi.fn })]
         }
       })
 
-      const store = useAuthStore()
-      const mockUser = {
-        id: '1',
-        username: 'newuser',
-        email: 'new@example.com',
-        role: 'user',
-        createdAt: '2024-03-20'
-      }
+      await wrapper.vm.handleSubmit()
 
-      // 模拟注册成功
-      vi.mocked(store.register).mockResolvedValueOnce({
-        token: 'mock-token',
-        user: mockUser
-      })
-
-      // 填写注册表单
-      await wrapper.find('input[name="username"]').setValue('newuser')
-      await wrapper.find('input[name="email"]').setValue('new@example.com')
-      await wrapper.find('input[name="password"]').setValue('password123')
-      await wrapper.find('input[name="confirmPassword"]').setValue('password123')
-
-      // 提交表单
-      await wrapper.find('form').trigger('submit.prevent')
-
-      // 验证注册调用
-      expect(store.register).toHaveBeenCalledWith({
-        username: 'newuser',
-        email: 'new@example.com',
-        password: 'password123'
-      })
-
-      // 验证路由跳转
-      expect(router.currentRoute.value.path).toBe('/')
-
-      // 验证存储状态
       expect(store.isAuthenticated).toBe(true)
       expect(store.user).toEqual(mockUser)
       expect(localStorage.getItem('token')).toBe('mock-token')
     })
-  })
 
-  describe('登出流程', () => {
-    it('应该完成完整的登出流程', async () => {
-      const wrapper = mount(Login, {
-        global: {
-          plugins: [
-            createTestingPinia({
-              createSpy: vi.fn,
-              initialState: {
-                auth: {
-                  token: 'existing-token',
-                  user: {
-                    id: '1',
-                    username: 'testuser'
-                  }
-                }
-              }
-            }),
-            router
-          ]
-        }
-      })
-
-      const store = useAuthStore()
-      vi.mocked(store.logout).mockResolvedValueOnce()
-
+    it('应该在登出后清除认证状态', async () => {
       await store.logout()
 
-      // 验证路由跳转
-      expect(router.currentRoute.value.path).toBe('/auth/login')
-
-      // 验证状态清除
       expect(store.isAuthenticated).toBe(false)
       expect(store.user).toBeNull()
+      expect(store.token).toBeNull()
       expect(localStorage.getItem('token')).toBeNull()
+    })
+
+    it('应该在token过期时重定向到登录页', async () => {
+      store.token = 'expired-token'
+      store.checkAuth.mockRejectedValue(new Error('Token expired'))
+
+      await router.push('/dashboard')
+
+      expect(router.currentRoute.value.path).toBe('/auth/login')
+      expect(store.token).toBeNull()
     })
   })
 
   describe('路由守卫', () => {
-    it('应该正确处理需要认证的路由', async () => {
-      const store = useAuthStore()
+    it('应该保护需要认证的路由', async () => {
       store.isAuthenticated = false
+      await router.push('/dashboard')
 
-      // 尝试访问需要认证的路由
-      await router.push('/monitor')
-
-      // 验证重定向到登录页
       expect(router.currentRoute.value.path).toBe('/auth/login')
-      expect(ElMessage.warning).toHaveBeenCalledWith('请先登录')
     })
 
-    it('应该正确处理需要管理员权限的路由', async () => {
-      const store = useAuthStore()
+    it('应该重定向已认证用户访问登录页', async () => {
       store.isAuthenticated = true
-      store.isAdmin = false
+      await router.push('/auth/login')
 
-      // 尝试访问需要管理员权限的路由
-      await router.push('/monitor')
+      expect(router.currentRoute.value.path).toBe('/dashboard')
+    })
 
-      // 验证重定向到首页
-      expect(router.currentRoute.value.path).toBe('/')
-      expect(ElMessage.error).toHaveBeenCalledWith('需要管理员权限')
+    it('应该保存重定向地址', async () => {
+      store.isAuthenticated = false
+      await router.push('/dashboard')
+
+      expect(router.currentRoute.value.query.redirect).toBe('/dashboard')
+    })
+  })
+
+  describe('表单验证', () => {
+    it('应该验证登录表单必填字段', async () => {
+      const wrapper = mount(Login, {
+        global: {
+          plugins: [router, createTestingPinia({ createSpy: vi.fn })]
+        }
+      })
+
+      const form = wrapper.find('[data-test="login-form"]')
+      await form.trigger('submit')
+
+      const errors = wrapper.findAll('.el-form-item__error')
+      expect(errors.length).toBe(2) // 用户名和密码都是必填
+    })
+
+    it('应该验证注册表单的邮箱格式', async () => {
+      const wrapper = mount(Register, {
+        global: {
+          plugins: [router, createTestingPinia({ createSpy: vi.fn })]
+        }
+      })
+
+      const emailInput = wrapper.find('[data-test="email-input"]')
+      await emailInput.setValue('invalid-email')
+      await wrapper.find('[data-test="register-form"]').trigger('submit')
+
+      const errors = wrapper.findAll('.el-form-item__error')
+      expect(errors.some(error => error.text().includes('邮箱格式'))).toBe(true)
     })
   })
 }) 

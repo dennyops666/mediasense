@@ -1,264 +1,255 @@
 <template>
-  <div class="search-container">
+  <div class="search-container" data-test="search-container">
     <!-- 搜索表单 -->
-    <form @submit.prevent="handleSearch" class="search-form">
+    <div class="search-form" data-test="search-form">
       <el-input
-        v-model="searchKeyword"
-        class="search-input"
+        v-model="keyword"
         placeholder="请输入搜索关键词"
         @input="handleInput"
-        clearable
+        @keyup.enter="handleSearch"
+        @focus="showSuggestions = true"
+        @blur="handleBlur"
+        data-test="search-input"
       >
-        <template #prefix>
-          <el-icon><Search /></el-icon>
+        <template #append>
+          <el-button
+            type="primary"
+            :loading="loading"
+            @click="handleSearch"
+            data-test="search-button"
+          >
+            搜索
+          </el-button>
         </template>
       </el-input>
-      <el-button type="primary" native-type="submit">搜索</el-button>
-    </form>
 
-    <!-- 搜索建议 -->
-    <div v-if="suggestions.length" class="suggestions">
+      <!-- 搜索建议 -->
       <div
-        v-for="suggestion in suggestions"
-        :key="suggestion"
-        class="suggestion-item"
-        @click="handleSuggestionClick(suggestion)"
+        v-if="showSuggestions && suggestions.length > 0"
+        class="suggestions"
+        data-test="suggestion-list"
       >
-        {{ suggestion }}
+        <div
+          v-for="(suggestion, index) in suggestions"
+          :key="index"
+          class="suggestion-item"
+          @click="handleSuggestionClick(suggestion)"
+          @mousedown.prevent
+          data-test="suggestion-item"
+        >
+          {{ suggestion }}
+        </div>
       </div>
-    </div>
 
-    <!-- 过滤和排序 -->
-    <div class="filters">
-      <el-select v-model="selectedCategory" class="category-select" placeholder="选择分类">
-        <el-option
-          v-for="(count, category) in facets.categories"
-          :key="category"
-          :label="`${category} (${count})`"
-          :value="category"
-          class="category-option"
-        />
-      </el-select>
+      <!-- 搜索历史 -->
+      <div v-if="!keyword && searchHistory.length > 0" class="search-history" data-test="search-history">
+        <div class="history-header" data-test="history-header">
+          <span>搜索历史</span>
+          <el-button
+            text
+            class="clear-history"
+            @click="handleClearHistory"
+            data-test="clear-history"
+          >
+            清空历史
+          </el-button>
+        </div>
+        <div class="history-list" data-test="history-list">
+          <div
+            v-for="(item, index) in searchHistory"
+            :key="index"
+            class="history-item"
+            @click="handleHistoryClick(item)"
+            data-test="history-item"
+          >
+            {{ item }}
+          </div>
+        </div>
+      </div>
 
-      <el-select v-model="selectedSource" class="source-select" placeholder="选择来源">
-        <el-option
-          v-for="(count, source) in facets.sources"
-          :key="source"
-          :label="`${source} (${count})`"
-          :value="source"
-          class="source-option"
-        />
-      </el-select>
+      <!-- 高级搜索选项 -->
+      <div class="advanced-search" data-test="advanced-search">
+        <el-select
+          v-model="searchParams.type"
+          placeholder="选择类型"
+          @change="handleTypeChange"
+          data-test="type-select"
+        >
+          <el-option label="全部" value="" data-test="type-option-all" />
+          <el-option label="新闻" value="news" data-test="type-option-news" />
+          <el-option label="文章" value="article" data-test="type-option-article" />
+        </el-select>
 
-      <el-date-picker
-        v-model="dateRange"
-        type="daterange"
-        range-separator="至"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        @change="handleDateChange"
-      />
-
-      <el-select v-model="sortBy" class="sort-select" placeholder="排序方式">
-        <el-option
-          label="按日期"
-          value="date"
-          class="sort-option-date"
+        <el-date-picker
+          v-model="searchParams.date"
+          type="date"
+          placeholder="选择日期"
+          @change="handleSearch"
+          data-test="date-picker"
         />
-        <el-option
-          label="按相关度"
-          value="relevance"
-          class="sort-option-relevance"
-        />
-      </el-select>
-
-      <el-select v-model="order" class="order-select" placeholder="排序顺序">
-        <el-option
-          label="升序"
-          value="asc"
-          class="order-option-asc"
-        />
-        <el-option
-          label="降序"
-          value="desc"
-          class="order-option-desc"
-        />
-      </el-select>
+      </div>
     </div>
 
     <!-- 搜索结果 -->
-    <div class="search-results">
-      <div
-        v-for="result in searchResults.items"
-        :key="result.id"
-        class="search-result-item"
-        @click="handleResultClick(result)"
-      >
-        <h3>{{ result.title }}</h3>
-        <p>{{ result.summary }}</p>
-        <div class="meta">
-          <span>{{ result.source }}</span>
-          <span>{{ formatDate(result.publishTime) }}</span>
-        </div>
-      </div>
-    </div>
-
-    <!-- 热门搜索和历史记录 -->
-    <div class="sidebar">
-      <div class="hot-keywords">
-        <h3>热门搜索</h3>
-        <div
-          v-for="keyword in hotKeywords"
-          :key="keyword.keyword"
-          class="hot-keyword"
-          @click="handleKeywordClick(keyword.keyword)"
-        >
-          {{ keyword.keyword }} ({{ keyword.count }})
-        </div>
+    <div v-loading="loading" class="search-results" data-test="search-results">
+      <!-- 错误提示 -->
+      <div v-if="error" class="error-message" data-test="error-alert">
+        {{ error }}
       </div>
 
-      <div class="search-history">
-        <h3>搜索历史</h3>
+      <!-- 结果统计 -->
+      <div v-if="searchResults.length > 0" class="search-stats" data-test="search-stats">
+        找到 {{ searchStats.total }} 条结果 ({{ searchStats.time }}秒)
+      </div>
+
+      <!-- 结果列表 -->
+      <div v-if="searchResults.length > 0" class="result-list" data-test="search-results-list">
         <div
-          v-for="item in searchHistory"
-          :key="item.timestamp"
-          class="history-item"
-          @click="handleKeywordClick(item.keyword)"
+          v-for="item in searchResults"
+          :key="item.id"
+          class="search-result-item"
+          @click="handleResultClick(item.id)"
+          data-test="search-result-item"
         >
-          {{ item.keyword }}
-          <span class="timestamp">{{ formatDate(item.timestamp) }}</span>
+          <h3 class="result-title" data-test="result-title">{{ item.title }}</h3>
+          <p class="result-content" data-test="result-content">{{ item.content }}</p>
+          <div class="result-meta" data-test="result-meta">
+            <span class="result-source" data-test="result-source">{{ item.source }}</span>
+            <span class="result-time" data-test="result-time">{{ item.publishTime }}</span>
+            <span class="relevance-score" data-test="result-score">相关度: {{ item.score }}</span>
+          </div>
         </div>
       </div>
+
+      <!-- 分页 -->
+      <el-pagination
+        v-if="searchResults.length > 0"
+        :current-page="searchParams.page"
+        :page-size="searchParams.pageSize"
+        :total="total"
+        @current-change="handlePageChange"
+        class="pagination"
+        data-test="pagination"
+      />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
-import { Search } from '@element-plus/icons-vue'
+import { ref, computed, watch } from 'vue'
 import { useSearchStore } from '@/stores/search'
-import { formatDate } from '@/utils/date'
-import { debounce } from '@/utils/debounce'
+import { useRouter } from 'vue-router'
+import { debounce } from 'lodash-es'
 
+const store = useSearchStore()
 const router = useRouter()
-const searchStore = useSearchStore()
 
-const searchKeyword = ref('')
-const suggestions = ref<string[]>([])
-const selectedCategory = ref('')
-const selectedSource = ref('')
-const dateRange = ref<[Date, Date] | null>(null)
-const sortBy = ref('relevance')
-const order = ref('desc')
+const keyword = ref('')
+const showSuggestions = ref(false)
+const showAdvanced = ref(false)
 
-const searchResults = ref({
-  total: 0,
-  items: [],
-  facets: {
-    categories: {},
-    sources: {}
-  }
+const searchParams = ref({
+  keyword: '',
+  type: '',
+  date: null,
+  page: 1,
+  pageSize: 10
 })
 
-const hotKeywords = ref(searchStore.hotKeywords)
-const searchHistory = ref(searchStore.searchHistory)
-const facets = ref(searchStore.facets)
+// 计算属性
+const suggestions = computed(() => store.suggestions)
+const searchResults = computed(() => store.searchResults)
+const loading = computed(() => store.loading)
+const error = computed(() => store.error)
+const total = computed(() => store.total)
+const searchHistory = computed(() => store.searchHistory)
 
-// 防抖处理输入
-const handleInput = debounce(async (value: string) => {
-  if (value.length > 0) {
-    suggestions.value = await searchStore.fetchSuggestions(value)
-  } else {
-    suggestions.value = []
-  }
-}, 300)
+// 搜索结果统计
+const searchStats = computed(() => ({
+  total: store.total,
+  time: store.searchTime
+}))
 
 // 处理搜索
 const handleSearch = async () => {
-  const params = {
-    keyword: searchKeyword.value,
-    category: selectedCategory.value,
-    source: selectedSource.value,
-    dateRange: dateRange.value,
-    sortBy: sortBy.value,
-    order: order.value
-  }
-
-  try {
-    const results = await searchStore.search(params)
-    searchResults.value = results
-  } catch (error) {
-    console.error('搜索失败:', error)
-  }
+  if (!keyword.value.trim()) return
+  
+  searchParams.value.keyword = keyword.value
+  await store.search(searchParams.value)
+  showSuggestions.value = false
 }
+
+// 处理输入
+const handleInput = debounce(async (value: string) => {
+  if (value.trim()) {
+    await store.getSuggestions(value)
+    showSuggestions.value = true
+  } else {
+    showSuggestions.value = false
+  }
+}, 300)
 
 // 处理建议点击
 const handleSuggestionClick = (suggestion: string) => {
-  searchKeyword.value = suggestion
+  keyword.value = suggestion
+  handleSearch()
+}
+
+// 处理历史记录点击
+const handleHistoryClick = (item: string) => {
+  keyword.value = item
+  handleSearch()
+}
+
+// 清空历史记录
+const handleClearHistory = () => {
+  store.clearHistory()
+}
+
+// 处理类型变化
+const handleTypeChange = () => {
+  handleSearch()
+}
+
+// 处理分页
+const handlePageChange = (page: number) => {
+  searchParams.value.page = page
   handleSearch()
 }
 
 // 处理结果点击
-const handleResultClick = (result: any) => {
-  router.push({
-    name: 'news-detail',
-    params: { id: result.id }
-  })
+const handleResultClick = (id: number) => {
+  router.push(`/detail/${id}`)
 }
 
-// 处理关键词点击
-const handleKeywordClick = (keyword: string) => {
-  searchKeyword.value = keyword
-  handleSearch()
+// 处理失焦
+const handleBlur = () => {
+  setTimeout(() => {
+    showSuggestions.value = false
+  }, 200)
 }
-
-// 处理日期变化
-const handleDateChange = () => {
-  searchStore.updateSearchParams({
-    dateRange: dateRange.value
-  })
-}
-
-// 监听过滤条件变化
-watch([selectedCategory, selectedSource, sortBy, order], () => {
-  searchStore.updateSearchParams({
-    category: selectedCategory.value,
-    source: selectedSource.value,
-    sortBy: sortBy.value,
-    order: order.value
-  })
-})
 </script>
 
 <style scoped>
 .search-container {
   padding: 20px;
-  display: grid;
-  grid-template-columns: 1fr 300px;
-  gap: 20px;
 }
 
 .search-form {
-  display: flex;
-  gap: 10px;
-  margin-bottom: 20px;
-  grid-column: 1 / -1;
-}
-
-.search-input {
-  flex: 1;
+  max-width: 800px;
+  margin: 0 auto;
+  position: relative;
 }
 
 .suggestions {
   position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
+  width: 100%;
   background: white;
   border: 1px solid #dcdfe6;
   border-radius: 4px;
+  margin-top: 5px;
   z-index: 1000;
+  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
 }
 
 .suggestion-item {
@@ -267,65 +258,88 @@ watch([selectedCategory, selectedSource, sortBy, order], () => {
 }
 
 .suggestion-item:hover {
-  background: #f5f7fa;
+  background-color: #f5f7fa;
 }
 
-.filters {
+.search-history {
+  margin-top: 10px;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.history-item {
+  display: inline-block;
+  margin-right: 10px;
+  margin-bottom: 10px;
+  padding: 4px 8px;
+  background-color: #f5f7fa;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.history-item:hover {
+  background-color: #e4e7ed;
+}
+
+.advanced-search {
+  margin-top: 10px;
   display: flex;
   gap: 10px;
-  margin-bottom: 20px;
-  grid-column: 1 / -1;
 }
 
 .search-results {
-  grid-column: 1;
+  margin-top: 20px;
+}
+
+.error-message {
+  color: #f56c6c;
+  padding: 10px;
+  border-radius: 4px;
+  background-color: #fef0f0;
+  margin-bottom: 10px;
+}
+
+.search-stats {
+  color: #909399;
+  margin-bottom: 10px;
 }
 
 .search-result-item {
   padding: 15px;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  margin-bottom: 15px;
+  border-bottom: 1px solid #ebeef5;
   cursor: pointer;
+  transition: background-color 0.3s;
 }
 
 .search-result-item:hover {
-  background: #f5f7fa;
+  background-color: #f5f7fa;
 }
 
-.meta {
-  display: flex;
-  gap: 15px;
+.search-result-item h3 {
+  margin: 0 0 8px;
+  color: #303133;
+}
+
+.search-result-item p {
+  margin: 0 0 8px;
+  color: #606266;
+}
+
+.result-meta {
   color: #909399;
   font-size: 0.9em;
 }
 
-.sidebar {
-  grid-column: 2;
+.result-meta span {
+  margin-right: 15px;
 }
 
-.hot-keywords,
-.search-history {
-  background: #f5f7fa;
-  padding: 15px;
-  border-radius: 4px;
-  margin-bottom: 20px;
-}
-
-.hot-keyword,
-.history-item {
-  padding: 5px 0;
-  cursor: pointer;
-}
-
-.hot-keyword:hover,
-.history-item:hover {
+.relevance-score {
   color: #409eff;
 }
-
-.timestamp {
-  color: #909399;
-  font-size: 0.8em;
-  margin-left: 10px;
-}
-</style> 
+</style>

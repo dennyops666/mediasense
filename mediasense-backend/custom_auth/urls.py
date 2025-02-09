@@ -9,7 +9,7 @@ app_name = "custom_auth"
 # API路由
 router = DefaultRouter(trailing_slash=False)
 router.include_format_suffixes = False
-router.register(r"users", UserViewSet, basename="users")
+router.register("users", UserViewSet, basename="users")
 
 urlpatterns = [
     # JWT认证相关

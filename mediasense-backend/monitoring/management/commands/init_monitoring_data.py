@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from monitoring.models import (
     AlertRule, AlertNotificationConfig, Dashboard,
-    DashboardWidget, SystemMetrics
+    DashboardWidget, SystemMetrics, MonitoringVisualization
 )
 import json
 
@@ -116,57 +116,73 @@ class Command(BaseCommand):
                 name='系统监控概览',
                 defaults={
                     'description': '显示系统关键指标的概览信息',
-                    'layout': json.dumps({'type': 'grid', 'columns': 3})
+                    'layout_type': 'grid',
+                    'layout': {'columns': 3}
                 }
             )
             self.stdout.write(f"仪表盘 '{dashboard.name}' {'已创建' if created else '已存在'}")
 
-            # 创建仪表盘组件
-            widgets = [
+            # 创建可视化组件
+            visualizations = [
                 {
                     'name': 'CPU使用率趋势',
+                    'description': '显示CPU使用率的24小时趋势',
                     'visualization_type': 'line_chart',
                     'metric_type': 'cpu_usage',
-                    'position': json.dumps({'x': 0, 'y': 0, 'w': 1, 'h': 1}),
-                    'config': json.dumps({
+                    'config': {
                         'time_range': '24h',
                         'refresh_interval': 300
-                    })
+                    }
                 },
                 {
                     'name': '内存使用率趋势',
+                    'description': '显示内存使用率的24小时趋势',
                     'visualization_type': 'line_chart',
                     'metric_type': 'memory_usage',
-                    'position': json.dumps({'x': 1, 'y': 0, 'w': 1, 'h': 1}),
-                    'config': json.dumps({
+                    'config': {
                         'time_range': '24h',
                         'refresh_interval': 300
-                    })
+                    }
                 },
                 {
                     'name': '磁盘使用率',
+                    'description': '显示当前磁盘使用率',
                     'visualization_type': 'gauge',
                     'metric_type': 'disk_usage',
-                    'position': json.dumps({'x': 2, 'y': 0, 'w': 1, 'h': 1}),
-                    'config': json.dumps({
+                    'config': {
                         'refresh_interval': 3600
-                    })
+                    }
                 }
             ]
 
-            for widget_data in widgets:
+            # 创建可视化
+            for viz_data in visualizations:
                 try:
+                    viz, created = MonitoringVisualization.objects.get_or_create(
+                        name=viz_data['name'],
+                        defaults={
+                            'description': viz_data['description'],
+                            'visualization_type': viz_data['visualization_type'],
+                            'metric_type': viz_data['metric_type'],
+                            'config': viz_data['config']
+                        }
+                    )
+                    self.stdout.write(f"可视化 '{viz.name}' {'已创建' if created else '已存在'}")
+
+                    # 为每个可视化创建仪表盘组件
                     widget, created = DashboardWidget.objects.get_or_create(
-                        name=widget_data['name'],
+                        name=viz.name,
                         dashboard=dashboard,
                         defaults={
-                            **widget_data,
-                            'dashboard': dashboard
+                            'widget_type': 'chart',
+                            'visualization': viz,
+                            'config': {},
+                            'position': {'x': 0, 'y': 0, 'w': 1, 'h': 1}
                         }
                     )
                     self.stdout.write(f"仪表盘组件 '{widget.name}' {'已创建' if created else '已存在'}")
                 except Exception as e:
-                    self.stdout.write(self.style.ERROR(f"创建仪表盘组件 '{widget_data['name']}' 失败: {str(e)}"))
+                    self.stdout.write(self.style.ERROR(f"创建可视化和仪表盘组件失败: {str(e)}"))
                     raise
 
             self.stdout.write('默认仪表盘创建完成')

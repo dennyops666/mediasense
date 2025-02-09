@@ -27,8 +27,11 @@ class AsyncAdminSite(AdminSite):
         processed_urls = []
         for url in urls:
             if hasattr(url, 'callback'):
+                # 使用新的path()格式,移除正则表达式语法
+                pattern = url.pattern.regex.pattern
+                pattern = pattern.lstrip('^').rstrip('$').replace('(?P<', '<').replace('>', '>')
                 processed_urls.append(
-                    path(url.pattern.regex.pattern.lstrip('^').rstrip('$'),
+                    path(pattern,
                          csrf_exempt(url.callback),
                          name=url.name if hasattr(url, 'name') else None)
                 )
@@ -40,10 +43,11 @@ admin_site = AsyncAdminSite(name='admin')
 
 urlpatterns = [
     path('admin/', admin_site.urls),
-    path('api/auth/', include('custom_auth.urls', namespace='auth')),
-    path('api/monitoring/', include('monitoring.urls', namespace='monitoring')),
-    path('api/ai/', include('ai_service.urls', namespace='ai')),
-    path('api/crawler/', include('crawler.urls', namespace='crawler')),
-    path('api/news/', include('news.urls', namespace='news')),
-    path('api/news-search/', include('news_search.urls', namespace='news_search')),
+    # API路由
+    path('api/auth/', include('custom_auth.urls')),  # 认证模块URLs
+    path('api/news/', include('news.urls')),  # 新闻模块URLs
+    path('api/crawler/', include('crawler.urls')),  # 爬虫模块URLs
+    path('api/search/', include('news_search.urls')),  # 搜索模块URLs
+    path('api/ai/', include('ai_service.urls')),  # AI模块URLs
+    path('api/monitoring/', include('monitoring.urls')),  # 监控模块URLs
 ]

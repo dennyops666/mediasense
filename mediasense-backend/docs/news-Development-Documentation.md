@@ -678,3 +678,742 @@ mediasense-backend/
    - 集中的日志管理
    - 统一的测试用例组织
    - 完整的文档支持 
+
+## 6. 前端开发架构
+
+### 6.1 技术栈选型
+
+1. **核心框架**
+   - Vue.js 3.x
+   - Vue Router 4.x
+   - Pinia 2.x (状态管理)
+   - TypeScript 5.x
+
+2. **UI组件库**
+   - Element Plus 2.x
+   - TailwindCSS 3.x
+   - IconPark (图标库)
+
+3. **数据可视化**
+   - ECharts 5.x
+   - Vue-ECharts
+   - D3.js (复杂可视化)
+
+4. **开发工具**
+   - Vite 5.x (构建工具)
+   - ESLint (代码规范)
+   - Prettier (代码格式化)
+   - Husky (Git Hooks)
+
+### 6.2 前端项目结构
+
+前端目录结构：
+```
+mediasense-frontend/
+├── .vscode/                # VSCode配置
+├── docs/                   # 项目文档
+├── public/                 # 静态资源
+│   ├── favicon.ico
+│   └── images/
+├── src/
+│   ├── api/               # API接口封装
+│   │   ├── auth.ts        # 认证相关接口
+│   │   ├── news.ts        # 新闻相关接口
+│   │   ├── search.ts      # 搜索相关接口
+│   │   ├── monitor.ts     # 监控相关接口
+│   │   └── ai.ts          # AI分析相关接口
+│   ├── assets/            # 项目资源
+│   │   ├── styles/        # 全局样式
+│   │   └── images/        # 图片资源
+│   ├── components/        # 公共组件
+│   │   ├── common/        # 通用组件
+│   │   ├── news/          # 新闻相关组件
+│   │   ├── charts/        # 图表组件
+│   │   ├── layout/        # 布局组件
+│   │   └── ai/            # AI相关组件
+│   │       ├── AISentimentAnalysis.vue    # 情感分析组件
+│   │       ├── AIKeywordsCloud.vue        # 关键词云图组件
+│   │       ├── AIEntityTable.vue          # 实体识别表格组件
+│   │       ├── AIBatchProgress.vue        # 批量分析进度组件
+│   │       └── AIConfigForm.vue           # AI配置表单组件
+│   ├── composables/       # 组合式函数
+│   │   ├── useAuth.ts     # 认证相关
+│   │   ├── useNews.ts     # 新闻相关
+│   │   ├── useChart.ts    # 图表相关
+│   │   └── useAI.ts       # AI分析相关
+│   ├── router/            # 路由配置
+│   │   ├── index.ts       # 路由主文件
+│   │   └── guards.ts      # 路由守卫
+│   ├── stores/            # 状态管理
+│   │   ├── auth.ts        # 认证状态
+│   │   ├── news.ts        # 新闻状态
+│   │   ├── app.ts         # 应用状态
+│   │   └── ai.ts          # AI分析状态
+│   ├── types/             # TypeScript类型
+│   │   ├── api.ts         # API相关类型
+│   │   ├── models.ts      # 数据模型类型
+│   │   └── ai.ts          # AI相关类型定义
+│   ├── utils/             # 工具函数
+│   │   ├── request.ts     # axios封装
+│   │   ├── auth.ts        # 认证工具
+│   │   ├── date.ts        # 日期工具
+│   │   └── ai.ts          # AI工具函数
+│   ├── views/             # 页面组件
+│   │   ├── auth/          # 认证相关页面
+│   │   ├── news/          # 新闻相关页面
+│   │   ├── search/        # 搜索相关页面
+│   │   ├── monitor/       # 监控相关页面
+│   │   └── ai/            # AI相关页面
+│   │       ├── AIDashboard.vue           # AI分析仪表盘
+│   │       ├── Analysis.vue              # 单篇新闻分析
+│   │       ├── BatchAnalysis.vue         # 批量新闻分析
+│   │       ├── AIConfig.vue              # AI配置管理
+│   │       ├── AnalysisHistory.vue       # 分析历史记录
+│   │       └── AnalysisComparison.vue    # 分析结果对比
+│   ├── App.vue            # 根组件
+│   ├── main.ts            # 入口文件
+│   ├── style.css          # 全局样式
+│   └── vite-env.d.ts      # Vite环境类型声明
+├── tests/                 # 测试目录
+├── .env                   # 环境变量
+├── .env.development       # 开发环境变量
+├── .env.production        # 生产环境变量
+├── .eslintrc.js          # ESLint配置
+├── .gitignore            # Git忽略配置
+├── .prettierrc           # Prettier配置
+├── auto-imports.d.ts     # 自动导入类型声明
+├── components.d.ts       # 组件类型声明
+├── index.html            # HTML模板
+├── package.json          # 项目配置
+├── tsconfig.json         # TypeScript配置
+├── tsconfig.app.json     # 应用TypeScript配置
+├── tsconfig.node.json    # Node TypeScript配置
+├── vitest.config.ts      # Vitest测试配置
+├── vitest.setup.ts       # Vitest测试设置
+├── vite.config.ts        # Vite配置
+└── README.md             # 项目说明
+```
+
+### 6.3 功能模块设计
+
+1. **认证模块**
+   - 登录/注册页面
+   - 用户信息管理
+   - 权限控制组件
+   - Token管理
+
+2. **新闻管理模块**
+   - 新闻列表页
+   - 新闻详情页
+   - 新闻分类管理
+   - 新闻编辑器
+
+3. **搜索模块**
+   - 搜索页面
+   - 高级搜索组件
+   - 搜索结果展示
+   - 搜索建议组件
+
+4. **数据可视化模块**
+   - 数据仪表板
+   - 趋势分析图表
+   - 实时监控面板
+   - 交互式图表
+
+5. **AI分析模块**
+   - 情感分析展示
+     * 情感趋势图表
+     * 情感分布统计
+     * 关键词云图
+   - AI分析控制
+     * 单篇新闻分析
+     * 批量新闻分析
+     * 分析进度监控
+   - 分析结果管理
+     * 历史分析记录
+     * 结果对比视图
+     * 导出分析报告
+   - AI配置管理
+     * 模型参数设置
+     * API密钥配置
+     * 分析规则定制
+
+6. **系统监控模块**
+   - 资源监控
+     * CPU使用率监控
+     * 内存使用监控
+     * 磁盘使用监控
+     * 网络流量监控
+   - 服务监控
+     * 爬虫服务状态
+     * AI服务状态
+     * 数据库服务状态
+     * API服务响应时间
+   - 告警管理
+     * 告警规则配置
+     * 告警级别设置
+     * 告警通知方式
+     * 告警历史记录
+   - 性能分析
+     * 系统性能报告
+     * 性能瓶颈分析
+     * 性能优化建议
+     * 历史性能趋势
+   - 日志管理
+     * 实时日志查看
+     * 日志级别过滤
+     * 日志搜索分析
+     * 日志导出功能
+   - 监控面板
+     * 实时监控大屏
+     * 自定义监控视图
+     * 监控数据导出
+     * 监控报表生成
+
+### 6.4 组件设计规范
+
+1. **基础组件**
+```vue
+<!-- 示例：BaseButton.vue -->
+<template>
+  <button
+    :class="[
+      'base-button',
+      `base-button--${type}`,
+      { 'base-button--loading': loading }
+    ]"
+    :disabled="disabled || loading"
+    @click="handleClick"
+  >
+    <slot name="icon"></slot>
+    <slot></slot>
+  </button>
+</template>
+
+<script setup lang="ts">
+interface Props {
+  type?: 'primary' | 'secondary' | 'danger'
+  loading?: boolean
+  disabled?: boolean
+}
+
+const props = withDefaults(defineProps<Props>(), {
+  type: 'primary',
+  loading: false,
+  disabled: false
+})
+
+const emit = defineEmits<{
+  (e: 'click', event: MouseEvent): void
+}>()
+
+const handleClick = (event: MouseEvent) => {
+  if (!props.loading && !props.disabled) {
+    emit('click', event)
+  }
+}
+</script>
+```
+
+2. **业务组件**
+```vue
+<!-- 示例：NewsCard.vue -->
+<template>
+  <div class="news-card">
+    <div class="news-card__header">
+      <h3 class="news-card__title">{{ title }}</h3>
+      <span class="news-card__date">{{ formatDate(publishDate) }}</span>
+    </div>
+    <p class="news-card__summary">{{ summary }}</p>
+    <div class="news-card__footer">
+      <span class="news-card__source">{{ source }}</span>
+      <base-button @click="handleReadMore">阅读更多</base-button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { formatDate } from '@/utils/date'
+import BaseButton from '@/components/common/BaseButton.vue'
+
+interface Props {
+  id: string
+  title: string
+  summary: string
+  source: string
+  publishDate: string
+}
+
+defineProps<Props>()
+const emit = defineEmits<{
+  (e: 'read-more', id: string): void
+}>()
+
+const handleReadMore = () => {
+  emit('read-more', props.id)
+}
+</script>
+```
+
+3. **AI组件**
+```vue
+<!-- 示例：AISentimentAnalysis.vue -->
+<template>
+  <div class="ai-sentiment-analysis">
+    <div class="analysis-header">
+      <h3>{{ title }}</h3>
+      <el-tag :type="sentimentType">{{ sentimentLabel }}</el-tag>
+    </div>
+    
+    <div class="analysis-content">
+      <div class="sentiment-chart">
+        <echarts :option="chartOption" height="300px" />
+      </div>
+      
+      <div class="keywords-cloud">
+        <word-cloud :words="keywords" />
+      </div>
+      
+      <div class="named-entities">
+        <el-table :data="entities" stripe>
+          <el-table-column prop="text" label="实体" />
+          <el-table-column prop="type" label="类型" />
+          <el-table-column prop="confidence" label="置信度">
+            <template #default="{ row }">
+              <el-progress :percentage="row.confidence * 100" />
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+    </div>
+    
+    <div class="analysis-actions">
+      <el-button @click="handleReAnalyze" :loading="analyzing">
+        重新分析
+      </el-button>
+      <el-button @click="handleExport" type="primary">
+        导出报告
+      </el-button>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, computed } from 'vue'
+import type { AnalysisResult } from '@/types/ai'
+import { useAIStore } from '@/stores/ai'
+import WordCloud from './WordCloud.vue'
+
+interface Props {
+  newsId: string
+  title: string
+  result?: AnalysisResult
+}
+
+const props = defineProps<Props>()
+const aiStore = useAIStore()
+const analyzing = ref(false)
+
+const sentimentType = computed(() => {
+  switch (props.result?.sentiment) {
+    case 'positive': return 'success'
+    case 'negative': return 'danger'
+    default: return 'info'
+  }
+})
+
+const sentimentLabel = computed(() => {
+  const labels = {
+    positive: '正面',
+    negative: '负面',
+    neutral: '中性'
+  }
+  return labels[props.result?.sentiment || 'neutral']
+})
+
+const chartOption = computed(() => ({
+  // ECharts配置...
+}))
+
+const handleReAnalyze = async () => {
+  analyzing.value = true
+  try {
+    await aiStore.analyzeNews(props.newsId)
+  } finally {
+    analyzing.value = false
+  }
+}
+
+const handleExport = () => {
+  // 导出逻辑...
+}
+</script>
+```
+
+### 6.5 状态管理
+
+1. **Pinia Store设计**
+```typescript
+// stores/news.ts
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import type { News, NewsFilter } from '@/types/models'
+import { fetchNewsList, fetchNewsDetail } from '@/api/news'
+
+export const useNewsStore = defineStore('news', () => {
+  // 状态
+  const newsList = ref<News[]>([])
+  const currentNews = ref<News | null>(null)
+  const loading = ref(false)
+  const filter = ref<NewsFilter>({
+    category: '',
+    source: '',
+    dateRange: null
+  })
+
+  // 计算属性
+  const categorizedNews = computed(() => {
+    return newsList.value.reduce((acc, news) => {
+      const category = news.category || '未分类'
+      if (!acc[category]) acc[category] = []
+      acc[category].push(news)
+      return acc
+    }, {} as Record<string, News[]>)
+  })
+
+  // 动作
+  const fetchNews = async (params?: Partial<NewsFilter>) => {
+    loading.value = true
+    try {
+      const data = await fetchNewsList(params)
+      newsList.value = data
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const fetchDetail = async (id: string) => {
+    loading.value = true
+    try {
+      currentNews.value = await fetchNewsDetail(id)
+    } finally {
+      loading.value = false
+    }
+  }
+
+  return {
+    newsList,
+    currentNews,
+    loading,
+    filter,
+    categorizedNews,
+    fetchNews,
+    fetchDetail
+  }
+})
+```
+
+2. **AI Store设计**
+```typescript
+// stores/ai.ts
+import { defineStore } from 'pinia'
+import { ref, computed } from 'vue'
+import type { AnalysisResult, AIConfig } from '@/types/ai'
+import { 
+  analyzeNewsContent, 
+  fetchAnalysisHistory,
+  updateAIConfig 
+} from '@/api/ai'
+
+export const useAIStore = defineStore('ai', () => {
+  // 状态
+  const analysisResults = ref<Record<string, AnalysisResult>>({})
+  const analysisQueue = ref<string[]>([])
+  const loading = ref(false)
+  const config = ref<AIConfig>({
+    model: 'gpt-4',
+    language: 'zh',
+    confidenceThreshold: 0.8
+  })
+
+  // 计算属性
+  const pendingAnalysis = computed(() => analysisQueue.value.length)
+  
+  const getResult = computed(() => (newsId: string) => {
+    return analysisResults.value[newsId]
+  })
+
+  // 动作
+  const analyzeNews = async (newsId: string) => {
+    loading.value = true
+    try {
+      const result = await analyzeNewsContent(newsId)
+      analysisResults.value[newsId] = result
+    } finally {
+      loading.value = false
+    }
+  }
+
+  const batchAnalyze = async (newsIds: string[]) => {
+    analysisQueue.value.push(...newsIds)
+    for (const id of newsIds) {
+      await analyzeNews(id)
+      analysisQueue.value = analysisQueue.value.filter(qid => qid !== id)
+    }
+  }
+
+  const loadHistory = async (newsId: string) => {
+    const history = await fetchAnalysisHistory(newsId)
+    analysisResults.value[newsId] = history
+  }
+
+  const updateConfig = async (newConfig: Partial<AIConfig>) => {
+    Object.assign(config.value, newConfig)
+    await updateAIConfig(config.value)
+  }
+
+  return {
+    analysisResults,
+    analysisQueue,
+    loading,
+    config,
+    pendingAnalysis,
+    getResult,
+    analyzeNews,
+    batchAnalyze,
+    loadHistory,
+    updateConfig
+  }
+})
+```
+
+### 6.6 路由配置
+
+```typescript
+// router/index.ts
+import { createRouter, createWebHistory } from 'vue-router'
+import { useAuthStore } from '@/stores/auth'
+
+const routes = [
+  {
+    path: '/',
+    component: () => import('@/views/layout/MainLayout.vue'),
+    children: [
+      {
+        path: '',
+        name: 'home',
+        component: () => import('@/views/Home.vue')
+      },
+      {
+        path: 'news',
+        name: 'news-list',
+        component: () => import('@/views/news/NewsList.vue')
+      },
+      {
+        path: 'news/:id',
+        name: 'news-detail',
+        component: () => import('@/views/news/NewsDetail.vue')
+      },
+      {
+        path: 'search',
+        name: 'search',
+        component: () => import('@/views/search/Search.vue')
+      },
+      {
+        path: 'monitor',
+        name: 'monitor',
+        component: () => import('@/views/monitor/Monitor.vue'),
+        meta: { requiresAuth: true }
+      },
+      {
+        path: 'ai',
+        name: 'ai-dashboard',
+        component: () => import('@/views/ai/AIDashboard.vue'),
+        meta: { requiresAuth: true },
+        children: [
+          {
+            path: 'analysis/:id',
+            name: 'ai-analysis',
+            component: () => import('@/views/ai/Analysis.vue')
+          },
+          {
+            path: 'batch',
+            name: 'ai-batch',
+            component: () => import('@/views/ai/BatchAnalysis.vue')
+          },
+          {
+            path: 'config',
+            name: 'ai-config',
+            component: () => import('@/views/ai/AIConfig.vue')
+          }
+        ]
+      }
+    ]
+  },
+  {
+    path: '/auth',
+    component: () => import('@/views/layout/AuthLayout.vue'),
+    children: [
+      {
+        path: 'login',
+        name: 'login',
+        component: () => import('@/views/auth/Login.vue')
+      },
+      {
+        path: 'register',
+        name: 'register',
+        component: () => import('@/views/auth/Register.vue')
+      }
+    ]
+  }
+]
+
+const router = createRouter({
+  history: createWebHistory(),
+  routes
+})
+
+// 路由守卫
+router.beforeEach((to, from, next) => {
+  const authStore = useAuthStore()
+  
+  if (to.meta.requiresAuth && !authStore.isAuthenticated) {
+    next({ name: 'login', query: { redirect: to.fullPath } })
+  } else {
+    next()
+  }
+})
+
+export default router
+```
+
+### 6.7 API请求封装
+
+```typescript
+// utils/request.ts
+import axios from 'axios'
+import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
+import { useAuthStore } from '@/stores/auth'
+import { ElMessage } from 'element-plus'
+
+const service: AxiosInstance = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE_URL,
+  timeout: 15000,
+  headers: {
+    'Content-Type': 'application/json'
+  }
+})
+
+// 请求拦截器
+service.interceptors.request.use(
+  (config) => {
+    const authStore = useAuthStore()
+    if (authStore.token) {
+      config.headers.Authorization = `Bearer ${authStore.token}`
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  }
+)
+
+// 响应拦截器
+service.interceptors.response.use(
+  (response: AxiosResponse) => {
+    const { data } = response
+    if (data.status === 'success') {
+      return data.data
+    } else {
+      ElMessage.error(data.message || '请求失败')
+      return Promise.reject(new Error(data.message || '请求失败'))
+    }
+  },
+  (error) => {
+    const { response } = error
+    let message = '网络错误'
+    if (response?.data?.message) {
+      message = response.data.message
+    }
+    ElMessage.error(message)
+    return Promise.reject(error)
+  }
+)
+
+export default service
+```
+
+### 6.8 开发规范
+
+1. **代码风格**
+   - 使用TypeScript编写
+   - 遵循ESLint规则
+   - 使用Prettier格式化
+   - 组件使用PascalCase命名
+
+2. **提交规范**
+   - feat: 新功能
+   - fix: 修复bug
+   - docs: 文档更新
+   - style: 代码格式
+   - refactor: 重构
+   - test: 测试
+   - chore: 构建过程或辅助工具的变动
+
+3. **注释规范**
+   - 组件必须包含功能说明
+   - 复杂逻辑需要详细注释
+   - API方法需要类型注释
+   - 保持注释的及时更新
+
+### 6.9 构建与部署
+
+1. **开发环境**
+```bash
+# 安装依赖
+npm install
+
+# 启动开发服务器
+npm run dev
+
+# 代码检查
+npm run lint
+
+# 类型检查
+npm run type-check
+```
+
+2. **生产环境**
+```bash
+# 构建生产版本
+npm run build
+
+# 预览生产版本
+npm run preview
+```
+
+3. **环境变量配置**
+```env
+# .env.development
+VITE_API_BASE_URL=http://localhost:8000/api
+
+# .env.production
+VITE_API_BASE_URL=http://api.mediasense.com/api
+```
+
+4. **Docker部署**
+```dockerfile
+# Dockerfile
+FROM node:18-alpine as builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=builder /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+``` 

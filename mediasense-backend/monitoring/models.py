@@ -100,15 +100,15 @@ class SystemMetrics(models.Model):
 
     metric_type = models.CharField("指标类型", max_length=20, choices=MetricType.choices)
     value = models.FloatField("指标值")
-    timestamp = models.DateTimeField("记录时间", auto_now_add=True)
+    created_at = models.DateTimeField("记录时间", auto_now_add=True)
     metadata = models.JSONField("元数据", default=dict, blank=True)
 
     class Meta:
         verbose_name = "系统指标"
         verbose_name_plural = verbose_name
-        ordering = ["-timestamp"]
+        ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["metric_type", "timestamp"]),
+            models.Index(fields=["metric_type", "created_at"]),
         ]
 
     def __str__(self):
@@ -125,7 +125,7 @@ class AlertHistory(models.Model):
 
     rule = models.ForeignKey(AlertRule, on_delete=models.CASCADE, related_name="alert_history", verbose_name="告警规则")
     status = models.CharField("状态", max_length=20, choices=Status.choices, default=Status.ACTIVE)
-    message = models.TextField("告警消息", blank=True)
+    message = models.TextField("告警消息", blank=True, default="")
     metric_value = models.FloatField("指标值")
     triggered_at = models.DateTimeField("触发时间", auto_now_add=True)
     resolved_at = models.DateTimeField("解决时间", null=True, blank=True)
@@ -136,7 +136,7 @@ class AlertHistory(models.Model):
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="created_alerts", verbose_name="创建者"
     )
-    note = models.TextField("备注", blank=True)
+    note = models.TextField("备注", blank=True, default="")
 
     class Meta:
         verbose_name = "告警历史"
@@ -265,31 +265,39 @@ class DashboardWidget(models.Model):
 class ErrorLog(models.Model):
     """错误日志模型"""
     
+    class ErrorType(models.TextChoices):
+        SYSTEM = "system", "系统错误"
+        APPLICATION = "application", "应用错误"
+        DATABASE = "database", "数据库错误"
+        NETWORK = "network", "网络错误"
+        SECURITY = "security", "安全错误"
+        OTHER = "other", "其他错误"
+    
     class Severity(models.TextChoices):
         INFO = "info", "信息"
         WARNING = "warning", "警告"
         ERROR = "error", "错误"
         CRITICAL = "critical", "严重"
     
-    error_type = models.CharField("错误类型", max_length=100)
-    error_message = models.TextField("错误信息")
-    stack_trace = models.TextField("堆栈跟踪", null=True, blank=True)
-    severity = models.CharField("严重程度", max_length=10, choices=Severity.choices, default=Severity.ERROR)
-    source = models.CharField("错误来源", max_length=100)
+    error_type = models.CharField("错误类型", max_length=20, choices=ErrorType.choices)
+    severity = models.CharField("严重程度", max_length=20, choices=Severity.choices)
+    error_message = models.TextField("错误消息")
+    stack_trace = models.TextField("堆栈跟踪", blank=True, null=True)
+    source = models.CharField("错误来源", max_length=255)
+    created_at = models.DateTimeField("创建时间", auto_now_add=True)
+    updated_at = models.DateTimeField("更新时间", auto_now=True)
     created_by = models.ForeignKey(
         User, on_delete=models.SET_NULL, null=True, related_name="error_logs", verbose_name="创建者"
     )
-    created_at = models.DateTimeField("创建时间", auto_now_add=True)
-    updated_at = models.DateTimeField("更新时间", auto_now=True)
 
     class Meta:
         verbose_name = "错误日志"
         verbose_name_plural = verbose_name
         ordering = ["-created_at"]
         indexes = [
-            models.Index(fields=["-created_at"], name="error_log_created_at_idx"),
-            models.Index(fields=["severity", "-created_at"], name="error_log_severity_idx"),
+            models.Index(fields=["error_type", "severity"]),
+            models.Index(fields=["created_at"]),
         ]
 
     def __str__(self):
-        return f"{self.severity} - {self.error_message[:50]}"
+        return f"{self.get_error_type_display()} - {self.error_message[:50]}"

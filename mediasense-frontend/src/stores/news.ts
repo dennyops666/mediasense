@@ -10,6 +10,7 @@ export const useNewsStore = defineStore('news', {
     sources: [] as string[],
     total: 0,
     loading: false,
+    error: null as string | null,
     filter: {
       page: 1,
       pageSize: 10,
@@ -24,6 +25,14 @@ export const useNewsStore = defineStore('news', {
   }),
 
   actions: {
+    setError(error: string | null) {
+      this.error = error
+    },
+
+    clearError() {
+      this.error = null
+    },
+
     async fetchNewsList(params?: Partial<NewsFilter>) {
       try {
         this.loading = true
@@ -43,11 +52,17 @@ export const useNewsStore = defineStore('news', {
     async fetchNewsDetail(id: string) {
       try {
         this.loading = true
+        this.clearError()
         const news = await newsApi.getNewsDetail(id)
+        if (!news) {
+          this.setError('新闻不存在')
+          return null
+        }
         this.currentNews = news
         return news
       } catch (error) {
         console.error('获取新闻详情失败:', error)
+        this.setError('获取新闻详情失败')
         throw error
       } finally {
         this.loading = false
@@ -95,6 +110,7 @@ export const useNewsStore = defineStore('news', {
 
     async deleteNews(id: string) {
       try {
+        this.clearError()
         await newsApi.deleteNews(id)
         this.newsList = this.newsList.filter(item => item.id !== id)
         if (this.currentNews?.id === id) {
@@ -102,6 +118,7 @@ export const useNewsStore = defineStore('news', {
         }
       } catch (error) {
         console.error('删除新闻失败:', error)
+        this.setError('删除新闻失败')
         throw error
       }
     },

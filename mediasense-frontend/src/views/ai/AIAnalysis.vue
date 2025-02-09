@@ -252,51 +252,17 @@ use([
 ])
 
 const aiStore = useAIStore()
+
+// 状态
 const activeTab = ref('sentiment')
-
-// 情感分析
 const sentimentText = ref('')
-const handleSentimentAnalysis = async () => {
-  if (!sentimentText.value.trim()) return
-  await aiStore.analyzeSentiment(sentimentText.value)
-}
-
-const getSentimentType = (sentiment: string) => {
-  const types: Record<string, string> = {
-    positive: 'success',
-    negative: 'danger',
-    neutral: 'info'
-  }
-  return types[sentiment] || 'info'
-}
-
-const getSentimentLabel = (sentiment: string) => {
-  const labels: Record<string, string> = {
-    positive: '积极',
-    negative: '消极',
-    neutral: '中性'
-  }
-  return labels[sentiment] || '未知'
-}
-
-// 文本摘要
 const summaryText = ref('')
-const maxLength = ref(200)
-const handleGenerateSummary = async () => {
-  if (!summaryText.value.trim()) return
-  await aiStore.generateSummary(summaryText.value, maxLength.value)
-}
-
-// 主题分析
 const topicText = ref('')
-const handleTopicAnalysis = async () => {
-  if (!topicText.value.trim()) return
-  await aiStore.analyzeTopics(topicText.value)
-}
-
-// 趋势分析
 const trendKeyword = ref('')
 const trendTimeRange = ref<[Date, Date] | null>(null)
+const maxLength = ref(200)
+
+// 日期快捷选项
 const dateShortcuts = [
   {
     text: '最近一周',
@@ -312,46 +278,78 @@ const dateShortcuts = [
     value: () => {
       const end = new Date()
       const start = new Date()
-      start.setTime(start.getTime() - 3600 * 1000 * 24 * 30)
-      return [start, end]
-    }
-  },
-  {
-    text: '最近三月',
-    value: () => {
-      const end = new Date()
-      const start = new Date()
-      start.setTime(start.getTime() - 3600 * 1000 * 24 * 90)
+      start.setMonth(start.getMonth() - 1)
       return [start, end]
     }
   }
 ]
 
+// 方法
+const handleSentimentAnalysis = async () => {
+  if (!sentimentText.value) return
+  await aiStore.analyzeSentiment(sentimentText.value)
+}
+
+const handleGenerateSummary = async () => {
+  if (!summaryText.value) return
+  await aiStore.generateSummary(summaryText.value)
+}
+
+const handleTopicAnalysis = async () => {
+  if (!topicText.value) return
+  await aiStore.analyzeTopics(topicText.value)
+}
+
 const handleTrendAnalysis = async () => {
-  if (!trendKeyword.value.trim() || !trendTimeRange.value) return
-  const [start, end] = trendTimeRange.value
-  await aiStore.analyzeTrends(
-    trendKeyword.value,
-    [start.toISOString(), end.toISOString()]
-  )
+  if (!trendKeyword.value) return
+  await aiStore.analyzeTrends(trendKeyword.value, trendTimeRange.value)
+}
+
+const handleTabChange = (tab: string) => {
+  // 切换标签页时清除结果
+  aiStore.$reset()
+}
+
+// 辅助方法
+const getSentimentType = (sentiment: string) => {
+  switch (sentiment) {
+    case 'positive':
+      return 'success'
+    case 'negative':
+      return 'danger'
+    default:
+      return 'info'
+  }
+}
+
+const getSentimentLabel = (sentiment: string) => {
+  switch (sentiment) {
+    case 'positive':
+      return '积极'
+    case 'negative':
+      return '消极'
+    default:
+      return '中性'
+  }
 }
 
 const getCorrelationType = (correlation: number) => {
-  if (correlation >= 0.7) return 'success'
-  if (correlation >= 0.4) return 'warning'
+  if (correlation >= 0.8) return 'success'
+  if (correlation >= 0.5) return 'warning'
   return 'info'
 }
 
 // 趋势图表配置
 const trendChartOption = computed<ECBasicOption>(() => {
   if (!aiStore.trendResult) return {}
-  
+
+  const { trends } = aiStore.trendResult
   return {
     tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'cross'
-      }
+      trigger: 'axis'
+    },
+    legend: {
+      data: ['频率', '情感倾向']
     },
     grid: {
       left: '3%',
@@ -362,47 +360,38 @@ const trendChartOption = computed<ECBasicOption>(() => {
     xAxis: {
       type: 'category',
       boundaryGap: false,
-      data: aiStore.trendResult.trends.map(t => t.date)
+      data: trends.map(item => item.date)
     },
     yAxis: [
       {
         type: 'value',
-        name: '频率',
-        position: 'left'
+        name: '频率'
       },
       {
         type: 'value',
-        name: '情感得分',
-        position: 'right',
+        name: '情感倾向',
         min: -1,
         max: 1
       }
     ],
     series: [
       {
-        name: '出现频率',
+        name: '频率',
         type: 'line',
-        data: aiStore.trendResult.trends.map(t => t.frequency),
-        smooth: true
+        data: trends.map(item => item.frequency)
       },
       {
-        name: '情感趋势',
+        name: '情感倾向',
         type: 'line',
         yAxisIndex: 1,
-        data: aiStore.trendResult.trends.map(t => t.sentiment),
-        smooth: true,
-        lineStyle: {
-          type: 'dashed'
-        }
+        data: trends.map(item => item.sentiment)
       }
     ]
   }
 })
 
-// 切换标签页时清除结果
-watch(activeTab, () => {
-  aiStore.clearResults()
-})
+// 监听标签页切换
+watch(activeTab, handleTabChange)
 </script>
 
 <style scoped>
@@ -456,6 +445,10 @@ watch(activeTab, () => {
 .trend-chart {
   height: 400px;
   margin: 20px 0;
+}
+
+.chart {
+  height: 100%;
 }
 
 .related-topics {

@@ -1,69 +1,52 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { SystemMetrics, SystemLog, ProcessInfo, DiskUsage } from '@/types/api'
 import * as monitorApi from '@/api/monitor'
-import { ElMessage } from 'element-plus'
-import type { ServiceStatus, Alert } from '@/types/monitor'
-
-interface MetricsHistory {
-  timestamps: string[]
-  values: number[]
-}
+import type { SystemMetrics, SystemLog, ProcessInfo, Alert } from '@/types/monitor'
 
 export const useMonitorStore = defineStore('monitor', () => {
-  // 状态
-  const metrics = ref<SystemMetrics | null>(null)
-  const logs = ref<SystemLog[]>([])
-  const totalLogs = ref(0)
-  const processes = ref<ProcessInfo[]>([])
-  const diskUsage = ref<DiskUsage[]>([])
-  const services = ref<ServiceStatus[]>([])
-  const alerts = ref<Alert[]>([])
-  const loading = ref(false)
-  const metricsHistory = ref<MetricsHistory>({
-    timestamps: [],
-    values: []
+  const metrics = ref<SystemMetrics>({
+    cpu: { usage: 0, cores: 0, temperature: 0 },
+    memory: { total: '0 GB', used: '0 GB', usagePercentage: 0 },
+    disk: { total: '0 GB', used: '0 GB', usagePercentage: 0 },
+    network: { upload: '0 MB/s', download: '0 MB/s', latency: 0 }
   })
+  const logs = ref<SystemLog[]>([])
+  const processes = ref<ProcessInfo[]>([])
+  const alerts = ref<Alert[]>([])
+  const error = ref<string | null>(null)
+  const loading = ref(false)
+  const isMonitoring = ref(false)
+  const isExporting = ref(false)
+  const monitoringInterval = ref(5000)
+  let monitoringTimer: number | null = null
 
   // 获取系统指标
   const fetchSystemMetrics = async () => {
     try {
       loading.value = true
-      const data = await monitorApi.getSystemMetrics()
-      metrics.value = data
-    } catch (error) {
-      metrics.value = null
-      ElMessage.error('获取系统指标失败')
+      error.value = null
+      const response = await monitorApi.getSystemMetrics()
+      metrics.value = response.data
+      checkAlerts()
+    } catch (err) {
+      error.value = '获取失败'
+      throw err
     } finally {
       loading.value = false
     }
   }
 
   // 获取系统日志
-  const fetchSystemLogs = async (params: { page: number; pageSize: number; level?: string }) => {
+  const fetchSystemLogs = async (params: { page: number; pageSize: number }) => {
     try {
       loading.value = true
-      const data = await monitorApi.getSystemLogs(params)
-      logs.value = data.items
-      totalLogs.value = data.total
-    } catch (error) {
-      logs.value = []
-      totalLogs.value = 0
-      ElMessage.error('获取系统日志失败')
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // 获取指标历史
-  const fetchMetricsHistory = async (params: { startTime: string; endTime: string; type: string }) => {
-    try {
-      loading.value = true
-      const data = await monitorApi.getMetricsHistory(params)
-      metricsHistory.value = data
-    } catch (error) {
-      metricsHistory.value = { timestamps: [], values: [] }
-      ElMessage.error('获取指标历史失败')
+      error.value = null
+      const response = await monitorApi.getSystemLogs(params)
+      logs.value = response.data.items
+      return response.data.items
+    } catch (err) {
+      error.value = '获取失败'
+      throw err
     } finally {
       loading.value = false
     }
@@ -73,68 +56,29 @@ export const useMonitorStore = defineStore('monitor', () => {
   const fetchProcessList = async () => {
     try {
       loading.value = true
-      const data = await monitorApi.getProcessList()
-      processes.value = data
-    } catch (error) {
-      processes.value = []
-      ElMessage.error('获取进程列表失败')
+      error.value = null
+      const response = await monitorApi.getProcessList()
+      processes.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = '获取失败'
+      throw err
     } finally {
       loading.value = false
     }
   }
 
-  // 获取磁盘使用情况
-  const fetchDiskUsage = async () => {
-    try {
-      loading.value = true
-      const data = await monitorApi.getDiskUsage()
-      diskUsage.value = data
-    } catch (error) {
-      diskUsage.value = []
-      ElMessage.error('获取磁盘使用情况失败')
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // 获取服务状态
-  const fetchServiceStatus = async () => {
-    try {
-      loading.value = true
-      const data = await monitorApi.getServiceStatus()
-      services.value = data
-    } catch (error) {
-      services.value = []
-      ElMessage.error('获取服务状态失败')
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // 获取告警信息
+  // 获取告警列表
   const fetchAlerts = async () => {
     try {
       loading.value = true
-      const data = await monitorApi.getAlerts()
-      alerts.value = data
-    } catch (error) {
-      alerts.value = []
-      ElMessage.error('获取告警信息失败')
-    } finally {
-      loading.value = false
-    }
-  }
-
-  // 重启服务
-  const handleRestartService = async (serviceName: string) => {
-    try {
-      loading.value = true
-      const data = await monitorApi.restartService(serviceName)
-      await fetchServiceStatus()
-      return data
-    } catch (error) {
-      ElMessage.error('重启服务失败')
-      throw error
+      error.value = null
+      const response = await monitorApi.getAlerts()
+      alerts.value = response.data
+      return response.data
+    } catch (err) {
+      error.value = '获取失败'
+      throw err
     } finally {
       loading.value = false
     }
@@ -144,34 +88,146 @@ export const useMonitorStore = defineStore('monitor', () => {
   const handleAcknowledgeAlert = async (alertId: string) => {
     try {
       loading.value = true
+      error.value = null
       await monitorApi.acknowledgeAlert(alertId)
       await fetchAlerts()
-    } catch (error) {
-      ElMessage.error('确认告警失败')
-      throw error
+    } catch (err) {
+      error.value = '确认失败'
+      throw err
     } finally {
       loading.value = false
     }
   }
 
+  // 检查告警
+  const checkAlerts = () => {
+    if (!metrics.value) return
+
+    const { cpu, memory, disk } = metrics.value
+    const newAlerts: Alert[] = []
+
+    if (cpu?.usage && cpu.usage > 80) {
+      newAlerts.push({
+        id: Date.now().toString(),
+        message: 'CPU 使用率过高',
+        level: 'critical',
+        timestamp: new Date().toISOString(),
+        source: 'system'
+      })
+    }
+
+    if (memory?.usagePercentage && memory.usagePercentage > 80) {
+      newAlerts.push({
+        id: (Date.now() + 1).toString(),
+        message: '内存使用率过高',
+        level: 'warning',
+        timestamp: new Date().toISOString(),
+        source: 'system'
+      })
+    }
+
+    if (disk?.usagePercentage && disk.usagePercentage > 90) {
+      newAlerts.push({
+        id: (Date.now() + 2).toString(),
+        message: '磁盘使用率过高',
+        level: 'critical',
+        timestamp: new Date().toISOString(),
+        source: 'system'
+      })
+    }
+
+    alerts.value = [...alerts.value, ...newAlerts]
+  }
+
+  // 开始监控
+  const startMonitoring = async (interval: number = 5000) => {
+    try {
+      if (monitoringTimer) {
+        clearInterval(monitoringTimer)
+      }
+      
+      await fetchSystemMetrics()
+      monitoringInterval.value = interval
+      monitoringTimer = window.setInterval(fetchSystemMetrics, interval)
+      isMonitoring.value = true
+    } catch (err) {
+      error.value = '启动监控失败'
+      throw err
+    }
+  }
+
+  // 停止监控
+  const stopMonitoring = () => {
+    if (monitoringTimer) {
+      clearInterval(monitoringTimer)
+      monitoringTimer = null
+    }
+    isMonitoring.value = false
+  }
+
+  // 导出监控数据
+  const exportMonitoringData = async () => {
+    try {
+      isExporting.value = true
+      error.value = null
+      
+      if (!metrics.value) {
+        throw new Error('没有可导出的数据')
+      }
+
+      const data = {
+        metrics: metrics.value,
+        alerts: alerts.value,
+        timestamp: new Date().toISOString(),
+        version: '1.0'
+      }
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `monitoring-data-${new Date().toISOString()}.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      
+      URL.revokeObjectURL(url)
+      return blob
+    } catch (err) {
+      error.value = '导出失败'
+      throw err
+    } finally {
+      isExporting.value = false
+    }
+  }
+
+  // 清除错误
+  const clearError = () => {
+    error.value = null
+  }
+
   return {
+    // 状态
     metrics,
     logs,
-    totalLogs,
     processes,
-    diskUsage,
-    services,
     alerts,
+    error,
     loading,
-    metricsHistory,
+    isMonitoring,
+    isExporting,
+    monitoringInterval,
+
+    // 方法
     fetchSystemMetrics,
     fetchSystemLogs,
-    fetchMetricsHistory,
     fetchProcessList,
-    fetchDiskUsage,
-    fetchServiceStatus,
     fetchAlerts,
-    handleRestartService,
-    handleAcknowledgeAlert
+    handleAcknowledgeAlert,
+    startMonitoring,
+    stopMonitoring,
+    exportMonitoringData,
+    clearError
   }
-}) 
+})

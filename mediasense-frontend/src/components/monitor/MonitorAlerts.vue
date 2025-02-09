@@ -19,6 +19,13 @@
         >
           清除全部
         </el-button>
+        <el-button
+          type="info"
+          size="small"
+          @click="showHistory = true"
+        >
+          历史记录
+        </el-button>
       </div>
     </div>
 
@@ -41,24 +48,20 @@
                 <el-tag :type="getAlertLevelType(alert.level)" size="small">
                   {{ alert.level }}
                 </el-tag>
+                <span class="alert-source">{{ alert.source }}</span>
                 <span class="alert-time">{{ formatDate(alert.timestamp) }}</span>
               </div>
             </template>
             
             <div class="alert-details">
               <p class="alert-message">{{ alert.message }}</p>
-              <div class="alert-meta">
-                <span>来源: {{ alert.source }}</span>
-                <span>类型: {{ alert.type }}</span>
-              </div>
               <div class="alert-actions">
                 <el-button
                   type="primary"
                   size="small"
                   @click="handleAcknowledge(alert.id)"
-                  :disabled="alert.acknowledged"
                 >
-                  {{ alert.acknowledged ? '已确认' : '确认' }}
+                  确认
                 </el-button>
                 <el-button
                   type="danger"
@@ -86,21 +89,37 @@
       </template>
     </div>
 
-    <!-- 确认对话框 -->
+    <!-- 历史记录对话框 -->
     <el-dialog
-      v-model="showConfirm"
-      title="确认操作"
-      width="30%"
+      v-model="showHistory"
+      title="告警历史"
+      width="70%"
     >
-      <span>{{ confirmMessage }}</span>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="showConfirm = false">取消</el-button>
-          <el-button type="primary" @click="handleConfirm">
-            确定
-          </el-button>
-        </span>
-      </template>
+      <el-table :data="store.alertHistory" style="width: 100%">
+        <el-table-column prop="timestamp" label="时间" width="180">
+          <template #default="{ row }">
+            {{ formatDate(row.timestamp) }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="level" label="级别" width="100">
+          <template #default="{ row }">
+            <el-tag :type="getAlertLevelType(row.level)">
+              {{ row.level }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="source" label="来源" width="120" />
+        <el-table-column prop="message" label="消息" />
+        <el-table-column label="确认信息" width="200">
+          <template #default="{ row }">
+            <template v-if="row.acknowledged">
+              {{ formatDate(row.acknowledged.time) }}
+              <br>
+              <small>by {{ row.acknowledged.by }}</small>
+            </template>
+          </template>
+        </el-table-column>
+      </el-table>
     </el-dialog>
   </div>
 </template>
@@ -110,7 +129,7 @@ import { ref, computed } from 'vue'
 import { useMonitorStore } from '@/stores/monitor'
 import type { Alert } from '@/types/monitor'
 import { formatDate } from '@/utils/date'
-import { ElMessage } from 'element-plus'
+import { ElMessageBox } from 'element-plus'
 
 const props = defineProps<{
   alerts: Alert[]
@@ -131,11 +150,7 @@ const store = useMonitorStore()
 const activeAlerts = ref<string[]>([])
 const currentPage = ref(1)
 const pageSize = ref(20)
-
-// 确认对话框
-const showConfirm = ref(false)
-const confirmMessage = ref('')
-const confirmCallback = ref<() => void>()
+const showHistory = ref(false)
 
 // 获取告警级别类型
 const getAlertLevelType = (level: string) => {
@@ -151,39 +166,43 @@ const getAlertLevelType = (level: string) => {
 
 // 事件处理
 const handleRefresh = () => {
-  emit('refresh')
+  store.fetchAlerts()
 }
 
-const handleAcknowledge = (id: string) => {
-  confirmMessage.value = '确认此告警吗？'
-  confirmCallback.value = () => {
-    emit('acknowledge', id)
-    showConfirm.value = false
+const handleAcknowledge = async (id: string) => {
+  try {
+    const username = 'admin' // TODO: 从用户状态获取
+    await store.acknowledgeAlert(id, username)
+  } catch (error) {
+    ElMessageBox.alert('确认告警失败', '错误', { type: 'error' })
   }
-  showConfirm.value = true
 }
 
-const handleDelete = (id: string) => {
-  confirmMessage.value = '确定删除此告警吗？'
-  confirmCallback.value = () => {
-    emit('delete', id)
-    showConfirm.value = false
+const handleDelete = async (id: string) => {
+  try {
+    await ElMessageBox.confirm('确定删除此告警吗？', '提示', {
+      type: 'warning'
+    })
+    const username = 'admin' // TODO: 从用户状态获取
+    await store.acknowledgeAlert(id, username)
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessageBox.alert('删除告警失败', '错误', { type: 'error' })
+    }
   }
-  showConfirm.value = true
 }
 
-const handleClearAll = () => {
-  confirmMessage.value = '确定清除所有告警吗？'
-  confirmCallback.value = () => {
-    emit('clear-all')
-    showConfirm.value = false
-  }
-  showConfirm.value = true
-}
-
-const handleConfirm = () => {
-  if (confirmCallback.value) {
-    confirmCallback.value()
+const handleClearAll = async () => {
+  try {
+    await ElMessageBox.confirm('确定清除所有告警吗？', '提示', {
+      type: 'warning'
+    })
+    const username = 'admin' // TODO: 从用户状态获取
+    await store.clearAllAlerts(username)
+  } catch (error) {
+    if (error !== 'cancel') {
+      ElMessageBox.alert('清除告警失败', '错误', { type: 'error' })
+    }
   }
 }
 
@@ -236,6 +255,11 @@ const handleCurrentChange = (page: number) => {
   gap: 8px;
 }
 
+.alert-source {
+  color: var(--el-text-color-secondary);
+  font-size: 14px;
+}
+
 .alert-time {
   color: var(--el-text-color-secondary);
   font-size: 14px;
@@ -249,14 +273,6 @@ const handleCurrentChange = (page: number) => {
   margin: 0 0 8px;
   font-size: 14px;
   color: var(--el-text-color-primary);
-}
-
-.alert-meta {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 16px;
-  color: var(--el-text-color-secondary);
-  font-size: 14px;
 }
 
 .alert-actions {

@@ -2,374 +2,318 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createTestingPinia } from '@pinia/testing'
 import { createRouter, createWebHistory } from 'vue-router'
-import Search from '@/views/search/Search.vue'
+import SearchPage from '@/views/search/SearchPage.vue'
+import SearchResult from '@/views/search/SearchResult.vue'
 import { useSearchStore } from '@/stores/search'
 import { ElMessage } from 'element-plus'
 
-vi.mock('element-plus')
+// 模拟 Element Plus
+vi.mock('element-plus', () => ({
+  default: {
+    install: vi.fn()
+  },
+  ElMessage: {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn()
+  }
+}))
 
-describe('搜索流程集成测试', () => {
+const mockSearchResults = [
+  {
+    id: '1',
+    title: '测试新闻1',
+    content: '测试内容1',
+    source: '来源1',
+    url: 'http://example.com/1',
+    publishTime: '2024-03-20T10:00:00Z',
+    score: 0.95
+  },
+  {
+    id: '2',
+    title: '测试新闻2',
+    content: '测试内容2',
+    source: '来源2',
+    url: 'http://example.com/2',
+    publishTime: '2024-03-20T11:00:00Z',
+    score: 0.85
+  }
+]
+
+const mockSearchHistory = [
+  {
+    id: '1',
+    keyword: '测试关键词1',
+    timestamp: '2024-03-20T10:00:00Z',
+    count: 5
+  },
+  {
+    id: '2',
+    keyword: '测试关键词2',
+    timestamp: '2024-03-20T11:00:00Z',
+    count: 3
+  }
+]
+
+describe('搜索功能集成测试', () => {
   const router = createRouter({
     history: createWebHistory(),
     routes: [
       {
         path: '/search',
         name: 'search',
-        component: Search
+        component: SearchPage
       },
       {
-        path: '/news/:id',
-        name: 'news-detail'
+        path: '/search/result',
+        name: 'search-result',
+        component: SearchResult
       }
     ]
   })
 
-  beforeEach(() => {
+  beforeEach(async () => {
     vi.clearAllMocks()
     router.push('/search')
+    await router.isReady()
   })
 
-  describe('搜索功能', () => {
-    it('应该完成基本搜索流程', async () => {
-      const wrapper = mount(Search, {
+  describe('搜索界面', () => {
+    it('应该正确显示搜索界面', async () => {
+      const wrapper = mount(SearchPage, {
         global: {
           plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                search: {
+                  history: mockSearchHistory,
+                  loading: false
+                }
+              }
+            })
+          ]
+        }
+      })
+
+      const searchInput = wrapper.find('[data-test="search-input"]')
+      const searchButton = wrapper.find('[data-test="search-button"]')
+      const historyList = wrapper.findAll('[data-test="history-item"]')
+
+      expect(searchInput.exists()).toBe(true)
+      expect(searchButton.exists()).toBe(true)
+      expect(historyList).toHaveLength(2)
+    })
+
+    it('应该能执行搜索', async () => {
+      const wrapper = mount(SearchPage, {
+        global: {
+          plugins: [
+            router,
             createTestingPinia({
               createSpy: vi.fn
-            }),
-            router
+            })
           ]
         }
       })
 
       const store = useSearchStore()
-      const mockResults = {
-        total: 100,
-        items: [
-          {
-            id: '1',
-            title: '测试新闻1',
-            summary: '摘要1',
-            source: '来源1',
-            publishTime: '2024-03-20T10:00:00Z'
-          }
-        ],
-        facets: {
-          categories: {
-            '科技': 50,
-            '财经': 30
-          },
-          sources: {
-            '来源1': 40,
-            '来源2': 35
-          }
+      const searchInput = wrapper.find('[data-test="search-input"]')
+      const searchButton = wrapper.find('[data-test="search-button"]')
+
+      await searchInput.setValue('测试关键词')
+      await searchButton.trigger('click')
+
+      expect(store.search).toHaveBeenCalledWith('测试关键词')
+      expect(router.currentRoute.value.path).toBe('/search/result')
+    })
+  })
+
+  describe('搜索历史', () => {
+    it('应该显示搜索历史', async () => {
+      const wrapper = mount(SearchPage, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                search: {
+                  history: mockSearchHistory,
+                  loading: false
+                }
+              }
+            })
+          ]
         }
-      }
+      })
 
-      // 模拟搜索结果
-      vi.mocked(store.search).mockResolvedValueOnce(mockResults)
+      const historyItems = wrapper.findAll('[data-test="history-item"]')
+      expect(historyItems[0].text()).toContain('测试关键词1')
+      expect(historyItems[1].text()).toContain('测试关键词2')
+    })
 
-      // 输入搜索关键词
-      await wrapper.find('.search-input').setValue('测试关键词')
-      
-      // 提交搜索
-      await wrapper.find('form').trigger('submit.prevent')
+    it('应该能清空搜索历史', async () => {
+      const wrapper = mount(SearchPage, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                search: {
+                  history: mockSearchHistory,
+                  loading: false
+                }
+              }
+            })
+          ]
+        }
+      })
 
-      expect(store.search).toHaveBeenCalledWith(expect.objectContaining({
-        keyword: '测试关键词'
-      }))
+      const store = useSearchStore()
+      const clearButton = wrapper.find('[data-test="clear-history"]')
+      await clearButton.trigger('click')
 
-      await wrapper.vm.$nextTick()
+      expect(store.clearHistory).toHaveBeenCalled()
+      expect(ElMessage.success).toHaveBeenCalledWith('搜索历史已清空')
+    })
+  })
 
-      // 验证结果显示
-      const resultItems = wrapper.findAll('.search-result-item')
-      expect(resultItems).toHaveLength(1)
+  describe('搜索结果', () => {
+    it('应该显示搜索结果', async () => {
+      const wrapper = mount(SearchResult, {
+        global: {
+          plugins: [
+            router,
+            createTestingPinia({
+              createSpy: vi.fn,
+              initialState: {
+                search: {
+                  results: mockSearchResults,
+                  loading: false,
+                  keyword: '测试关键词'
+                }
+              }
+            })
+          ]
+        }
+      })
+
+      const resultItems = wrapper.findAll('[data-test="result-item"]')
+      expect(resultItems).toHaveLength(2)
       expect(resultItems[0].text()).toContain('测试新闻1')
+      expect(resultItems[1].text()).toContain('测试新闻2')
     })
 
-    it('应该正确处理搜索建议', async () => {
-      const wrapper = mount(Search, {
+    it('应该能按相关度排序', async () => {
+      const wrapper = mount(SearchResult, {
         global: {
           plugins: [
+            router,
             createTestingPinia({
-              createSpy: vi.fn
-            }),
-            router
+              createSpy: vi.fn,
+              initialState: {
+                search: {
+                  results: mockSearchResults,
+                  loading: false,
+                  keyword: '测试关键词'
+                }
+              }
+            })
           ]
         }
       })
 
       const store = useSearchStore()
-      const mockSuggestions = ['建议1', '建议2', '建议3']
+      const sortSelect = wrapper.find('[data-test="sort-select"]')
+      await sortSelect.setValue('relevance')
 
-      // 模拟搜索建议
-      vi.mocked(store.fetchSuggestions).mockResolvedValueOnce(mockSuggestions)
-
-      // 输入搜索关键词
-      await wrapper.find('.search-input').setValue('测')
-
-      // 等待防抖
-      await new Promise(resolve => setTimeout(resolve, 300))
-
-      expect(store.fetchSuggestions).toHaveBeenCalledWith('测')
-
-      await wrapper.vm.$nextTick()
-
-      // 验证建议显示
-      const suggestions = wrapper.findAll('.suggestion-item')
-      expect(suggestions).toHaveLength(3)
-      expect(suggestions[0].text()).toBe('建议1')
+      expect(store.sortResults).toHaveBeenCalledWith('relevance')
     })
-  })
 
-  describe('过滤和排序', () => {
-    it('应该正确应用过滤条件', async () => {
-      const wrapper = mount(Search, {
+    it('应该能按时间排序', async () => {
+      const wrapper = mount(SearchResult, {
         global: {
           plugins: [
+            router,
             createTestingPinia({
               createSpy: vi.fn,
               initialState: {
                 search: {
-                  searchResults: [],
-                  facets: {
-                    categories: {
-                      '科技': 50
-                    },
-                    sources: {
-                      '来源1': 40
-                    }
-                  }
+                  results: mockSearchResults,
+                  loading: false,
+                  keyword: '测试关键词'
                 }
               }
-            }),
-            router
+            })
           ]
         }
       })
 
       const store = useSearchStore()
+      const sortSelect = wrapper.find('[data-test="sort-select"]')
+      await sortSelect.setValue('time')
 
-      // 选择分类
-      await wrapper.find('.category-select').trigger('click')
-      await wrapper.find('.category-option').trigger('click')
-
-      expect(store.updateSearchParams).toHaveBeenCalledWith(expect.objectContaining({
-        category: '科技'
-      }))
-
-      // 选择来源
-      await wrapper.find('.source-select').trigger('click')
-      await wrapper.find('.source-option').trigger('click')
-
-      expect(store.updateSearchParams).toHaveBeenCalledWith(expect.objectContaining({
-        source: '来源1'
-      }))
-
-      // 选择日期范围
-      const datePicker = wrapper.findComponent({ name: 'el-date-picker' })
-      await datePicker.vm.$emit('change', ['2024-03-01', '2024-03-20'])
-
-      expect(store.updateSearchParams).toHaveBeenCalledWith(expect.objectContaining({
-        dateRange: ['2024-03-01', '2024-03-20']
-      }))
-    })
-
-    it('应该正确应用排序条件', async () => {
-      const wrapper = mount(Search, {
-        global: {
-          plugins: [
-            createTestingPinia({
-              createSpy: vi.fn
-            }),
-            router
-          ]
-        }
-      })
-
-      const store = useSearchStore()
-
-      // 选择排序方式
-      await wrapper.find('.sort-select').trigger('click')
-      await wrapper.find('.sort-option-date').trigger('click')
-
-      expect(store.updateSearchParams).toHaveBeenCalledWith(expect.objectContaining({
-        sortBy: 'date'
-      }))
-
-      // 切换排序顺序
-      await wrapper.find('.order-select').trigger('click')
-      await wrapper.find('.order-option-asc').trigger('click')
-
-      expect(store.updateSearchParams).toHaveBeenCalledWith(expect.objectContaining({
-        order: 'asc'
-      }))
-    })
-  })
-
-  describe('热门搜索和历史记录', () => {
-    it('应该正确显示热门搜索词', async () => {
-      const wrapper = mount(Search, {
-        global: {
-          plugins: [
-            createTestingPinia({
-              createSpy: vi.fn,
-              initialState: {
-                search: {
-                  hotKeywords: [
-                    { keyword: '热词1', count: 100 },
-                    { keyword: '热词2', count: 80 }
-                  ]
-                }
-              }
-            }),
-            router
-          ]
-        }
-      })
-
-      const hotKeywords = wrapper.findAll('.hot-keyword')
-      expect(hotKeywords).toHaveLength(2)
-      expect(hotKeywords[0].text()).toContain('热词1')
-    })
-
-    it('应该正确显示搜索历史', async () => {
-      const wrapper = mount(Search, {
-        global: {
-          plugins: [
-            createTestingPinia({
-              createSpy: vi.fn,
-              initialState: {
-                search: {
-                  searchHistory: [
-                    { keyword: '历史1', timestamp: '2024-03-20T10:00:00Z' },
-                    { keyword: '历史2', timestamp: '2024-03-19T10:00:00Z' }
-                  ]
-                }
-              }
-            }),
-            router
-          ]
-        }
-      })
-
-      const historyItems = wrapper.findAll('.history-item')
-      expect(historyItems).toHaveLength(2)
-      expect(historyItems[0].text()).toContain('历史1')
-    })
-
-    it('应该正确清除搜索历史', async () => {
-      const wrapper = mount(Search, {
-        global: {
-          plugins: [
-            createTestingPinia({
-              createSpy: vi.fn,
-              initialState: {
-                search: {
-                  searchHistory: [
-                    { keyword: '历史1', timestamp: '2024-03-20T10:00:00Z' }
-                  ]
-                }
-              }
-            }),
-            router
-          ]
-        }
-      })
-
-      const store = useSearchStore()
-      vi.mocked(store.clearSearchHistory).mockResolvedValueOnce()
-
-      await wrapper.find('.clear-history-btn').trigger('click')
-
-      expect(store.clearSearchHistory).toHaveBeenCalled()
-      expect(ElMessage.success).toHaveBeenCalledWith('搜索历史已清除')
-    })
-  })
-
-  describe('分页功能', () => {
-    it('应该正确处理分页', async () => {
-      const wrapper = mount(Search, {
-        global: {
-          plugins: [
-            createTestingPinia({
-              createSpy: vi.fn,
-              initialState: {
-                search: {
-                  searchResults: [],
-                  total: 100
-                }
-              }
-            }),
-            router
-          ]
-        }
-      })
-
-      const store = useSearchStore()
-
-      const pagination = wrapper.findComponent({ name: 'el-pagination' })
-      
-      // 切换页码
-      await pagination.vm.$emit('current-change', 2)
-
-      expect(store.search).toHaveBeenCalledWith(expect.objectContaining({
-        page: 2
-      }))
-
-      // 切换每页条数
-      await pagination.vm.$emit('size-change', 20)
-
-      expect(store.search).toHaveBeenCalledWith(expect.objectContaining({
-        pageSize: 20,
-        page: 1
-      }))
+      expect(store.sortResults).toHaveBeenCalledWith('time')
     })
   })
 
   describe('错误处理', () => {
-    it('应该正确处理搜索失败', async () => {
-      const wrapper = mount(Search, {
+    it('应该处理搜索失败', async () => {
+      const wrapper = mount(SearchPage, {
         global: {
           plugins: [
+            router,
             createTestingPinia({
-              createSpy: vi.fn
-            }),
-            router
+              createSpy: vi.fn,
+              initialState: {
+                search: {
+                  error: '搜索失败',
+                  loading: false
+                }
+              }
+            })
           ]
         }
       })
 
       const store = useSearchStore()
-      vi.mocked(store.search).mockRejectedValueOnce(new Error('搜索失败'))
+      store.search.mockRejectedValue(new Error('搜索失败'))
 
-      await wrapper.find('.search-input').setValue('测试关键词')
-      await wrapper.find('form').trigger('submit.prevent')
+      const searchInput = wrapper.find('[data-test="search-input"]')
+      const searchButton = wrapper.find('[data-test="search-button"]')
+
+      await searchInput.setValue('测试关键词')
+      await searchButton.trigger('click')
 
       expect(ElMessage.error).toHaveBeenCalledWith('搜索失败')
     })
 
-    it('应该正确处理空结果', async () => {
-      const wrapper = mount(Search, {
+    it('应该显示无结果提示', async () => {
+      const wrapper = mount(SearchResult, {
         global: {
           plugins: [
+            router,
             createTestingPinia({
               createSpy: vi.fn,
               initialState: {
                 search: {
-                  searchResults: [],
-                  total: 0
+                  results: [],
+                  loading: false,
+                  keyword: '测试关键词'
                 }
               }
-            }),
-            router
+            })
           ]
         }
       })
 
-      const emptyState = wrapper.findComponent({ name: 'el-empty' })
+      const emptyState = wrapper.find('[data-test="empty-state"]')
       expect(emptyState.exists()).toBe(true)
-      expect(emptyState.text()).toContain('暂无搜索结果')
+      expect(emptyState.text()).toContain('未找到相关结果')
     })
   })
 }) 

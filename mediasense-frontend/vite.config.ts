@@ -45,38 +45,5 @@ export default defineConfig({
         },
       },
     },
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./vitest.setup.ts'],
-    css: {
-      modules: {
-        classNameStrategy: 'non-scoped'
-      }
-    },
-    deps: {
-      inline: [
-        'element-plus',
-        '@element-plus/icons-vue'
-      ]
-    },
-    alias: {
-      '@': resolve(__dirname, 'src')
-    },
-    transformMode: {
-      web: [/\.[jt]sx$/],
-      ssr: [/\.vue$/, /\.[jt]s$/]
-    },
-    coverage: {
-      reporter: ['text', 'json', 'html'],
-      exclude: [
-        'node_modules/',
-        'tests/',
-        '**/*.d.ts',
-        '**/*.config.ts',
-        '**/types/*.ts'
-      ]
-    }
   }
 }) 

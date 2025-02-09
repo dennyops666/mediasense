@@ -48,7 +48,7 @@ class NewsArticleDocument(Document):
     content_analyzed = fields.TextField(analyzer='html_strip')  # 用于全文搜索
 
     class Index:
-        name = getattr(settings, 'ELASTICSEARCH_INDEX_PREFIX', '') + 'news_articles'
+        name = 'news_articles'
         settings = {
             'number_of_shards': 1,
             'number_of_replicas': 0,

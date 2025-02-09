@@ -8,6 +8,7 @@ from django.conf import settings
 from elasticsearch import Elasticsearch
 import json
 import logging
+from django.core.cache import cache
 
 from .serializers import (
     HotArticleQuerySerializer,
@@ -18,7 +19,6 @@ from .serializers import (
     SuggestResultSerializer,
     SearchSuggestionSerializer,
 )
-from .services import NewsSearchService
 from news.models import NewsArticle
 from .documents import NewsArticleDocument
 from .models import SearchSuggestion, SearchHistory
@@ -33,7 +33,23 @@ class NewsSearchViewSet(viewsets.ViewSet):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.search_service = NewsSearchService()
+        try:
+            self.client = Elasticsearch(
+                hosts=getattr(settings, 'ELASTICSEARCH_HOSTS', ['http://localhost:9200']),
+                timeout=getattr(settings, 'ELASTICSEARCH_TIMEOUT', 30),
+                max_retries=getattr(settings, 'ELASTICSEARCH_MAX_RETRIES', 3),
+                retry_on_timeout=getattr(settings, 'ELASTICSEARCH_RETRY_ON_TIMEOUT', True)
+            )
+            logger.info("Successfully initialized Elasticsearch client")
+        except Exception as e:
+            logger.error(f"Failed to initialize Elasticsearch client: {str(e)}")
+            self.client = None
+            
+        self.cache_stats = {
+            "hits": 0,
+            "misses": 0,
+            "total": 0
+        }
 
     def get_permissions(self):
         """根据不同的操作设置权限"""
@@ -41,18 +57,13 @@ class NewsSearchViewSet(viewsets.ViewSet):
             return [IsAdminUser()]
         return super().get_permissions()
 
-    def get_client(self):
-        """获取Elasticsearch客户端"""
-        return Elasticsearch(hosts=settings.ELASTICSEARCH_HOSTS)
-
     @action(detail=False, methods=["get"])
     def cache_stats(self, request):
         """
         获取缓存统计信息
         仅管理员可访问
         """
-        stats = self.search_service.get_cache_stats()
-        return Response(stats)
+        return Response(self.cache_stats)
 
     @action(detail=False, methods=["post"])
     def invalidate_cache(self, request):
@@ -60,7 +71,7 @@ class NewsSearchViewSet(viewsets.ViewSet):
         使所有搜索缓存失效
         仅管理员可访问
         """
-        self.search_service.invalidate_cache()
+        cache.clear()
         return Response({"message": "缓存已清空"})
 
     @action(detail=False, methods=["post"])
@@ -88,9 +99,46 @@ class NewsSearchViewSet(viewsets.ViewSet):
             return Response({"message": "请提供要预热的查询列表"}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
-            self.search_service.warm_cache(queries)
+            for query_data in queries:
+                query = query_data.get("query", "")
+                filters = query_data.get("filters", {})
+                
+                # 构建搜索查询
+                search_body = {
+                    "query": {
+                        "bool": {
+                            "must": [
+                                {
+                                    "multi_match": {
+                                        "query": query,
+                                        "fields": ["title^2", "content", "summary"],
+                                        "type": "best_fields"
+                                    }
+                                }
+                            ]
+                        }
+                    }
+                }
+
+                # 添加过滤条件
+                if filters:
+                    for field, value in filters.items():
+                        search_body["query"]["bool"].setdefault("filter", []).append(
+                            {"term": {field: value}}
+                        )
+
+                # 执行搜索
+                response = self.client.search(index='news_articles', body=search_body)
+                
+                # 生成缓存键
+                cache_key = f"news_search:{query}_{json.dumps(filters, sort_keys=True)}"
+                
+                # 缓存结果
+                cache.set(cache_key, response, timeout=300)  # 5分钟缓存
+
             return Response({"message": "缓存预热完成"})
         except Exception as e:
+            logger.error(f"缓存预热失败: {str(e)}", exc_info=True)
             return Response({"message": "缓存预热失败", "errors": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
     @action(detail=False, methods=["get"])
@@ -135,10 +183,6 @@ class NewsSearchViewSet(viewsets.ViewSet):
                     user=request.user,
                     keyword=query
                 )
-            
-            # 创建ES客户端
-            es_client = Elasticsearch(settings.ELASTICSEARCH_HOSTS)
-            index_name = f"{settings.ELASTICSEARCH_INDEX_PREFIX}news_articles"
             
             # 构建搜索查询
             search_body = {
@@ -204,7 +248,7 @@ class NewsSearchViewSet(viewsets.ViewSet):
                 }
             
             # 执行搜索
-            response = es_client.search(index=index_name, body=search_body)
+            response = self.client.search(index='news_articles', body=search_body)
             
             # 处理搜索结果
             hits = response["hits"]["hits"]
@@ -319,19 +363,26 @@ class NewsSearchViewSet(viewsets.ViewSet):
         if not request.user.is_authenticated:
             return Response({"message": "请先登录"}, status=status.HTTP_401_UNAUTHORIZED)
             
-        history = SearchHistory.objects.filter(
-            user=request.user
-        ).order_by("-created_at")[:50]
-        
-        return Response({
-            "history": [
-                {
-                    "keyword": h.keyword,
-                    "created_at": h.created_at
-                } for h in history
-            ],
-            "count": len(history)
-        })
+        try:
+            history = SearchHistory.objects.filter(
+                user=request.user
+            ).order_by("-created_at")[:50]
+            
+            return Response({
+                "history": [
+                    {
+                        "keyword": h.keyword,
+                        "created_at": h.created_at
+                    } for h in history
+                ],
+                "count": len(history)
+            })
+        except Exception as e:
+            logger.error(f"获取搜索历史失败: {str(e)}", exc_info=True)
+            return Response(
+                {"message": "获取搜索历史失败", "error": str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
     @action(detail=False, methods=["post"])
     def clear_history(self, request):

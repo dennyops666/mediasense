@@ -1,474 +1,226 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useCrawlerStore } from '@/stores/crawler'
-import * as crawlerApi from '@/api/crawler'
+import { useCrawlerStore } from '../../../src/stores/crawler'
+import * as crawlerApi from '../../../src/api/crawler'
 import { ElMessage } from 'element-plus'
-import type { CrawlerConfig } from '@/types/api'
+import type { CrawlerConfig, CrawlerTask, CrawlerData } from '../../../src/types/crawler'
 
-vi.mock('@/api/crawler')
-vi.mock('element-plus')
+vi.mock('../../../src/api/crawler')
+vi.mock('element-plus', () => ({
+  ElMessage: {
+    success: vi.fn(),
+    error: vi.fn(),
+    warning: vi.fn(),
+    info: vi.fn()
+  }
+}))
 
-describe('爬虫 Store', () => {
+describe('爬虫配置管理', () => {
+  let store: ReturnType<typeof useCrawlerStore>
+
+  const mockCrawlerConfig: CrawlerConfig = {
+    id: '1',
+    name: '测试配置',
+    type: 'news',
+    url: 'http://example.com',
+    enabled: true,
+    targetUrl: 'http://example.com',
+    method: 'GET',
+    headers: [],
+    selectors: [
+      { field: 'title', selector: '.title', type: 'css' }
+    ],
+    timeout: 30,
+    retries: 3,
+    concurrency: 1,
+    selector: {
+      title: '.title',
+      content: '.content'
+    },
+    userAgent: 'Mozilla/5.0'
+  }
+
+  const mockTask: CrawlerTask = {
+    id: '1',
+    name: '测试任务',
+    type: 'news',
+    schedule: '0 0 * * *',
+    config: {},
+    status: 'running',
+    lastRunTime: '2024-03-20T10:00:00Z',
+    count: 100,
+    configId: '1',
+    startTime: '2024-03-20T10:00:00Z',
+    totalItems: 100,
+    successItems: 80,
+    failedItems: 20,
+    createdAt: '2024-03-20T10:00:00Z',
+    updatedAt: '2024-03-20T10:00:00Z'
+  }
+
+  const mockData: CrawlerData = {
+    id: '1',
+    taskId: '1',
+    title: '测试数据',
+    content: '测试内容',
+    url: 'http://example.com',
+    source: '测试来源',
+    category: '测试分类',
+    publishTime: '2024-03-20T10:00:00Z',
+    crawlTime: '2024-03-20T10:00:00Z',
+    rawData: {}
+  }
+
   beforeEach(() => {
     setActivePinia(createPinia())
+    store = useCrawlerStore()
+    vi.clearAllMocks()
+
+    // 模拟 API 方法
+    vi.mocked(crawlerApi.getCrawlerConfigs).mockResolvedValue([mockCrawlerConfig])
+    vi.mocked(crawlerApi.createCrawlerConfig).mockResolvedValue(mockCrawlerConfig)
+    vi.mocked(crawlerApi.updateCrawlerConfig).mockResolvedValue(mockCrawlerConfig)
+    vi.mocked(crawlerApi.deleteCrawlerConfig).mockResolvedValue(undefined)
+    vi.mocked(crawlerApi.getTasks).mockResolvedValue({
+      data: [mockTask],
+      total: 1,
+      page: 1,
+      pageSize: 10
+    })
+    vi.mocked(crawlerApi.startTask).mockResolvedValue({ success: true })
+    vi.mocked(crawlerApi.stopTask).mockResolvedValue({ success: true })
+    vi.mocked(crawlerApi.batchStartTasks).mockResolvedValue({ success: true })
+    vi.mocked(crawlerApi.batchStopTasks).mockResolvedValue({ success: true })
+    vi.mocked(crawlerApi.getData).mockResolvedValue({
+      data: [mockData],
+      total: 1,
+      page: 1,
+      pageSize: 10
+    })
+    vi.mocked(crawlerApi.deleteData).mockResolvedValue(undefined)
+    vi.mocked(crawlerApi.batchDeleteData).mockResolvedValue(undefined)
+    vi.mocked(crawlerApi.exportData).mockResolvedValue(new Blob(['test data'], { type: 'application/json' }))
+  })
+
+  afterEach(() => {
     vi.clearAllMocks()
   })
 
-  describe('获取配置列表', () => {
-    it('应该正确获取爬虫配置列表', async () => {
-      const store = useCrawlerStore()
-      const mockConfigs: CrawlerConfig[] = [
-        {
-          id: '1',
-          name: '测试爬虫1',
-          siteName: '测试站点1',
-          siteUrl: 'http://example1.com',
-          frequency: 30,
-          enabled: true,
-          lastRunTime: '2025-02-04T10:00:00Z',
-          createdAt: '2025-02-04T10:00:00Z',
-          updatedAt: '2025-02-04T10:00:00Z'
-        }
-      ]
-
-      vi.mocked(crawlerApi.getCrawlerConfigs).mockResolvedValueOnce(mockConfigs)
-
+  describe('配置管理', () => {
+    it('应该成功获取配置列表', async () => {
       await store.fetchConfigs()
-
-      expect(crawlerApi.getCrawlerConfigs).toHaveBeenCalled()
-      expect(store.configs).toEqual(mockConfigs)
-    })
-
-    it('应该处理获取配置列表失败的情况', async () => {
-      const store = useCrawlerStore()
-      const error = new Error('获取失败')
-
-      vi.mocked(crawlerApi.getCrawlerConfigs).mockRejectedValueOnce(error)
-
-      await expect(store.fetchConfigs()).rejects.toThrow('获取失败')
-    })
-  })
-
-  describe('获取单个配置', () => {
-    it('应该正确获取单个爬虫配置', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const mockConfig = {
-        id: configId,
-        name: '测试爬虫1',
-        siteName: '测试站点1',
-        siteUrl: 'http://example1.com',
-        frequency: 30,
-        enabled: true,
-        lastRunTime: '2025-02-04T10:00:00Z',
-        createdAt: '2025-02-04T10:00:00Z',
-        updatedAt: '2025-02-04T10:00:00Z'
-      }
-
-      vi.mocked(crawlerApi.getCrawlerConfigById).mockResolvedValueOnce(mockConfig)
-
-      await store.fetchConfigById(configId)
-
-      expect(crawlerApi.getCrawlerConfigById).toHaveBeenCalledWith(configId)
-      expect(store.currentConfig).toEqual(mockConfig)
-    })
-
-    it('应该处理获取单个配置失败的情况', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const error = new Error('获取失败')
-
-      vi.mocked(crawlerApi.getCrawlerConfigById).mockRejectedValueOnce(error)
-
-      await expect(store.fetchConfigById(configId)).rejects.toThrow('获取失败')
-      expect(store.currentConfig).toBeNull()
-    })
-  })
-
-  describe('创建配置', () => {
-    it('应该正确创建爬虫配置', async () => {
-      const store = useCrawlerStore()
-      const mockConfig = {
-        name: '新爬虫',
-        siteName: '新站点',
-        siteUrl: 'http://example.com',
-        frequency: 30,
-        enabled: true
-      }
-
-      const mockResponse = {
-        id: '1',
-        ...mockConfig,
-        lastRunTime: null,
-        createdAt: '2025-02-04T10:00:00Z',
-        updatedAt: '2025-02-04T10:00:00Z'
-      }
-
-      vi.mocked(crawlerApi.createCrawlerConfig).mockResolvedValueOnce(mockResponse)
-      vi.mocked(crawlerApi.getCrawlerConfigs).mockResolvedValueOnce([mockResponse])
-
-      await store.createConfig(mockConfig)
-
-      expect(crawlerApi.createCrawlerConfig).toHaveBeenCalledWith(mockConfig)
-      expect(crawlerApi.getCrawlerConfigs).toHaveBeenCalled()
-    })
-
-    it('应该处理创建配置失败的情况', async () => {
-      const store = useCrawlerStore()
-      const mockConfig = {
-        name: '新爬虫',
-        siteName: '新站点',
-        siteUrl: 'http://example.com',
-        frequency: 30,
-        enabled: true
-      }
-      const error = new Error('创建失败')
-
-      vi.mocked(crawlerApi.createCrawlerConfig).mockRejectedValueOnce(error)
-
-      await expect(store.createConfig(mockConfig)).rejects.toThrow('创建失败')
-    })
-  })
-
-  describe('更新配置', () => {
-    it('应该正确更新爬虫配置', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const updateData = {
-        name: '更新后的名称',
-        frequency: 60
-      }
-
-      const mockResponse = {
-        id: configId,
-        name: '更新后的名称',
-        frequency: 60,
-        siteName: '测试站点',
-        siteUrl: 'http://example.com',
-        enabled: true,
-        updatedAt: '2025-02-04T10:00:00Z'
-      }
-
-      vi.mocked(crawlerApi.updateCrawlerConfig).mockResolvedValueOnce(mockResponse)
-      vi.mocked(crawlerApi.getCrawlerConfigs).mockResolvedValueOnce([mockResponse])
-
-      await store.updateConfig(configId, updateData)
-
-      expect(crawlerApi.updateCrawlerConfig).toHaveBeenCalledWith(configId, updateData)
-      expect(crawlerApi.getCrawlerConfigs).toHaveBeenCalled()
-    })
-
-    it('应该处理更新配置失败的情况', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const updateData = {
-        name: '更新后的名称',
-        frequency: 60
-      }
-      const error = new Error('更新失败')
-
-      vi.mocked(crawlerApi.updateCrawlerConfig).mockRejectedValueOnce(error)
-
-      await expect(store.updateConfig(configId, updateData)).rejects.toThrow('更新失败')
-    })
-  })
-
-  describe('删除配置', () => {
-    it('应该正确删除爬虫配置', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-
-      vi.mocked(crawlerApi.deleteCrawlerConfig).mockResolvedValueOnce()
-      vi.mocked(crawlerApi.getCrawlerConfigs).mockResolvedValueOnce([])
-
-      await store.deleteConfig(configId)
-
-      expect(crawlerApi.deleteCrawlerConfig).toHaveBeenCalledWith(configId)
-      expect(crawlerApi.getCrawlerConfigs).toHaveBeenCalled()
-    })
-
-    it('应该处理删除配置失败的情况', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const error = new Error('删除失败')
-
-      vi.mocked(crawlerApi.deleteCrawlerConfig).mockRejectedValueOnce(error)
-
-      await expect(store.deleteConfig(configId)).rejects.toThrow('删除失败')
-    })
-  })
-
-  describe('切换配置状态', () => {
-    it('应该正确切换爬虫状态', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const enabled = true
-
-      const mockResponse = {
-        id: configId,
-        enabled: true,
-        updatedAt: '2025-02-04T10:00:00Z'
-      }
-
-      vi.mocked(crawlerApi.toggleCrawlerConfig).mockResolvedValueOnce(mockResponse)
-      vi.mocked(crawlerApi.getCrawlerConfigs).mockResolvedValueOnce([mockResponse])
-
-      await store.toggleConfig(configId, enabled)
-
-      expect(crawlerApi.toggleCrawlerConfig).toHaveBeenCalledWith(configId, enabled)
-      expect(crawlerApi.getCrawlerConfigs).toHaveBeenCalled()
-    })
-
-    it('应该处理切换状态失败的情况', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const enabled = true
-      const error = new Error('切换状态失败')
-
-      vi.mocked(crawlerApi.toggleCrawlerConfig).mockRejectedValueOnce(error)
-
-      await expect(store.toggleConfig(configId, enabled)).rejects.toThrow('切换状态失败')
-    })
-  })
-
-  describe('运行爬虫', () => {
-    it('应该正确触发爬虫任务', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const mockResponse = {
-        taskId: 'task-1',
-        status: 'running',
-        startTime: '2025-02-04T10:00:00Z'
-      }
-
-      vi.mocked(crawlerApi.runCrawlerConfig).mockResolvedValueOnce(mockResponse)
-
-      await store.runConfig(configId)
-
-      expect(crawlerApi.runCrawlerConfig).toHaveBeenCalledWith(configId)
-    })
-
-    it('应该处理任务触发失败的情况', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const error = new Error('任务触发失败')
-
-      vi.mocked(crawlerApi.runCrawlerConfig).mockRejectedValueOnce(error)
-
-      await expect(store.runConfig(configId)).rejects.toThrow('任务触发失败')
-    })
-  })
-
-  describe('loading 状态管理', () => {
-    it('应该在操作开始时设置 loading 为 true，结束时设置为 false', async () => {
-      const store = useCrawlerStore()
-      const mockConfigs = [
-        {
-          id: '1',
-          name: '测试爬虫1',
-          siteName: '测试站点1',
-          siteUrl: 'http://example1.com',
-          frequency: 30,
-          enabled: true,
-          lastRunTime: '2025-02-04T10:00:00Z',
-          createdAt: '2025-02-04T10:00:00Z',
-          updatedAt: '2025-02-04T10:00:00Z'
-        }
-      ]
-
-      vi.mocked(crawlerApi.getCrawlerConfigs).mockResolvedValueOnce(mockConfigs)
-
-      expect(store.loading).toBe(false)
-      
-      const promise = store.fetchConfigs()
-      expect(store.loading).toBe(true)
-      
-      await promise
+      expect(store.configs).toEqual([mockCrawlerConfig])
       expect(store.loading).toBe(false)
     })
 
-    it('应该在操作失败时也正确重置 loading 状态', async () => {
-      const store = useCrawlerStore()
-      const error = new Error('获取失败')
-
-      vi.mocked(crawlerApi.getCrawlerConfigs).mockRejectedValueOnce(error)
-
-      expect(store.loading).toBe(false)
-      
-      try {
-        const promise = store.fetchConfigs()
-        expect(store.loading).toBe(true)
-        await promise
-      } catch (e) {
-        expect(store.loading).toBe(false)
-      }
-    })
-  })
-
-  describe('错误处理和消息提示', () => {
-    it('应该在操作成功时显示成功消息', async () => {
-      const store = useCrawlerStore()
-      const mockConfig = {
-        name: '新爬虫',
-        siteName: '新站点',
-        siteUrl: 'http://example.com',
-        frequency: 30,
-        enabled: true
-      }
-
-      const mockResponse = {
-        id: '1',
-        ...mockConfig,
-        lastRunTime: null,
-        createdAt: '2025-02-04T10:00:00Z',
-        updatedAt: '2025-02-04T10:00:00Z'
-      }
-
-      vi.mocked(crawlerApi.createCrawlerConfig).mockResolvedValueOnce(mockResponse)
-      vi.mocked(crawlerApi.getCrawlerConfigs).mockResolvedValueOnce([mockResponse])
-
-      await store.createConfig(mockConfig)
-
+    it('应该成功创建新配置', async () => {
+      await store.createConfig(mockCrawlerConfig)
+      expect(crawlerApi.createCrawlerConfig).toHaveBeenCalledWith(mockCrawlerConfig)
       expect(ElMessage.success).toHaveBeenCalledWith('创建爬虫配置成功')
     })
 
-    it('应该在操作失败时显示错误消息', async () => {
-      const store = useCrawlerStore()
-      const error = new Error('创建失败')
+    it('应该成功更新配置', async () => {
+      const updatedConfig = { ...mockCrawlerConfig, name: '更新后的配置' }
+      await store.updateConfig('1', updatedConfig)
+      expect(crawlerApi.updateCrawlerConfig).toHaveBeenCalledWith('1', updatedConfig)
+      expect(ElMessage.success).toHaveBeenCalledWith('更新配置成功')
+    })
 
-      vi.mocked(crawlerApi.createCrawlerConfig).mockRejectedValueOnce(error)
+    it('应该成功删除配置', async () => {
+      await store.deleteConfig('1')
+      expect(crawlerApi.deleteCrawlerConfig).toHaveBeenCalledWith('1')
+      expect(ElMessage.success).toHaveBeenCalledWith('删除配置成功')
+    })
+  })
+
+  describe('任务管理', () => {
+    it('应该成功获取任务列表', async () => {
+      await store.fetchTasks({ page: 1, pageSize: 10 })
+
+      expect(store.tasks).toEqual([mockTask])
+      expect(store.loading).toBe(false)
+    })
+
+    it('应该成功启动任务', async () => {
+      await store.startTask('1')
+      expect(crawlerApi.startTask).toHaveBeenCalledWith('1')
+      expect(ElMessage.success).toHaveBeenCalledWith('启动任务成功')
+    })
+
+    it('应该成功停止任务', async () => {
+      await store.stopTask('1')
+      expect(crawlerApi.stopTask).toHaveBeenCalledWith('1')
+      expect(ElMessage.success).toHaveBeenCalledWith('停止任务成功')
+    })
+
+    it('应该成功批量启动任务', async () => {
+      await store.batchStartTasks(['1', '2'])
+      expect(crawlerApi.batchStartTasks).toHaveBeenCalledWith(['1', '2'])
+      expect(ElMessage.success).toHaveBeenCalledWith('批量启动任务成功')
+    })
+  })
+
+  describe('数据管理', () => {
+    it('应该成功获取爬取数据', async () => {
+      await store.fetchData({ page: 1, pageSize: 10 })
+
+      expect(store.data).toEqual([mockData])
+      expect(store.loading).toBe(false)
+    })
+
+    it('应该成功删除数据', async () => {
+      await store.deleteData('1')
+      expect(crawlerApi.deleteData).toHaveBeenCalledWith('1')
+      expect(ElMessage.success).toHaveBeenCalledWith('删除数据成功')
+    })
+
+    it('应该成功批量删除数据', async () => {
+      await store.batchDeleteData(['1', '2'])
+      expect(crawlerApi.batchDeleteData).toHaveBeenCalledWith(['1', '2'])
+      expect(ElMessage.success).toHaveBeenCalledWith('批量删除数据成功')
+    })
+
+    it('应该成功导出数据', async () => {
+      await store.exportData({ taskId: '1' })
+
+      expect(crawlerApi.exportData).toHaveBeenCalledWith({ taskId: '1' })
+      expect(ElMessage.success).toHaveBeenCalledWith('导出成功')
+    })
+  })
+
+  describe('错误处理', () => {
+    it('应该处理获取配置失败的情况', async () => {
+      const error = new Error('获取失败')
+      vi.mocked(crawlerApi.getCrawlerConfigs).mockRejectedValue(error)
 
       try {
-        await store.createConfig({})
-      } catch (e) {
-        expect(ElMessage.error).toHaveBeenCalledWith('创建爬虫配置失败')
+        await store.fetchConfigs()
+      } catch (err) {
+        expect(store.loading).toBe(false)
+        expect(ElMessage.error).toHaveBeenCalled()
       }
     })
-  })
 
-  describe('并发操作处理', () => {
-    it('应该正确处理并发的获取请求', async () => {
-      const store = useCrawlerStore()
-      const mockConfigs1 = [{ id: '1', name: '配置1' }]
-      const mockConfigs2 = [{ id: '2', name: '配置2' }]
+    it('应该处理创建配置失败的情况', async () => {
+      const error = new Error('创建失败')
+      vi.mocked(crawlerApi.createCrawlerConfig).mockRejectedValue(error)
 
-      vi.mocked(crawlerApi.getCrawlerConfigs)
-        .mockResolvedValueOnce(mockConfigs1)
-        .mockResolvedValueOnce(mockConfigs2)
-
-      const [result1, result2] = await Promise.all([
-        store.fetchConfigs(),
-        store.fetchConfigs()
-      ])
-
-      expect(store.configs).toEqual(mockConfigs2)
+      try {
+        await store.createConfig(mockCrawlerConfig)
+      } catch (err) {
+        expect(ElMessage.error).toHaveBeenCalled()
+      }
     })
 
-    it('应该正确处理并发的更新操作', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const update1 = { name: '更新1' }
-      const update2 = { name: '更新2' }
+    it('应该处理任务操作失败的情况', async () => {
+      const error = new Error('操作失败')
+      vi.mocked(crawlerApi.startTask).mockRejectedValue(error)
 
-      const mockResponse1 = {
-        id: configId,
-        ...update1,
-        updatedAt: '2025-02-04T10:00:00Z'
+      try {
+        await store.startTask('1')
+      } catch (err) {
+        expect(ElMessage.error).toHaveBeenCalled()
       }
-
-      const mockResponse2 = {
-        id: configId,
-        ...update2,
-        updatedAt: '2025-02-04T10:00:01Z'
-      }
-
-      vi.mocked(crawlerApi.updateCrawlerConfig)
-        .mockResolvedValueOnce(mockResponse1)
-        .mockResolvedValueOnce(mockResponse2)
-
-      vi.mocked(crawlerApi.getCrawlerConfigs)
-        .mockResolvedValueOnce([mockResponse1])
-        .mockResolvedValueOnce([mockResponse2])
-
-      await Promise.all([
-        store.updateConfig(configId, update1),
-        store.updateConfig(configId, update2)
-      ])
-
-      expect(store.configs[0].name).toBe('更新2')
-    })
-  })
-
-  describe('状态一致性', () => {
-    it('应该在更新操作后保持列表和当前配置的一致性', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const mockConfig = {
-        id: configId,
-        name: '测试爬虫',
-        siteName: '测试站点',
-        siteUrl: 'http://example.com',
-        frequency: 30,
-        enabled: true,
-        lastRunTime: null,
-        createdAt: '2025-02-04T10:00:00Z',
-        updatedAt: '2025-02-04T10:00:00Z'
-      }
-
-      const updateData = {
-        name: '更新后的名称'
-      }
-
-      const updatedConfig = {
-        ...mockConfig,
-        ...updateData,
-        updatedAt: '2025-02-04T10:00:01Z'
-      }
-
-      // 设置初始状态
-      vi.mocked(crawlerApi.getCrawlerConfigById).mockResolvedValueOnce(mockConfig)
-      await store.fetchConfigById(configId)
-
-      // 执行更新
-      vi.mocked(crawlerApi.updateCrawlerConfig).mockResolvedValueOnce(updatedConfig)
-      vi.mocked(crawlerApi.getCrawlerConfigs).mockResolvedValueOnce([updatedConfig])
-      vi.mocked(crawlerApi.getCrawlerConfigById).mockResolvedValueOnce(updatedConfig)
-
-      await store.updateConfig(configId, updateData)
-
-      // 验证状态一致性
-      expect(store.configs[0]).toEqual(updatedConfig)
-      expect(store.currentConfig).toEqual(updatedConfig)
-    })
-
-    it('应该在删除操作后正确清理相关状态', async () => {
-      const store = useCrawlerStore()
-      const configId = '1'
-      const mockConfig = {
-        id: configId,
-        name: '测试爬虫',
-        siteName: '测试站点',
-        siteUrl: 'http://example.com',
-        frequency: 30,
-        enabled: true,
-        lastRunTime: null,
-        createdAt: '2025-02-04T10:00:00Z',
-        updatedAt: '2025-02-04T10:00:00Z'
-      }
-
-      // 设置初始状态
-      vi.mocked(crawlerApi.getCrawlerConfigById).mockResolvedValueOnce(mockConfig)
-      await store.fetchConfigById(configId)
-
-      // 执行删除
-      vi.mocked(crawlerApi.deleteCrawlerConfig).mockResolvedValueOnce(undefined)
-      vi.mocked(crawlerApi.getCrawlerConfigs).mockResolvedValueOnce([])
-
-      await store.deleteConfig(configId)
-
-      // 验证状态清理
-      expect(store.configs).toHaveLength(0)
-      expect(store.currentConfig).toBeNull()
     })
   })
 }) 

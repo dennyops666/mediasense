@@ -24,20 +24,26 @@ class RSSCrawler(BaseCrawler):
         self.session = requests.Session()
         self.session.headers.update(self.headers)
 
-    def fetch_data(self) -> Dict:
-        """获取RSS数据"""
+    def fetch_data(self) -> Dict[str, Any]:
+        """
+        获取RSS数据
+        :return: 包含状态和数据的字典
+        """
         try:
-            logger.info(f"开始获取RSS数据: {self.config.source_url}")
+            logger.info(f"开始获取RSS数据: {self.source_url}")
             response = self.session.get(
-                self.config.source_url,
+                self.source_url,
                 timeout=30,
                 verify=not settings.DEBUG  # 在测试环境中禁用SSL验证
             )
             
             if response.status_code != 200:
+                error_msg = f'请求失败: {response.status_code}'
+                logger.error(error_msg)
                 return {
                     'status': 'error',
-                    'message': f'请求失败: {response.status_code}'
+                    'message': error_msg,
+                    'data': None
                 }
 
             return {
@@ -46,19 +52,33 @@ class RSSCrawler(BaseCrawler):
                 'data': response.content
             }
             
-        except Exception as e:
-            logger.error(f"获取RSS数据失败: {str(e)}")
+        except requests.exceptions.RequestException as e:
+            error_msg = f"网络请求失败: {str(e)}"
+            logger.error(error_msg)
             return {
                 'status': 'error',
-                'message': str(e)
+                'message': error_msg,
+                'data': None
+            }
+        except Exception as e:
+            error_msg = f"获取RSS数据失败: {str(e)}"
+            logger.error(error_msg)
+            return {
+                'status': 'error',
+                'message': error_msg,
+                'data': None
             }
 
-    def parse_response(self, data: Dict) -> List[Dict]:
-        """解析RSS数据"""
+    def parse_response(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        解析RSS数据
+        :param data: fetch_data返回的数据字典
+        :return: 解析后的文章列表
+        """
         try:
             logger.info("开始解析RSS数据")
             
-            if data.get('status') != 'success':
+            if data.get('status') != 'success' or not data.get('data'):
                 logger.error(f"获取RSS数据失败: {data.get('message')}")
                 return []
                 
@@ -80,11 +100,13 @@ class RSSCrawler(BaseCrawler):
                     # 提取标题
                     title = entry.get('title', '').strip()
                     if not title:
+                        logger.warning("跳过无标题文章")
                         continue
                     
                     # 提取链接
                     url = entry.get('link', '').strip()
                     if not url or not url.startswith(('http://', 'https://')):
+                        logger.warning(f"跳过无效URL: {url}")
                         continue
                     
                     # 提取内容
@@ -135,7 +157,7 @@ class RSSCrawler(BaseCrawler):
                         'content': content,
                         'description': description,
                         'author': author,
-                        'source': self.config.name,
+                        'source': self.source_name,
                         'pub_time': pub_time,
                         'tags': tags,
                         'images': images
@@ -145,18 +167,21 @@ class RSSCrawler(BaseCrawler):
                     logger.debug(f"成功解析文章: {article['title']}")
                         
                 except Exception as e:
-                    logger.error(f"解析文章失败: {str(e)}")
+                    logger.error(f"解析文章失败: {str(e)}", exc_info=True)
                     continue
                     
             logger.info(f"RSS解析完成，共获取{len(articles)}篇文章")
             return articles
             
         except Exception as e:
-            logger.error(f"RSS解析失败: {str(e)}")
+            logger.error(f"RSS解析失败: {str(e)}", exc_info=True)
             return []
 
     def run(self) -> Dict[str, Any]:
-        """运行爬虫"""
+        """
+        运行爬虫
+        :return: 包含状态和数据的字典
+        """
         try:
             # 获取RSS数据
             result = self.fetch_data()
@@ -174,9 +199,10 @@ class RSSCrawler(BaseCrawler):
             }
             
         except Exception as e:
-            logger.error(f"RSS爬虫运行失败: {str(e)}")
+            error_msg = f"RSS爬虫运行失败: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             return {
                 'status': 'error',
-                'message': str(e),
+                'message': error_msg,
                 'data': []
             } 

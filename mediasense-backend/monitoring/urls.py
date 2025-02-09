@@ -20,7 +20,11 @@ from django.utils.decorators import classonlymethod
 
 app_name = "monitoring"
 
-router = DefaultRouter()
+# 创建路由器并设置尾部斜杠为False
+router = DefaultRouter(trailing_slash=False)
+router.include_format_suffixes = False
+
+# 注册视图集
 router.register('system-metrics', SystemMetricsViewSet, basename='system-metrics')
 router.register('alert-rules', AlertRuleViewSet, basename='alert-rules')
 router.register('alert-history', AlertHistoryViewSet, basename='alert-history')
@@ -29,12 +33,25 @@ router.register('error-logs', ErrorLogViewSet, basename='error-logs')
 router.register('dashboards', DashboardViewSet, basename='dashboards')
 router.register('dashboard-widgets', DashboardWidgetViewSet, basename='dashboard-widgets')
 router.register('alert-notification-config', AlertNotificationConfigViewSet, basename='alert-notification-config')
-router.register('system-status', SystemStatusViewSet, basename='system-status')
+
+# 基础URL模式
+urlpatterns = router.urls
 
 # 添加自定义操作的URL
-urlpatterns = router.urls + [
-    path('alert-rules/<int:pk>/enable/', AlertRuleViewSet.as_view({'post': 'enable'}), name='alert-rule-enable'),
-    path('alert-rules/<int:pk>/disable/', AlertRuleViewSet.as_view({'post': 'disable'}), name='alert-rule-disable'),
-    path('alert-history/<int:pk>/acknowledge/', AlertHistoryViewSet.as_view({'post': 'acknowledge'}), name='alert-history-acknowledge'),
-    path('alert-history/<int:pk>/resolve/', AlertHistoryViewSet.as_view({'post': 'resolve'}), name='alert-history-resolve'),
+urlpatterns += [
+    # System Status
+    path('system-status', SystemStatusViewSet.as_view({'get': 'list'}), name='system-status'),
+    path('system-status/health', SystemStatusViewSet.as_view({'get': 'health'}), name='system-status-health'),
+    path('system-status/overview', SystemStatusViewSet.as_view({'get': 'overview'}), name='system-status-overview'),
+    
+    # Alert Rules
+    path('alert-rules/<int:pk>/enable', AlertRuleViewSet.as_view({'post': 'enable'}), name='alert-rule-enable'),
+    path('alert-rules/<int:pk>/disable', AlertRuleViewSet.as_view({'post': 'disable'}), name='alert-rule-disable'),
+    
+    # Alert History
+    path('alert-history/<int:pk>/acknowledge', AlertHistoryViewSet.as_view({'post': 'acknowledge'}), name='alert-history-acknowledge'),
+    path('alert-history/<int:pk>/resolve', AlertHistoryViewSet.as_view({'post': 'resolve'}), name='alert-history-resolve'),
+
+    # System Metrics
+    path('system-metrics/performance_stats', SystemMetricsViewSet.as_view({'get': 'performance_stats'}), name='system-metrics-performance-stats'),
 ]

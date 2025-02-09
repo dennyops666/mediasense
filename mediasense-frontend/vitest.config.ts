@@ -1,48 +1,44 @@
 /// <reference types="vitest" />
 
-import { defineConfig } from 'vite'
+import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
+import { fileURLToPath } from 'url'
 import { resolve } from 'path'
 
 export default defineConfig({
   plugins: [vue()],
   test: {
     globals: true,
-    environment: 'happy-dom',
+    environment: 'jsdom',
     setupFiles: ['./vitest.setup.ts'],
-    include: ['tests/unit/**/*.spec.ts'],
-    exclude: ['tests/integration/**/*.spec.ts'],
+    include: ['tests/**/*.spec.ts'],
+    css: {
+      modules: {
+        classNameStrategy: 'non-scoped'
+      }
+    },
+    deps: {
+      inline: [
+        'element-plus',
+        '@element-plus/icons-vue'
+      ]
+    },
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url))
+    },
+    transformMode: {
+      web: [/\.[jt]sx$/],
+      ssr: [/\.vue$/, /\.[jt]s$/]
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html'],
-      exclude: [
-        'node_modules/',
-        'tests/',
-        '**/*.d.ts',
-        '**/*.config.ts',
-        '**/types/*.ts'
-      ]
-    },
-    deps: {
-      inline: [/element-plus/, /@element-plus\/icons-vue/]
-    },
-    alias: {
-      '@': resolve(__dirname, 'src')
-    },
-    css: true,
-    testTimeout: 10000,
-    hookTimeout: 10000,
-    teardownTimeout: 10000,
-    pool: 'threads',
-    poolOptions: {
-      threads: {
-        singleThread: true
-      }
+      include: ['src/**/*.{ts,vue}']
     }
   },
   resolve: {
     alias: {
-      '@': resolve(__dirname, 'src')
+      '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   }
 }) 

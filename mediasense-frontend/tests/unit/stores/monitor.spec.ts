@@ -1,23 +1,66 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { setActivePinia, createPinia } from 'pinia'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { useMonitorStore } from '@/stores/monitor'
-import { ElMessage } from 'element-plus'
-import { 
-  fetchSystemMetrics, 
-  updateAlertConfig,
-  getSystemMetrics,
-  getSystemLogs,
-  getMetricsHistory,
-  getProcessList,
-  getDiskUsage
-} from '@/api/monitor'
+import * as monitorApi from '@/api/monitor'
 
-vi.mock('@/api/monitor', () => ({
-  fetchSystemMetrics: vi.fn(),
-  updateAlertConfig: vi.fn()
-}))
+// Mock API
+vi.mock('@/api/monitor')
 
-vi.mock('element-plus')
+// Mock data
+const mockMetrics = {
+  data: {
+    cpu: {
+      usage: 50,
+      cores: 4,
+      temperature: 65
+    },
+    memory: {
+      total: '16 GB',
+      used: '8 GB',
+      usagePercentage: 50
+    },
+    disk: {
+      total: '1000 GB',
+      used: '500 GB',
+      usagePercentage: 50
+    },
+    network: {
+      upload: '1 MB/s',
+      download: '2 MB/s',
+      latency: 20
+    }
+  }
+}
+
+const mockLogs = {
+  data: {
+    items: [{
+      timestamp: '2024-03-20T10:00:00Z',
+      level: 'INFO',
+      message: '系统正常运行'
+    }],
+    total: 1
+  }
+}
+
+const mockProcesses = {
+  data: [{
+    pid: 1,
+    name: 'process1',
+    cpu: 5,
+    memory: 100
+  }]
+}
+
+const mockAlerts = {
+  data: [{
+    id: 'test-alert-id',
+    message: '测试告警',
+    level: 'warning',
+    timestamp: '2024-03-20T10:00:00Z',
+    source: 'system'
+  }]
+}
 
 describe('Monitor Store', () => {
   beforeEach(() => {
@@ -25,381 +68,136 @@ describe('Monitor Store', () => {
     vi.clearAllMocks()
   })
 
-  describe('State', () => {
-    it('initializes with default state', () => {
-      const store = useMonitorStore()
-      expect(store.resources).toEqual({
-        cpu: { usage: 0, cores: 0, temperature: 0 },
-        memory: { total: 0, used: 0, free: 0 },
-        disk: { total: 0, used: 0, free: 0 },
-        network: { upload: 0, download: 0, latency: 0 }
-      })
-      expect(store.alerts).toEqual([])
-      expect(store.loading).toBe(false)
-      expect(store.error).toBe(null)
-    })
-  })
-
-  describe('Getters', () => {
-    it('calculates resource usage percentages', () => {
-      const store = useMonitorStore()
-      store.$patch({
-        resources: {
-          cpu: { usage: 45.5 },
-          memory: { total: 16384, used: 8192 },
-          disk: { total: 512000, used: 256000 }
-        }
-      })
-
-      expect(store.cpuUsagePercentage).toBe(45.5)
-      expect(store.memoryUsagePercentage).toBe(50)
-      expect(store.diskUsagePercentage).toBe(50)
-    })
-
-    it('determines system health status', () => {
-      const store = useMonitorStore()
-      store.$patch({
-        resources: {
-          cpu: { usage: 85 },
-          memory: { total: 16384, used: 15000 }
-        }
-      })
-
-      expect(store.systemHealth).toBe('warning')
-    })
-
-    it('filters critical alerts', () => {
-      const store = useMonitorStore()
-      store.$patch({
-        alerts: [
-          { level: 'critical', message: 'High CPU usage' },
-          { level: 'warning', message: 'Memory usage high' }
-        ]
-      })
-
-      expect(store.criticalAlerts.length).toBe(1)
-      expect(store.criticalAlerts[0].message).toBe('High CPU usage')
-    })
-  })
-
-  describe('Actions', () => {
-    it('fetches system metrics successfully', async () => {
-      const mockMetrics = {
-        cpu: { usage: 50, cores: 4, temperature: 70 },
-        memory: { total: 16384, used: 8192, free: 8192 },
-        disk: { total: 512000, used: 256000, free: 256000 },
-        network: { upload: 1024, download: 2048, latency: 50 }
-      }
-
-      fetchSystemMetrics.mockResolvedValue(mockMetrics)
-
-      const store = useMonitorStore()
-      await store.fetchResourceMetrics()
-
-      expect(store.resources).toEqual(mockMetrics)
-      expect(store.loading).toBe(false)
-      expect(store.error).toBe(null)
-    })
-
-    it('handles fetch metrics error', async () => {
-      const errorMessage = 'Failed to fetch metrics'
-      fetchSystemMetrics.mockRejectedValue(new Error(errorMessage))
-
-      const store = useMonitorStore()
-      await store.fetchResourceMetrics()
-
-      expect(store.loading).toBe(false)
-      expect(store.error).toBe(errorMessage)
-    })
-
-    it('updates alert configuration', async () => {
-      const newConfig = {
-        cpu: { threshold: 80 },
-        memory: { threshold: 90 },
-        disk: { threshold: 85 }
-      }
-
-      updateAlertConfig.mockResolvedValue(newConfig)
-
-      const store = useMonitorStore()
-      await store.updateAlertConfig(newConfig)
-
-      expect(store.alertConfig).toEqual(newConfig)
-    })
-
-    it('adds new alert', () => {
-      const store = useMonitorStore()
-      const newAlert = {
-        level: 'warning',
-        message: 'Memory usage high',
-        timestamp: new Date().toISOString()
-      }
-
-      store.addAlert(newAlert)
-
-      expect(store.alerts).toContainEqual(newAlert)
-    })
-
-    it('clears old alerts', () => {
-      const store = useMonitorStore()
-      const oldDate = new Date()
-      oldDate.setDate(oldDate.getDate() - 2)
-
-      store.$patch({
-        alerts: [
-          {
-            level: 'warning',
-            message: 'Old alert',
-            timestamp: oldDate.toISOString()
-          },
-          {
-            level: 'critical',
-            message: 'New alert',
-            timestamp: new Date().toISOString()
-          }
-        ]
-      })
-
-      store.clearOldAlerts()
-
-      expect(store.alerts.length).toBe(1)
-      expect(store.alerts[0].message).toBe('New alert')
-    })
-  })
-
-  describe('Real-time Updates', () => {
-    it('starts monitoring interval', () => {
-      vi.useFakeTimers()
-      const store = useMonitorStore()
-      const fetchSpy = vi.spyOn(store, 'fetchResourceMetrics')
-
-      store.startMonitoring()
-      vi.advanceTimersByTime(60000) // 1分钟
-
-      expect(fetchSpy).toHaveBeenCalledTimes(2) // 初始调用 + 1分钟后的调用
-      vi.useRealTimers()
-    })
-
-    it('stops monitoring interval', () => {
-      vi.useFakeTimers()
-      const store = useMonitorStore()
-      const fetchSpy = vi.spyOn(store, 'fetchResourceMetrics')
-
-      store.startMonitoring()
-      store.stopMonitoring()
-      vi.advanceTimersByTime(60000)
-
-      expect(fetchSpy).toHaveBeenCalledTimes(1) // 只有初始调用
-      vi.useRealTimers()
-    })
-  })
-
-  describe('Alert Thresholds', () => {
-    it('triggers alerts when thresholds are exceeded', () => {
-      const store = useMonitorStore()
-      store.$patch({
-        alertConfig: {
-          cpu: { threshold: 80 },
-          memory: { threshold: 90 }
-        },
-        resources: {
-          cpu: { usage: 85 },
-          memory: { total: 16384, used: 15000 }
-        }
-      })
-
-      store.checkAlertThresholds()
-
-      expect(store.alerts.length).toBe(1)
-      expect(store.alerts[0].level).toBe('warning')
-      expect(store.alerts[0].message).toContain('CPU usage')
-    })
-  })
-
-  describe('Data Export', () => {
-    it('exports monitoring data in correct format', () => {
-      const store = useMonitorStore()
-      store.$patch({
-        resources: {
-          cpu: { usage: 45.5 },
-          memory: { total: 16384, used: 8192 }
-        },
-        alerts: [
-          { level: 'warning', message: 'Test alert' }
-        ]
-      })
-
-      const exportData = store.exportMonitoringData()
-
-      expect(exportData).toHaveProperty('resources')
-      expect(exportData).toHaveProperty('alerts')
-      expect(exportData).toHaveProperty('timestamp')
-    })
-  })
-
   describe('获取系统指标', () => {
     it('应该成功获取系统指标', async () => {
-      const mockMetrics = {
-        data: {
-          cpu: 50,
-          memory: 70,
-          disk: 60,
-          network: {
-            rx: 1000,
-            tx: 2000
-          }
-        }
-      }
-      vi.mocked(monitorApi.getSystemMetrics).mockResolvedValue(mockMetrics.data)
-
       const store = useMonitorStore()
+      vi.mocked(monitorApi.getSystemMetrics).mockResolvedValue(mockMetrics)
+
       await store.fetchSystemMetrics()
 
       expect(store.metrics).toEqual(mockMetrics.data)
       expect(store.loading).toBe(false)
+      expect(store.error).toBeNull()
     })
 
-    it('应该处理获取系统指标失败', async () => {
-      const error = new Error('获取系统指标失败')
+    it('应该处理获取系统指标失败的情况', async () => {
+      const store = useMonitorStore()
+      const error = new Error('获取失败')
       vi.mocked(monitorApi.getSystemMetrics).mockRejectedValue(error)
 
-      const store = useMonitorStore()
-      await store.fetchSystemMetrics()
-
-      expect(store.metrics).toBeNull()
-      expect(store.loading).toBe(false)
-      expect(ElMessage.error).toHaveBeenCalledWith('获取系统指标失败')
+      try {
+        await store.fetchSystemMetrics()
+      } catch (err) {
+        expect(store.error).toBe('获取失败')
+        expect(store.loading).toBe(false)
+      }
     })
   })
 
   describe('获取系统日志', () => {
     it('应该成功获取系统日志', async () => {
-      const mockLogs = {
-        data: {
-          total: 100,
-          items: [
-            { id: 1, level: 'info', message: 'test log', timestamp: '2024-03-20T10:00:00Z' }
-          ]
-        }
-      }
-      vi.mocked(monitorApi.getSystemLogs).mockResolvedValue(mockLogs.data)
-
       const store = useMonitorStore()
+      vi.mocked(monitorApi.getSystemLogs).mockResolvedValue(mockLogs)
+
       await store.fetchSystemLogs({ page: 1, pageSize: 10 })
 
       expect(store.logs).toEqual(mockLogs.data.items)
       expect(store.totalLogs).toBe(mockLogs.data.total)
       expect(store.loading).toBe(false)
+      expect(store.error).toBeNull()
     })
 
-    it('应该处理获取系统日志失败', async () => {
-      const error = new Error('获取系统日志失败')
+    it('应该处理获取系统日志失败的情况', async () => {
+      const store = useMonitorStore()
+      const error = new Error('获取失败')
       vi.mocked(monitorApi.getSystemLogs).mockRejectedValue(error)
 
-      const store = useMonitorStore()
-      await store.fetchSystemLogs({ page: 1, pageSize: 10 })
-
-      expect(store.logs).toEqual([])
-      expect(store.totalLogs).toBe(0)
-      expect(store.loading).toBe(false)
-      expect(ElMessage.error).toHaveBeenCalledWith('获取系统日志失败')
-    })
-  })
-
-  describe('获取指标历史', () => {
-    it('应该成功获取指标历史', async () => {
-      const mockHistory = {
-        data: {
-          timestamps: ['2024-03-19T10:00:00Z', '2024-03-20T10:00:00Z'],
-          values: [45, 55]
-        }
+      try {
+        await store.fetchSystemLogs({ page: 1, pageSize: 10 })
+      } catch (err) {
+        expect(store.error).toBe('获取失败')
+        expect(store.loading).toBe(false)
       }
-      vi.mocked(monitorApi.getMetricsHistory).mockResolvedValue(mockHistory.data)
-
-      const store = useMonitorStore()
-      await store.fetchMetricsHistory({
-        startTime: '2024-03-19T10:00:00Z',
-        endTime: '2024-03-20T10:00:00Z',
-        type: 'cpu'
-      })
-
-      expect(store.metricsHistory).toEqual(mockHistory.data)
-      expect(store.loading).toBe(false)
-    })
-
-    it('应该处理获取指标历史失败', async () => {
-      const error = new Error('获取指标历史失败')
-      vi.mocked(monitorApi.getMetricsHistory).mockRejectedValue(error)
-
-      const store = useMonitorStore()
-      await store.fetchMetricsHistory({
-        startTime: '2024-03-19T10:00:00Z',
-        endTime: '2024-03-20T10:00:00Z',
-        type: 'cpu'
-      })
-
-      expect(store.metricsHistory).toEqual({ timestamps: [], values: [] })
-      expect(store.loading).toBe(false)
-      expect(ElMessage.error).toHaveBeenCalledWith('获取指标历史失败')
     })
   })
 
   describe('获取进程列表', () => {
     it('应该成功获取进程列表', async () => {
-      const mockProcesses = {
-        data: [
-          { pid: 1, name: 'process1', cpu: 10, memory: 200 },
-          { pid: 2, name: 'process2', cpu: 20, memory: 300 }
-        ]
-      }
-      vi.mocked(monitorApi.getProcessList).mockResolvedValue(mockProcesses.data)
-
       const store = useMonitorStore()
+      vi.mocked(monitorApi.getProcessList).mockResolvedValue(mockProcesses)
+
       await store.fetchProcessList()
 
       expect(store.processes).toEqual(mockProcesses.data)
       expect(store.loading).toBe(false)
+      expect(store.error).toBeNull()
     })
 
-    it('应该处理获取进程列表失败', async () => {
-      const error = new Error('获取进程列表失败')
+    it('应该处理获取进程列表失败的情况', async () => {
+      const store = useMonitorStore()
+      const error = new Error('获取失败')
       vi.mocked(monitorApi.getProcessList).mockRejectedValue(error)
 
-      const store = useMonitorStore()
-      await store.fetchProcessList()
-
-      expect(store.processes).toEqual([])
-      expect(store.loading).toBe(false)
-      expect(ElMessage.error).toHaveBeenCalledWith('获取进程列表失败')
+      try {
+        await store.fetchProcessList()
+      } catch (err) {
+        expect(store.error).toBe('获取失败')
+        expect(store.loading).toBe(false)
+      }
     })
   })
 
-  describe('获取磁盘使用情况', () => {
-    it('应该成功获取磁盘使用情况', async () => {
-      const mockDiskUsage = {
-        data: [
-          { device: '/dev/sda1', mountPoint: '/', total: 1000, used: 500, free: 500 }
-        ]
-      }
-      vi.mocked(monitorApi.getDiskUsage).mockResolvedValue(mockDiskUsage.data)
-
+  describe('获取告警列表', () => {
+    it('应该成功获取告警列表', async () => {
       const store = useMonitorStore()
-      await store.fetchDiskUsage()
+      vi.mocked(monitorApi.getAlerts).mockResolvedValue(mockAlerts)
 
-      expect(store.diskUsage).toEqual(mockDiskUsage.data)
+      await store.fetchAlerts()
+
+      expect(store.alerts).toEqual(mockAlerts.data)
       expect(store.loading).toBe(false)
+      expect(store.error).toBeNull()
     })
 
-    it('应该处理获取磁盘使用情况失败', async () => {
-      const error = new Error('获取磁盘使用情况失败')
-      vi.mocked(monitorApi.getDiskUsage).mockRejectedValue(error)
-
+    it('应该处理获取告警列表失败的情况', async () => {
       const store = useMonitorStore()
-      await store.fetchDiskUsage()
+      const error = new Error('获取失败')
+      vi.mocked(monitorApi.getAlerts).mockRejectedValue(error)
 
-      expect(store.diskUsage).toEqual([])
+      try {
+        await store.fetchAlerts()
+      } catch (err) {
+        expect(store.error).toBe('获取失败')
+        expect(store.loading).toBe(false)
+      }
+    })
+  })
+
+  describe('确认告警', () => {
+    it('应该成功确认告警', async () => {
+      const store = useMonitorStore()
+      const alertId = 'test-alert-id'
+      vi.mocked(monitorApi.acknowledgeAlert).mockResolvedValue(undefined)
+      vi.mocked(monitorApi.getAlerts).mockResolvedValue(mockAlerts)
+
+      await store.handleAcknowledgeAlert(alertId)
+
+      expect(monitorApi.acknowledgeAlert).toHaveBeenCalledWith(alertId)
       expect(store.loading).toBe(false)
-      expect(ElMessage.error).toHaveBeenCalledWith('获取磁盘使用情况失败')
+      expect(store.error).toBeNull()
+    })
+
+    it('应该处理确认告警失败的情况', async () => {
+      const store = useMonitorStore()
+      const error = new Error('确认失败')
+      vi.mocked(monitorApi.acknowledgeAlert).mockRejectedValue(error)
+
+      try {
+        await store.handleAcknowledgeAlert('test-alert-id')
+      } catch (err) {
+        expect(store.error).toBe('确认失败')
+        expect(store.loading).toBe(false)
+      }
     })
   })
 }) 

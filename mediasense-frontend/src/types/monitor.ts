@@ -2,26 +2,31 @@
  * 系统指标
  */
 export interface SystemMetrics {
-  cpu: {
+  cpu?: {
     usage: number
-    cores: number
     temperature: number
+    cores: number[]
   }
-  memory: {
+  memory?: {
     total: number
     used: number
     free: number
+    usagePercentage: number
   }
-  disk: {
+  disk?: {
     total: number
     used: number
     free: number
+    usagePercentage: number
+    readSpeed: number
+    writeSpeed: number
   }
-  network: {
-    rx_bytes: number
-    tx_bytes: number
-    connections: number
+  network?: {
+    upload: number
+    download: number
+    latency: number
   }
+  timestamp: string
 }
 
 /**
@@ -80,10 +85,30 @@ export interface ServiceStatus {
   lastCheck: string
 }
 
+export const AlertLevel = {
+  CRITICAL: 'critical',
+  WARNING: 'warning',
+  INFO: 'info'
+} as const
+
+export type AlertLevelType = typeof AlertLevel[keyof typeof AlertLevel]
+
 export interface Alert {
   id: string
-  type: 'cpu' | 'memory' | 'disk' | 'network' | 'service'
-  level: 'info' | 'warning' | 'critical'
   message: string
+  level: AlertLevelType
   timestamp: string
+  source: string
+  acknowledged?: {
+    time: string
+    by: string
+  }
+}
+
+export interface MonitoringData {
+  metrics: SystemMetrics
+  activeAlerts: Alert[]
+  alertHistory: Alert[]
+  timestamp: string
+  version: string
 } 

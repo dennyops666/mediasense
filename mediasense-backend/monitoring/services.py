@@ -63,14 +63,14 @@ class MonitoringService:
         # 获取指定时间范围内的指标数据
         metrics = SystemMetrics.objects.filter(
             metric_type=visualization.metric_type,
-            timestamp__gte=start_time,
-            timestamp__lte=end_time
-        ).order_by('timestamp')
+            created_at__gte=start_time,
+            created_at__lte=end_time
+        ).order_by('created_at')
 
         if visualization.visualization_type == MonitoringVisualization.ChartType.LINE_CHART:
             # 生成折线图数据
             data = {
-                'timestamps': [m.timestamp.isoformat() for m in metrics],
+                'timestamps': [m.created_at.isoformat() for m in metrics],
                 'values': [m.value for m in metrics],
                 'metric_type': visualization.get_metric_type_display()
             }
@@ -80,7 +80,7 @@ class MonitoringService:
             data = {
                 'value': latest_metric.value if latest_metric else 0,
                 'metric_type': visualization.get_metric_type_display(),
-                'timestamp': latest_metric.timestamp.isoformat() if latest_metric else end_time.isoformat()
+                'created_at': latest_metric.created_at.isoformat() if latest_metric else end_time.isoformat()
             }
 
         # 更新缓存
@@ -99,7 +99,7 @@ class MonitoringService:
             # 获取最新的指标值
             latest_metric = SystemMetrics.objects.filter(
                 metric_type=rule.metric_type
-            ).order_by('-timestamp').first()
+            ).order_by('-created_at').first()
 
             if not latest_metric:
                 continue
@@ -118,7 +118,7 @@ class MonitoringService:
                     'current_value': latest_metric.value,
                     'threshold': rule.threshold,
                     'alert_level': rule.alert_level,
-                    'timestamp': latest_metric.timestamp.isoformat()
+                    'created_at': latest_metric.created_at.isoformat()
                 })
 
         return alerts
@@ -135,7 +135,7 @@ class MonitoringVisualizationService:
 
         # 获取基础查询集
         queryset = SystemMetrics.objects.filter(
-            metric_type=visualization.metric_type, timestamp__gte=start_time, timestamp__lte=end_time
+            metric_type=visualization.metric_type, created_at__gte=start_time, created_at__lte=end_time
         )
 
         # 准备聚合函数
@@ -154,19 +154,19 @@ class MonitoringVisualizationService:
             next_time = current_time + timedelta(seconds=interval_seconds)
 
             # 查询当前时间段的数据
-            period_data = await queryset.filter(timestamp__gte=current_time, timestamp__lt=next_time).aaggregate(
+            period_data = await queryset.filter(created_at__gte=current_time, created_at__lt=next_time).aaggregate(
                 value=agg_func("value")
             )
 
             # 添加数据点
-            data.append({"timestamp": current_time.isoformat(), "value": period_data["value"] or 0})
+            data.append({"created_at": current_time.isoformat(), "value": period_data["value"] or 0})
 
             current_time = next_time
 
         # 格式化图表数据
         if visualization.chart_type == MonitoringVisualization.ChartType.LINE:
             chart_data = {
-                "xAxis": [item["timestamp"] for item in data],
+                "xAxis": [item["created_at"] for item in data],
                 "series": [{"name": visualization.get_metric_type_display(), "data": [item["value"] for item in data]}],
                 "warning": visualization.warning_threshold,
                 "critical": visualization.critical_threshold,
@@ -174,7 +174,7 @@ class MonitoringVisualizationService:
 
         elif visualization.chart_type == MonitoringVisualization.ChartType.BAR:
             chart_data = {
-                "xAxis": [item["timestamp"] for item in data],
+                "xAxis": [item["created_at"] for item in data],
                 "series": [{"name": visualization.get_metric_type_display(), "data": [item["value"] for item in data]}],
                 "warning": visualization.warning_threshold,
                 "critical": visualization.critical_threshold,

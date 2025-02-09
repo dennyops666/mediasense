@@ -1,133 +1,263 @@
 <template>
-  <div class="news-detail-container" v-loading="newsStore.loading">
-    <template v-if="newsStore.currentNews">
-      <el-card class="news-card">
-        <div class="news-header">
-          <h1 class="news-title">{{ newsStore.currentNews.title }}</h1>
+  <div class="news-detail">
+    <el-skeleton v-if="loading" data-test="loading-skeleton">
+      <template #template>
+        <el-skeleton-item variant="h1" style="width: 50%" />
+        <el-skeleton-item variant="text" style="width: 80%" />
+        <el-skeleton-item variant="text" style="width: 70%" />
+      </template>
+    </el-skeleton>
+
+    <el-alert
+      v-else-if="error"
+      type="error"
+      :title="error"
+      data-test="error-alert"
+      show-icon
+    />
+
+    <div v-else-if="!currentNews" class="not-found">
+      <el-empty description="新闻不存在" />
+    </div>
+
+    <el-card v-else class="news-card">
+      <template #header>
+        <div class="card-header">
+          <h1 class="news-title">{{ currentNews.title }}</h1>
           <div class="news-meta">
-            <div class="meta-item">
-              <el-icon><user /></el-icon>
-              <span>{{ newsStore.currentNews.author }}</span>
-            </div>
-            <div class="meta-item">
-              <el-icon><link /></el-icon>
-              <span>{{ newsStore.currentNews.source }}</span>
-            </div>
-            <div class="meta-item">
-              <el-icon><timer /></el-icon>
-              <span>{{ formatDate(newsStore.currentNews.publishTime) }}</span>
-            </div>
-            <el-tag size="small" type="info">
-              {{ newsStore.currentNews.category }}
+            <span class="meta-item">
+              <el-icon><User /></el-icon>
+              {{ currentNews.author }}
+            </span>
+            <span class="meta-item">
+              <el-icon><Timer /></el-icon>
+              {{ currentNews.publishTime }}
+            </span>
+            <span class="meta-item">
+              <el-icon><Link /></el-icon>
+              <span data-test="news-source">{{ currentNews.source }}</span>
+            </span>
+            <span class="meta-item">
+              <el-icon><View /></el-icon>
+              {{ currentNews.views }}
+            </span>
+          </div>
+          <div class="news-tags">
+            <el-tag
+              v-for="tag in currentNews.tags"
+              :key="tag"
+              class="tag"
+              data-test="news-tag"
+            >
+              {{ tag }}
             </el-tag>
           </div>
         </div>
-
-        <div class="news-summary">
-          {{ newsStore.currentNews.summary }}
-        </div>
-
-        <div class="news-content" v-html="newsStore.currentNews.content" />
-
-        <div class="news-tags">
-          <el-icon><collection-tag /></el-icon>
-          <el-tag
-            v-for="tag in newsStore.currentNews.tags"
-            :key="tag"
-            size="small"
-            class="tag-item"
-          >
-            {{ tag }}
-          </el-tag>
-        </div>
-
-        <div class="news-actions">
-          <el-button
-            type="primary"
-            :icon="Link"
-            @click="openOriginalNews"
-          >
-            查看原文
-          </el-button>
-          <el-button :icon="Back" @click="router.back()">
-            返回列表
-          </el-button>
-        </div>
-      </el-card>
-    </template>
-
-    <el-empty
-      v-else-if="!newsStore.loading"
-      description="新闻不存在或已被删除"
-    >
-      <template #extra>
-        <el-button type="primary" @click="router.push('/news')">
-          返回新闻列表
-        </el-button>
       </template>
-    </el-empty>
+
+      <div class="news-content">
+        <el-image
+          v-if="currentNews.imageUrl"
+          :src="currentNews.imageUrl"
+          data-test="news-image"
+          fit="cover"
+          class="news-image"
+        />
+        <div class="content-text">{{ currentNews.content }}</div>
+      </div>
+
+      <div class="news-actions">
+        <el-button
+          data-test="back-button"
+          @click="handleBack"
+        >
+          <el-icon><Back /></el-icon>
+          返回列表
+        </el-button>
+        <el-button
+          type="primary"
+          data-test="edit-button"
+          @click="handleEdit"
+        >
+          <el-icon><Edit /></el-icon>
+          编辑
+        </el-button>
+        <el-button
+          type="danger"
+          data-test="delete-button"
+          @click="handleDelete"
+        >
+          <el-icon><Delete /></el-icon>
+          删除
+        </el-button>
+        <el-button
+          type="success"
+          data-test="share-button"
+          @click="handleShare"
+        >
+          <el-icon><Share /></el-icon>
+          分享
+        </el-button>
+      </div>
+    </el-card>
+
+    <el-dialog
+      v-model="showEditDialog"
+      title="编辑新闻"
+      data-test="edit-dialog"
+    >
+      <el-form
+        ref="editForm"
+        :model="editForm"
+        data-test="edit-form"
+      >
+        <el-form-item label="标题">
+          <el-input v-model="editForm.title" />
+        </el-form-item>
+        <el-form-item label="内容">
+          <el-input v-model="editForm.content" type="textarea" />
+        </el-form-item>
+        <el-form-item label="作者">
+          <el-input v-model="editForm.author" />
+        </el-form-item>
+        <el-form-item label="来源">
+          <el-input v-model="editForm.source" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="showEditDialog = false">取消</el-button>
+        <el-button type="primary" @click="handleEditSubmit">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { useNewsStore } from '@/stores/news'
+import { storeToRefs } from 'pinia'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   User,
   Link,
   Timer,
   Back,
-  CollectionTag
+  CollectionTag,
+  Edit,
+  Delete,
+  View,
+  Share
 } from '@element-plus/icons-vue'
-import { useNewsStore } from '@/stores/news'
-import { formatDate } from '@/utils/date'
 
-const route = useRoute()
+const props = defineProps<{
+  id: string
+}>()
+
 const router = useRouter()
-const newsStore = useNewsStore()
+const store = useNewsStore()
+const { currentNews, loading, error } = storeToRefs(store)
 
-const openOriginalNews = () => {
-  if (newsStore.currentNews?.url) {
-    window.open(newsStore.currentNews.url, '_blank')
+const showEditDialog = ref(false)
+const editForm = ref({
+  title: '',
+  content: '',
+  author: '',
+  source: ''
+})
+
+const categories = ['政治', '经济', '科技', '文化', '体育']
+
+onMounted(async () => {
+  try {
+    await store.fetchNewsDetail(props.id)
+  } catch (err) {
+    console.error('获取新闻详情失败:', err)
+  }
+})
+
+const handleBack = () => {
+  router.push({ name: 'NewsList' })
+}
+
+const handleEdit = () => {
+  editForm.value = {
+    title: currentNews.value.title,
+    content: currentNews.value.content,
+    author: currentNews.value.author,
+    source: currentNews.value.source
+  }
+  showEditDialog.value = true
+}
+
+const handleEditSubmit = async () => {
+  try {
+    if (!currentNews.value) return
+    
+    const updatedNews = {
+      ...currentNews.value,
+      title: editForm.value.title,
+      content: editForm.value.content,
+      author: editForm.value.author,
+      source: editForm.value.source
+    }
+    
+    await store.updateNews(updatedNews)
+    showEditDialog.value = false
+    ElMessage.success('编辑成功')
+  } catch (err) {
+    console.error('编辑新闻失败:', err)
+    ElMessage.error('编辑失败')
   }
 }
 
-onMounted(async () => {
-  const newsId = route.params.id as string
-  if (newsId) {
-    await newsStore.fetchNewsDetail(newsId)
+const handleDelete = async () => {
+  try {
+    await ElMessageBox.confirm('确定要删除这条新闻吗？', '提示', {
+      type: 'warning'
+    })
+    await store.deleteNews(currentNews.value.id)
+    ElMessage.success('删除成功')
+    router.push({ name: 'NewsList' })
+  } catch (err) {
+    if (err !== 'cancel') {
+      console.error('删除新闻失败:', err)
+      ElMessage.error('删除失败')
+    }
   }
-})
+}
+
+const handleShare = () => {
+  // 实现分享功能
+  ElMessage.success('分享功能开发中')
+}
 </script>
 
 <style scoped>
-.news-detail-container {
-  max-width: 800px;
-  margin: 20px auto;
-  padding: 0 20px;
+.news-detail {
+  padding: 20px;
 }
 
 .news-card {
-  margin-bottom: 24px;
+  margin-bottom: 20px;
 }
 
-.news-header {
-  margin-bottom: 24px;
+.card-header {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .news-title {
-  font-size: 28px;
-  color: var(--el-text-color-primary);
-  margin-bottom: 16px;
-  line-height: 1.4;
+  margin: 0;
+  font-size: 24px;
+  color: #303133;
 }
 
 .news-meta {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
   gap: 16px;
-  color: var(--el-text-color-secondary);
+  color: #909399;
   font-size: 14px;
 }
 
@@ -137,43 +267,31 @@ onMounted(async () => {
   gap: 4px;
 }
 
-.news-summary {
-  font-size: 16px;
-  color: var(--el-text-color-regular);
-  line-height: 1.6;
-  padding: 16px;
-  background-color: var(--el-fill-color-lighter);
-  border-radius: var(--el-border-radius-base);
-  margin-bottom: 24px;
+.news-tags {
+  display: flex;
+  gap: 8px;
 }
 
 .news-content {
-  font-size: 16px;
-  line-height: 1.8;
-  color: var(--el-text-color-primary);
-  margin-bottom: 24px;
+  margin-top: 20px;
 }
 
-.news-tags {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 24px;
-  padding-top: 16px;
-  border-top: 1px solid var(--el-border-color-lighter);
+.news-image {
+  width: 100%;
+  max-height: 400px;
+  object-fit: cover;
+  margin-bottom: 20px;
+  border-radius: 4px;
 }
 
-.tag-item {
-  margin-right: 8px;
+.content-text {
+  line-height: 1.6;
+  color: #606266;
 }
 
 .news-actions {
+  margin-top: 20px;
   display: flex;
-  gap: 16px;
-  justify-content: center;
-}
-
-:deep(.el-empty) {
-  padding: 60px 0;
+  gap: 12px;
 }
 </style> 

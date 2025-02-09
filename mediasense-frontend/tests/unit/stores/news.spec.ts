@@ -1,216 +1,122 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useNewsStore } from '@/stores/news'
-import * as newsApi from '@/api/news'
-import type { NewsItem, NewsFilter } from '@/types/news'
+import axios from 'axios'
 
-vi.mock('@/api/news')
-vi.mock('element-plus')
+vi.mock('axios')
 
-describe('新闻 Store', () => {
+describe('News Store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
   })
 
-  describe('获取新闻列表', () => {
-    it('应该正确获取新闻列表', async () => {
-      const store = useNewsStore()
-      const mockNews: NewsItem = {
-        id: '1',
-        title: '测试新闻1',
-        content: '内容1',
-        category: '科技',
-        source: '来源1',
-        publishTime: '2024-03-20T10:00:00Z',
-        status: 'published'
-      }
-      const mockResponse = {
-        list: [mockNews],
-        total: 1
-      }
+  const mockNewsList = [
+    { id: 1, title: '测试新闻1', content: '内容1' },
+    { id: 2, title: '测试新闻2', content: '内容2' }
+  ]
 
-      vi.mocked(newsApi.getNewsList).mockResolvedValueOnce(mockResponse)
+  const mockNewsDetail = {
+    id: 1,
+    title: '测试新闻1',
+    content: '详细内容1',
+    source: '测试来源',
+    publishTime: '2024-01-01'
+  }
 
-      await store.fetchNewsList({
-        page: 1,
-        pageSize: 10
-      })
+  const mockCategories = ['科技', '财经', '体育']
+  const mockSources = ['新浪', '腾讯', '网易']
 
-      expect(newsApi.getNewsList).toHaveBeenCalled()
-      expect(store.newsList).toEqual(mockResponse.list)
-      expect(store.total).toBe(mockResponse.total)
-    })
-
-    it('应该处理获取新闻列表失败的情况', async () => {
-      const store = useNewsStore()
-      const error = new Error('获取失败')
-
-      vi.mocked(newsApi.getNewsList).mockRejectedValueOnce(error)
-
-      await expect(store.fetchNewsList({
-        page: 1,
-        pageSize: 10
-      })).rejects.toThrow('获取失败')
-    })
+  it('应该有正确的初始状态', () => {
+    const store = useNewsStore()
+    expect(store.newsList).toEqual([])
+    expect(store.newsDetail).toBeNull()
+    expect(store.categories).toEqual([])
+    expect(store.sources).toEqual([])
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
   })
 
-  describe('获取新闻详情', () => {
-    it('应该正确获取新闻详情', async () => {
-      const store = useNewsStore()
-      const mockNews: NewsItem = {
-        id: '1',
-        title: '测试新闻',
-        content: '内容',
-        category: '科技',
-        source: '来源1',
-        publishTime: '2024-03-20T10:00:00Z',
-        status: 'published'
-      }
+  it('应该能获取新闻列表', async () => {
+    const store = useNewsStore()
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: mockNewsList })
 
-      vi.mocked(newsApi.getNewsDetail).mockResolvedValueOnce(mockNews)
+    await store.fetchNewsList()
 
-      await store.fetchNewsDetail('1')
-
-      expect(newsApi.getNewsDetail).toHaveBeenCalledWith('1')
-      expect(store.currentNews).toEqual(mockNews)
-    })
+    expect(axios.get).toHaveBeenCalledWith('/api/news')
+    expect(store.newsList).toEqual(mockNewsList)
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
   })
 
-  describe('获取分类和来源', () => {
-    it('应该正确获取新闻分类列表', async () => {
-      const store = useNewsStore()
-      const mockCategories = [
-        { id: '1', name: '科技' },
-        { id: '2', name: '财经' },
-        { id: '3', name: '体育' },
-        { id: '4', name: '娱乐' }
-      ]
+  it('应该能获取新闻详情', async () => {
+    const store = useNewsStore()
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: mockNewsDetail })
 
-      vi.mocked(newsApi.getCategories).mockResolvedValueOnce(mockCategories)
+    await store.fetchNewsDetail(1)
 
-      await store.fetchCategories()
-
-      expect(newsApi.getCategories).toHaveBeenCalled()
-      expect(store.categories).toEqual(mockCategories.map(c => c.name))
-    })
-
-    it('应该正确获取新闻来源列表', async () => {
-      const store = useNewsStore()
-      const mockSources = [
-        { id: '1', name: '来源1' },
-        { id: '2', name: '来源2' },
-        { id: '3', name: '来源3' }
-      ]
-
-      vi.mocked(newsApi.getSources).mockResolvedValueOnce(mockSources)
-
-      await store.fetchSources()
-
-      expect(newsApi.getSources).toHaveBeenCalled()
-      expect(store.sources).toEqual(mockSources.map(s => s.name))
-    })
+    expect(axios.get).toHaveBeenCalledWith('/api/news/1')
+    expect(store.newsDetail).toEqual(mockNewsDetail)
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
   })
 
-  describe('更新和删除新闻', () => {
-    it('应该正确更新新闻', async () => {
-      const store = useNewsStore()
-      const mockNews: NewsItem = {
-        id: '1',
-        title: '更新后的标题',
-        content: '更新后的内容',
-        category: '科技',
-        source: '来源1',
-        publishTime: '2024-03-20T10:00:00Z',
-        status: 'published'
-      }
+  it('应该能获取新闻分类', async () => {
+    const store = useNewsStore()
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: mockCategories })
 
-      vi.mocked(newsApi.updateNews).mockResolvedValueOnce(mockNews)
+    await store.fetchCategories()
 
-      const updateData = {
-        title: '更新后的标题',
-        content: '更新后的内容'
-      }
-
-      await store.updateNews('1', updateData)
-
-      expect(newsApi.updateNews).toHaveBeenCalledWith('1', updateData)
-    })
-
-    it('应该正确删除新闻', async () => {
-      const store = useNewsStore()
-      
-      vi.mocked(newsApi.deleteNews).mockResolvedValueOnce()
-
-      await store.deleteNews('1')
-
-      expect(newsApi.deleteNews).toHaveBeenCalledWith('1')
-    })
+    expect(axios.get).toHaveBeenCalledWith('/api/news/categories')
+    expect(store.categories).toEqual(mockCategories)
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
   })
 
-  describe('过滤和排序', () => {
-    it('应该正确应用过滤条件', async () => {
-      const store = useNewsStore()
-      const filter: NewsFilter = {
-        page: 1,
-        pageSize: 10,
-        keyword: '',
-        category: '科技',
-        source: '来源1',
-        startDate: '',
-        endDate: '',
-        sortBy: 'publishTime',
-        sortOrder: 'desc'
-      }
+  it('应该能获取新闻来源', async () => {
+    const store = useNewsStore()
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: mockSources })
 
-      const mockNews: NewsItem = {
-        id: '1',
-        title: '测试新闻',
-        content: '内容',
-        category: '科技',
-        source: '来源1',
-        publishTime: '2024-03-20T10:00:00Z',
-        status: 'published'
-      }
+    await store.fetchSources()
 
-      vi.mocked(newsApi.getNewsList).mockResolvedValueOnce({
-        list: [mockNews],
-        total: 1
-      })
+    expect(axios.get).toHaveBeenCalledWith('/api/news/sources')
+    expect(store.sources).toEqual(mockSources)
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
+  })
 
-      await store.applyFilter(filter)
+  it('应该能正确处理错误', async () => {
+    const store = useNewsStore()
+    const error = new Error('获取新闻失败')
+    vi.mocked(axios.get).mockRejectedValueOnce(error)
 
-      expect(newsApi.getNewsList).toHaveBeenCalledWith(filter)
-      expect(store.filter).toEqual(filter)
-    })
+    await store.fetchNewsList().catch(() => {})
 
-    it('应该正确重置过滤条件', () => {
-      const store = useNewsStore()
-      store.filter = {
-        page: 2,
-        pageSize: 20,
-        keyword: '测试',
-        category: '科技',
-        source: '来源1',
-        startDate: '2024-03-01',
-        endDate: '2024-03-20',
-        sortBy: 'title',
-        sortOrder: 'asc'
-      }
+    expect(store.loading).toBe(false)
+    expect(store.error).toBe('获取新闻失败')
+  })
 
-      store.resetFilter()
+  it('应该能按分类筛选新闻', async () => {
+    const store = useNewsStore()
+    const category = '科技'
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: mockNewsList.filter(n => n.category === category) })
 
-      expect(store.filter).toEqual({
-        page: 1,
-        pageSize: 10,
-        keyword: '',
-        category: '',
-        source: '',
-        startDate: '',
-        endDate: '',
-        sortBy: 'publishTime',
-        sortOrder: 'desc'
-      })
-    })
+    await store.fetchNewsByCategory(category)
+
+    expect(axios.get).toHaveBeenCalledWith(`/api/news?category=${category}`)
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
+  })
+
+  it('应该能按来源筛选新闻', async () => {
+    const store = useNewsStore()
+    const source = '新浪'
+    vi.mocked(axios.get).mockResolvedValueOnce({ data: mockNewsList.filter(n => n.source === source) })
+
+    await store.fetchNewsBySource(source)
+
+    expect(axios.get).toHaveBeenCalledWith(`/api/news?source=${source}`)
+    expect(store.loading).toBe(false)
+    expect(store.error).toBeNull()
   })
 }) 

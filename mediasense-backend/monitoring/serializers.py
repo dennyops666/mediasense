@@ -17,12 +17,11 @@ class SystemMetricsSerializer(serializers.ModelSerializer):
     """系统指标序列化器"""
 
     metric_type_display = serializers.CharField(source="get_metric_type_display", read_only=True)
-    timestamp = serializers.DateTimeField(required=False)
 
     class Meta:
         model = SystemMetrics
-        fields = ["id", "metric_type", "metric_type_display", "value", "timestamp", "metadata"]
-        read_only_fields = ["id"]
+        fields = ["id", "metric_type", "metric_type_display", "value", "created_at", "metadata"]
+        read_only_fields = ["id", "created_at"]
 
     def validate_metric_type(self, value):
         """验证指标类型"""
@@ -45,8 +44,8 @@ class SystemMetricsSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         """创建系统指标"""
-        if 'timestamp' not in validated_data:
-            validated_data['timestamp'] = timezone.now()
+        if 'created_at' not in validated_data:
+            validated_data['created_at'] = timezone.now()
         return super().create(validated_data)
 
 

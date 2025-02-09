@@ -55,6 +55,8 @@ class AIService:
     """AI服务类，提供文本分析相关功能"""
     
     _instance = None
+    _max_retries = 3  # 最大重试次数
+    _retry_delay = 1  # 重试延迟(秒)
     
     def __new__(cls):
         if cls._instance is None:
@@ -66,6 +68,30 @@ class AIService:
         """初始化 AI 服务"""
         if hasattr(self, '_initialized') and self._initialized:
             return
+            
+        # 配置日志
+        self.logger = logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG)
+        
+        # 创建文件处理器
+        log_file = '/data/mediasense/mediasense-backend/logs/ai_service.log'
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(logging.DEBUG)
+        
+        # 创建格式化器
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        file_handler.setFormatter(formatter)
+        
+        # 添加处理器到日志记录器
+        self.logger.addHandler(file_handler)
+        
+        # 添加控制台处理器
+        console_handler = logging.StreamHandler()
+        console_handler.setLevel(logging.DEBUG)
+        console_handler.setFormatter(formatter)
+        self.logger.addHandler(console_handler)
+        
+        self.logger.info("初始化AI服务...")
             
         self.openai_client = AsyncOpenAI(
             api_key=os.getenv('OPENAI_API_KEY'),
@@ -95,6 +121,7 @@ class AIService:
         self._request_count = 0
         self._last_request_time = None
         
+        self.logger.info(f"AI服务初始化完成: model={self.openai_model}, temperature={self.openai_temperature}")
         self._initialized = True
 
     def reset_rate_limit(self):
@@ -160,50 +187,105 @@ class AIService:
         except Exception as e:
             logger.error(f"缓存结果时出错: {str(e)}")
 
+    async def _call_openai_with_retry(self, messages, max_tokens=None, temperature=None):
+        """带重试机制的OpenAI API调用"""
+        retries = 0
+        last_error = None
+        
+        while retries < self._max_retries:
+            try:
+                self.logger.debug(f"调用OpenAI API (尝试 {retries + 1}/{self._max_retries})")
+                self.logger.debug(f"请求参数: messages={messages}, max_tokens={max_tokens}, temperature={temperature}")
+                
+                response = await self.openai_client.chat.completions.create(
+                    model=self.openai_model,
+                    messages=messages,
+                    temperature=temperature or self.openai_temperature,
+                    max_tokens=max_tokens or self.openai_max_tokens
+                )
+                
+                self.logger.debug(f"API响应: {response.choices[0].message.content}")
+                return response
+                
+            except openai.RateLimitError as e:
+                self.logger.warning(f"速率限制错误 (尝试 {retries + 1}/{self._max_retries}): {str(e)}")
+                if retries == self._max_retries - 1:
+                    raise RateLimitExceeded(str(e))
+                    
+            except openai.APIError as e:
+                self.logger.error(f"API错误 (尝试 {retries + 1}/{self._max_retries}): {str(e)}")
+                last_error = e
+                
+            except Exception as e:
+                self.logger.error(f"未知错误 (尝试 {retries + 1}/{self._max_retries}): {str(e)}", exc_info=True)
+                last_error = e
+            
+            retries += 1
+            if retries < self._max_retries:
+                await asyncio.sleep(self._retry_delay * (2 ** retries))  # 指数退避
+        
+        if last_error:
+            raise last_error
+        return None
+
     async def analyze_sentiment(self, content):
         """分析文本情感"""
         if not content or not content.strip():
+            self.logger.warning("收到空内容")
             raise ValueError("新闻内容为空")
+
+        self.logger.info("开始情感分析...")
+        self.logger.debug(f"分析内容: {content[:100]}...")
 
         # 获取缓存
         cache_key = self._get_cache_key(content, "sentiment")
         cached_result = await self._get_cached_result(cache_key)
         if cached_result:
+            self.logger.info("返回缓存结果")
             return cached_result
 
         # 检查速率限制
         await self._check_rate_limit()
 
         try:
-            response = await self.openai_client.chat.completions.create(
-                model=self.openai_model,
-                messages=[
-                    {"role": "system", "content": "你是一个情感分析专家。你的任务是分析文本的情感倾向，并返回一个JSON格式的分析结果。"},
-                    {"role": "user", "content": f"请分析以下文本的情感倾向：\n\n{content}\n\n请以JSON格式返回分析结果，格式如下：\n{{\n  \"sentiment\": \"positive/negative/neutral\",\n  \"confidence\": 0.8,\n  \"explanation\": \"分析说明\"\n}}"}
-                ],
-                temperature=self.openai_temperature,
-                max_tokens=self.openai_max_tokens
-            )
+            messages = [
+                {"role": "system", "content": "你是一个情感分析专家。你的任务是分析文本的情感倾向，并返回一个JSON格式的分析结果。"},
+                {"role": "user", "content": f"请分析以下文本的情感倾向：\n\n{content}\n\n请以JSON格式返回分析结果，格式如下：\n{{\n  \"sentiment\": \"positive/negative/neutral\",\n  \"confidence\": 0.8,\n  \"explanation\": \"分析说明\"\n}}"}
+            ]
             
-            logger.info(f"OpenAI API响应内容: {response.choices[0].message.content}")
+            response = await self._call_openai_with_retry(messages)
             
             try:
                 result = json.loads(response.choices[0].message.content)
+                self.logger.info(f"分析完成: {result}")
+                
+                # 验证结果格式
+                if not isinstance(result, dict):
+                    raise ValueError("API返回的不是JSON对象")
+                    
+                required_fields = ["sentiment", "confidence", "explanation"]
+                missing_fields = [field for field in required_fields if field not in result]
+                if missing_fields:
+                    raise ValueError(f"API返回缺少必要字段: {', '.join(missing_fields)}")
+                
+                # 缓存结果
+                await self._cache_result(cache_key, result)
+                
+                return result
+                
             except json.JSONDecodeError as e:
-                logger.error(f"JSON解析错误: {str(e)}")
-                logger.error(f"原始响应内容: {response.choices[0].message.content}")
-                raise ValueError("API返回格式错误")
+                self.logger.error(f"JSON解析错误: {str(e)}")
+                self.logger.error(f"原始响应内容: {response.choices[0].message.content}")
+                result = {
+                    "sentiment": "neutral",
+                    "confidence": 0.0,
+                    "explanation": f"解析结果时出错: {str(e)}"
+                }
+                await self._cache_result(cache_key, result)
+                return result
             
-            # 缓存结果
-            await self._cache_result(cache_key, result)
-            
-            return result
-            
-        except openai.RateLimitError as e:
-            raise RateLimitExceeded(str(e))
-        except openai.APIError as e:
-            raise ValueError(f"API错误: {str(e)}")
         except Exception as e:
+            self.logger.error(f"分析失败: {str(e)}", exc_info=True)
             raise ValueError(f"分析失败: {str(e)}")
 
     async def extract_keywords(self, content):

@@ -379,13 +379,13 @@ curl -X GET "localhost:9200/_cluster/health"
 ### 检查应用日志
 ```bash
 # 查看Gunicorn日志
-tail -f /var/log/mediasense/gunicorn.out.log
+tail -f /data/mediasense/mediasense-backend/logs/gunicorn.log
 
 # 查看Celery日志
-tail -f /var/log/mediasense/celery.out.log
+tail -f /data/mediasense/mediasense-backend/logs/celery.out.log
 
 # 查看Celery Beat日志
-tail -f /var/log/mediasense/celery_beat.out.log
+tail -f /data/mediasense/mediasense-backend/logs/celery_beat.out.log
 ```
 
 ## 故障排除

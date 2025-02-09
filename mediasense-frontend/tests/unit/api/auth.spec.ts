@@ -1,113 +1,129 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import * as authApi from '@/api/auth'
-import request from '@/utils/request'
-import type { LoginForm, RegisterForm } from '@/types/api'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { login, register, logout, refreshToken } from '@/api/auth'
+import axios from 'axios'
 
-vi.mock('@/utils/request', () => ({
-  default: {
-    post: vi.fn(),
-    get: vi.fn()
-  }
-}))
+vi.mock('axios')
 
 describe('认证 API', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  describe('login', () => {
-    it('应该正确调用登录接口', async () => {
+  describe('登录接口', () => {
+    it('使用正确的用户名和密码应该成功登录', async () => {
       const mockResponse = {
-        token: 'mock-token',
-        user: {
-          id: '1',
-          username: 'testuser',
-          email: 'test@example.com',
-          role: 'user',
-          createdAt: '2024-03-20'
+        data: {
+          token: 'mock-token',
+          user: {
+            id: 1,
+            username: 'test',
+            email: 'test@example.com'
+          }
         }
       }
+      ;(axios.post as any).mockResolvedValueOnce(mockResponse)
 
-      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
-
-      const loginForm: LoginForm = {
-        username: 'testuser',
+      const result = await login('test', 'password123')
+      expect(result).toEqual(mockResponse.data)
+      expect(axios.post).toHaveBeenCalledWith('/api/auth/login', {
+        username: 'test',
         password: 'password123'
-      }
-
-      const result = await authApi.login(loginForm)
-
-      expect(request.post).toHaveBeenCalledWith('/auth/login', loginForm)
-      expect(result).toEqual(mockResponse)
+      })
     })
 
-    it('应该处理登录失败的情况', async () => {
-      const error = new Error('用户名或密码错误')
-      vi.mocked(request.post).mockRejectedValueOnce(error)
+    it('使用错误的凭证应该返回错误', async () => {
+      const errorMessage = '用户名或密码错误'
+      ;(axios.post as any).mockRejectedValueOnce(new Error(errorMessage))
 
-      const loginForm: LoginForm = {
-        username: 'wronguser',
-        password: 'wrongpass'
-      }
+      await expect(login('wrong', 'wrong')).rejects.toThrow(errorMessage)
+    })
 
-      await expect(authApi.login(loginForm)).rejects.toThrow('用户名或密码错误')
+    it('应该正确处理特殊字符输入', async () => {
+      const username = 'test@#$%'
+      const password = 'pass!@#$'
+      
+      await login(username, password)
+      expect(axios.post).toHaveBeenCalledWith('/api/auth/login', {
+        username,
+        password
+      })
     })
   })
 
-  describe('register', () => {
-    it('应该正确调用注册接口', async () => {
+  describe('注册接口', () => {
+    it('使用有效信息应该成功注册', async () => {
       const mockResponse = {
-        token: 'mock-token',
-        user: {
-          id: '1',
+        data: {
+          id: 1,
           username: 'newuser',
-          email: 'new@example.com',
-          role: 'user',
-          createdAt: '2024-03-20'
+          email: 'newuser@example.com'
         }
       }
+      ;(axios.post as any).mockResolvedValueOnce(mockResponse)
 
-      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
-
-      const registerForm: RegisterForm = {
+      const result = await register({
         username: 'newuser',
-        password: 'password123',
-        email: 'new@example.com'
-      }
-
-      const result = await authApi.register(registerForm)
-
-      expect(request.post).toHaveBeenCalledWith('/auth/register', registerForm)
-      expect(result).toEqual(mockResponse)
+        email: 'newuser@example.com',
+        password: 'password123'
+      })
+      expect(result).toEqual(mockResponse.data)
     })
-  })
 
-  describe('getUserInfo', () => {
-    it('应该正确获取用户信息', async () => {
-      const mockResponse = {
-        id: '1',
-        username: 'testuser',
+    it('使用重复的用户名应该返回错误', async () => {
+      const errorMessage = '用户名已存在'
+      ;(axios.post as any).mockRejectedValueOnce(new Error(errorMessage))
+
+      await expect(register({
+        username: 'existing',
         email: 'test@example.com',
-        role: 'user',
-        createdAt: '2024-03-20'
-      }
+        password: 'password123'
+      })).rejects.toThrow(errorMessage)
+    })
 
-      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
+    it('应该验证邮箱格式', async () => {
+      const errorMessage = '无效的邮箱格式'
+      ;(axios.post as any).mockRejectedValueOnce(new Error(errorMessage))
 
-      const result = await authApi.getUserInfo()
-
-      expect(request.get).toHaveBeenCalledWith('/auth/user')
-      expect(result).toEqual(mockResponse)
+      await expect(register({
+        username: 'test',
+        email: 'invalid-email',
+        password: 'password123'
+      })).rejects.toThrow(errorMessage)
     })
   })
 
-  describe('logout', () => {
-    it('应该正确调用登出接口', async () => {
-      vi.mocked(request.post).mockResolvedValueOnce({})
+  describe('登出接口', () => {
+    it('应该成功登出并清除token', async () => {
+      const mockResponse = { data: { message: '登出成功' } }
+      ;(axios.post as any).mockResolvedValueOnce(mockResponse)
 
-      await authApi.logout()
+      const result = await logout()
+      expect(result).toEqual(mockResponse.data)
+      expect(axios.post).toHaveBeenCalledWith('/api/auth/logout')
+    })
+  })
 
-      expect(request.post).toHaveBeenCalledWith('/auth/logout')
+  describe('Token刷新接口', () => {
+    it('应该成功刷新token', async () => {
+      const mockResponse = {
+        data: {
+          token: 'new-mock-token'
+        }
+      }
+      ;(axios.post as any).mockResolvedValueOnce(mockResponse)
+
+      const result = await refreshToken('old-token')
+      expect(result).toEqual(mockResponse.data)
+      expect(axios.post).toHaveBeenCalledWith('/api/auth/refresh', {
+        token: 'old-token'
+      })
+    })
+
+    it('token过期时应该返回错误', async () => {
+      const errorMessage = 'token已过期'
+      ;(axios.post as any).mockRejectedValueOnce(new Error(errorMessage))
+
+      await expect(refreshToken('expired-token')).rejects.toThrow(errorMessage)
     })
   })
 }) 

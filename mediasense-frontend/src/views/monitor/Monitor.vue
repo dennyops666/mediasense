@@ -1,437 +1,384 @@
 <template>
-  <div class="monitor-page">
-    <el-row :gutter="20">
-      <!-- 系统概览 -->
-      <el-col :span="24">
-        <el-card class="overview-card">
+  <div class="monitor-container" data-test="monitor-container">
+    <!-- 加载状态 -->
+    <div v-loading="loading" data-test="loading-container">
+      <!-- 错误信息 -->
+      <el-alert
+        v-if="error"
+        :title="error"
+        type="error"
+        show-icon
+        closable
+        @close="error = null"
+        data-test="error-alert"
+      />
+
+      <!-- 系统指标卡片 -->
+      <div class="metrics-grid">
+        <!-- CPU状态卡片 -->
+        <el-card class="monitor-card" data-test="cpu-card">
           <template #header>
             <div class="card-header">
-              <h2>系统概览</h2>
-              <el-button-group>
-                <el-button
-                  v-for="period in periods"
-                  :key="period.value"
-                  :type="currentPeriod === period.value ? 'primary' : ''"
-                  @click="currentPeriod = period.value"
-                >
-                  {{ period.label }}
-                </el-button>
-              </el-button-group>
+              <span>CPU状态</span>
+              <el-tag 
+                :type="cpuHealthStatus"
+                data-test="cpu-health"
+              >
+                {{ cpuStatusText }}
+              </el-tag>
             </div>
           </template>
-
-          <el-row :gutter="20">
-            <el-col :span="6">
-              <div class="stat-card">
-                <div class="stat-icon cpu">
-                  <el-icon><cpu /></el-icon>
+          <div class="metric-content">
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <div class="metric-item">
+                  <div class="metric-label">使用率</div>
+                  <div class="metric-value" data-test="cpu-usage">{{ cpuUsage }}%</div>
                 </div>
-                <div class="stat-info">
-                  <div class="stat-label">CPU 使用率</div>
-                  <div class="stat-value">{{ cpuUsage }}%</div>
+              </el-col>
+              <el-col :span="12">
+                <div class="metric-item">
+                  <div class="metric-label">核心数</div>
+                  <div class="metric-value" data-test="cpu-cores">{{ cpuCores }}</div>
                 </div>
-              </div>
-            </el-col>
-
-            <el-col :span="6">
-              <div class="stat-card">
-                <div class="stat-icon memory">
-                  <el-icon><monitor /></el-icon>
-                </div>
-                <div class="stat-info">
-                  <div class="stat-label">内存使用率</div>
-                  <div class="stat-value">{{ memoryUsage }}%</div>
-                </div>
-              </div>
-            </el-col>
-
-            <el-col :span="6">
-              <div class="stat-card">
-                <div class="stat-icon disk">
-                  <el-icon><files /></el-icon>
-                </div>
-                <div class="stat-info">
-                  <div class="stat-label">磁盘使用率</div>
-                  <div class="stat-value">{{ diskUsage }}%</div>
-                </div>
-              </div>
-            </el-col>
-
-            <el-col :span="6">
-              <div class="stat-card">
-                <div class="stat-icon process">
-                  <el-icon><operation /></el-icon>
-                </div>
-                <div class="stat-info">
-                  <div class="stat-label">进程数</div>
-                  <div class="stat-value">{{ processCount }}</div>
-                </div>
-              </div>
-            </el-col>
-          </el-row>
-        </el-card>
-      </el-col>
-
-      <!-- CPU 使用率趋势 -->
-      <el-col :span="12">
-        <el-card>
-          <template #header>
-            <div class="card-header">
-              <h3>CPU 使用率趋势</h3>
-            </div>
-          </template>
-          <div class="chart-container">
-            <v-chart class="chart" :option="cpuChartOption" autoresize />
+              </el-col>
+            </el-row>
           </div>
         </el-card>
-      </el-col>
 
-      <!-- 内存使用率趋势 -->
-      <el-col :span="12">
-        <el-card>
+        <!-- 内存状态卡片 -->
+        <el-card class="monitor-card" data-test="memory-card">
           <template #header>
             <div class="card-header">
-              <h3>内存使用率趋势</h3>
+              <span>内存状态</span>
+              <el-tag 
+                :type="memoryHealthStatus"
+                data-test="memory-health"
+              >
+                {{ memoryStatusText }}
+              </el-tag>
             </div>
           </template>
-          <div class="chart-container">
-            <v-chart class="chart" :option="memoryChartOption" autoresize />
+          <div class="metric-content">
+            <el-row :gutter="20">
+              <el-col :span="12">
+                <div class="metric-item">
+                  <div class="metric-label">使用率</div>
+                  <div class="metric-value" data-test="memory-usage">{{ memoryUsage }}%</div>
+                </div>
+              </el-col>
+              <el-col :span="12">
+                <div class="metric-item">
+                  <div class="metric-label">总内存</div>
+                  <div class="metric-value" data-test="total-memory">{{ formatMemory(totalMemory) }}</div>
+                </div>
+              </el-col>
+            </el-row>
           </div>
         </el-card>
-      </el-col>
 
-      <!-- 系统日志 -->
-      <el-col :span="24">
-        <el-card>
+        <!-- 日志卡片 -->
+        <el-card class="monitor-card" data-test="logs-card">
           <template #header>
             <div class="card-header">
-              <h3>系统日志</h3>
-              <el-button-group>
-                <el-button
-                  v-for="level in logLevels"
-                  :key="level.value"
-                  :type="currentLogLevel === level.value ? 'primary' : ''"
-                  @click="currentLogLevel = level.value"
-                >
-                  {{ level.label }}
-                </el-button>
-              </el-button-group>
+              <span>系统日志</span>
+              <el-button 
+                type="primary"
+                @click="refreshLogs"
+                :loading="loading"
+                data-test="refresh-logs-button"
+              >
+                刷新
+              </el-button>
             </div>
           </template>
-
-          <el-table
-            :data="logs"
-            style="width: 100%"
-            max-height="400"
-            v-loading="loading"
-          >
-            <el-table-column prop="timestamp" label="时间" width="180">
-              <template #default="{ row }">
-                {{ formatDate(row.timestamp) }}
-              </template>
-            </el-table-column>
+          <el-table :data="logs" stripe>
+            <el-table-column prop="timestamp" label="时间" width="180" />
             <el-table-column prop="level" label="级别" width="100">
               <template #default="{ row }">
-                <el-tag :type="getLogLevelType(row.level)">
+                <el-tag 
+                  v-if="row && row.level"
+                  :type="getLogLevelType(row.level)"
+                  :data-test="'log-level-' + row.level.toLowerCase()"
+                >
                   {{ row.level }}
                 </el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="module" label="模块" width="150" />
             <el-table-column prop="message" label="消息" />
           </el-table>
-
-          <div class="table-footer">
-            <el-pagination
-              v-model:current-page="currentPage"
-              v-model:page-size="pageSize"
-              :total="total"
-              :page-sizes="[10, 20, 50, 100]"
-              layout="total, sizes, prev, pager, next"
-              @size-change="handleSizeChange"
-              @current-change="handleCurrentChange"
-            />
-          </div>
         </el-card>
-      </el-col>
-    </el-row>
+
+        <!-- 进程列表 -->
+        <el-card class="monitor-card" data-test="process-card">
+          <template #header>
+            <div class="card-header">
+              <span>进程列表</span>
+              <div class="header-actions">
+                <el-input
+                  v-model="processSearch"
+                  placeholder="搜索进程"
+                  prefix-icon="Search"
+                  clearable
+                  style="width: 200px; margin-right: 10px;"
+                  data-test="process-search"
+                />
+                <el-button 
+                  type="primary"
+                  @click="refreshProcessList"
+                  :loading="loading"
+                  data-test="refresh-process-button"
+                >
+                  刷新
+                </el-button>
+              </div>
+            </div>
+          </template>
+          <el-table :data="filteredProcessList" stripe>
+            <el-table-column prop="pid" label="PID" width="100" />
+            <el-table-column prop="name" label="名称" />
+            <el-table-column prop="user" label="用户" width="120" />
+            <el-table-column prop="cpu" label="CPU %" width="100" />
+            <el-table-column prop="memory" label="内存" width="120">
+              <template #default="{ row }">
+                <span v-if="row && row.memory">{{ formatMemory(row.memory) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" label="状态" width="100">
+              <template #default="{ row }">
+                <el-tag 
+                  v-if="row && row.status"
+                  :type="getProcessStatusType(row.status)"
+                  :data-test="'process-status-' + row.status.toLowerCase()"
+                >
+                  {{ row.status }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button 
+                  v-if="row && row.pid"
+                  type="danger" 
+                  size="small"
+                  @click="handleKillProcess(row)"
+                  :disabled="loading"
+                  :data-test="'kill-process-' + row.pid"
+                >
+                  终止
+                </el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-card>
+      </div>
+    </div>
   </div>
 </template>
 
-<script setup lang="ts">
-import { ref, onMounted, onUnmounted, watch } from 'vue'
-import { use } from 'echarts/core'
-import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart } from 'echarts/charts'
-import {
-  GridComponent,
-  TooltipComponent,
-  LegendComponent
-} from 'echarts/components'
-import type { ECBasicOption } from 'echarts/types/dist/shared'
-import VChart from 'vue-echarts'
-import { formatDate } from '@/utils/date'
-import {
-  Monitor,
-  Files,
-  Operation,
-  Cpu
-} from '@element-plus/icons-vue'
-import type { SystemLog } from '@/types/api'
-import * as monitorApi from '@/api/monitor'
-import { ElMessage } from 'element-plus'
+<script lang="ts" setup>
+import { ref, onMounted, onUnmounted, computed } from 'vue'
+import { ElMessageBox, ElMessage } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
+import { useMonitorStore } from '@/stores/monitor'
+import type { ProcessInfo, LogInfo } from '@/types/monitor'
 
-// 注册 ECharts 组件
-use([
-  CanvasRenderer,
-  LineChart,
-  GridComponent,
-  TooltipComponent,
-  LegendComponent
-])
-
-// 时间周期选项
-const periods = [
-  { label: '实时', value: 'realtime' },
-  { label: '1小时', value: '1h' },
-  { label: '24小时', value: '24h' },
-  { label: '7天', value: '7d' }
-] as const
-
-type PeriodValue = typeof periods[number]['value']
-const currentPeriod = ref<PeriodValue>('realtime')
-
-// 日志级别选项
-const logLevels = [
-  { label: '全部', value: 'all' },
-  { label: '错误', value: 'error' },
-  { label: '警告', value: 'warning' },
-  { label: '信息', value: 'info' }
-] as const
-
-type LogLevel = typeof logLevels[number]['value']
-const currentLogLevel = ref<LogLevel>('all')
-
-// 系统指标
-const cpuUsage = ref(0)
-const memoryUsage = ref(0)
-const diskUsage = ref(0)
-const processCount = ref(0)
-
-// 图表数据
-interface ChartOption extends ECBasicOption {
-  tooltip: {
-    trigger: 'axis'
-  }
-  grid: {
-    left: string
-    right: string
-    bottom: string
-    containLabel: boolean
-  }
-  xAxis: {
-    type: 'category'
-    boundaryGap: boolean
-    data: string[]
-  }
-  yAxis: {
-    type: 'value'
-    max: number
-    min: number
-  }
-  series: Array<{
-    name: string
-    type: 'line'
-    data: number[]
-    smooth: boolean
-    showSymbol: boolean
-    areaStyle: {
-      opacity: number
-    }
-  }>
-}
-
-const cpuChartOption = ref<ChartOption>({
-  tooltip: {
-    trigger: 'axis'
-  },
-  grid: {
-    left: '3%',
-    right: '4%',
-    bottom: '3%',
-    containLabel: true
-  },
-  xAxis: {
-    type: 'category',
-    boundaryGap: false,
-    data: []
-  },
-  yAxis: {
-    type: 'value',
-    max: 100,
-    min: 0
-  },
-  series: [
-    {
-      name: 'CPU使用率',
-      type: 'line',
-      data: [],
-      smooth: true,
-      showSymbol: false,
-      areaStyle: {
-        opacity: 0.1
-      }
-    }
-  ]
-})
-
-const memoryChartOption = ref<ChartOption>({
-  tooltip: {
-    trigger: 'axis'
-  },
-  grid: {
-    left: '3%',
-    right: '4%',
-    bottom: '3%',
-    containLabel: true
-  },
-  xAxis: {
-    type: 'category',
-    boundaryGap: false,
-    data: []
-  },
-  yAxis: {
-    type: 'value',
-    max: 100,
-    min: 0
-  },
-  series: [
-    {
-      name: '内存使用率',
-      type: 'line',
-      data: [],
-      smooth: true,
-      showSymbol: false,
-      areaStyle: {
-        opacity: 0.1
-      }
-    }
-  ]
-})
+const store = useMonitorStore()
+const loading = ref(false)
+const error = ref<string | null>(null)
 
 // 日志相关
-const logs = ref<SystemLog[]>([])
-const loading = ref(false)
-const currentPage = ref(1)
-const pageSize = ref(20)
-const total = ref(0)
+const logs = ref<LogInfo[]>([])
 
-const fetchLogs = async () => {
+const refreshLogs = async () => {
   try {
     loading.value = true
-    const params = {
-      page: currentPage.value,
-      pageSize: pageSize.value,
-      level: currentLogLevel.value === 'all' ? undefined : currentLogLevel.value
-    }
-    const { total: totalCount, items } = await monitorApi.getSystemLogs(params)
-    logs.value = items
-    total.value = totalCount
-  } catch (error) {
-    ElMessage.error('获取系统日志失败')
+    error.value = null
+    const data = await store.fetchLogs()
+    logs.value = data || []
+  } catch (err) {
+    error.value = '获取日志失败'
+    console.error('获取日志失败:', err)
   } finally {
     loading.value = false
   }
 }
 
-const handleSizeChange = (val: number) => {
-  pageSize.value = val
-  fetchLogs()
+const getLogLevelType = (level: string | undefined) => {
+  if (!level) return ''
+  switch (level.toLowerCase()) {
+    case 'error': return 'danger'
+    case 'warning': return 'warning'
+    case 'info': return 'info'
+    default: return ''
+  }
 }
 
-const handleCurrentChange = (val: number) => {
-  currentPage.value = val
-  fetchLogs()
-}
+// 进程相关
+const processSearch = ref('')
+const processList = ref<ProcessInfo[]>([])
 
-// 监听日志级别变化
-watch(currentLogLevel, () => {
-  currentPage.value = 1 // 重置页码
-  fetchLogs()
+const filteredProcessList = computed(() => {
+  if (!processSearch.value) return processList.value
+  const keyword = processSearch.value.toLowerCase()
+  return processList.value.filter(process => 
+    (process.name?.toLowerCase().includes(keyword) || false) ||
+    (process.user?.toLowerCase().includes(keyword) || false)
+  )
 })
 
-const getLogLevelType = (level: SystemLog['level']) => {
-  const types: Record<SystemLog['level'], string> = {
-    error: 'danger',
-    warning: 'warning',
-    info: 'info'
-  }
-  return types[level]
-}
-
-const updateChartData = (timeStr: string, cpuValue: number, memoryValue: number) => {
-  // 更新 CPU 图表数据
-  cpuChartOption.value.xAxis.data.push(timeStr)
-  cpuChartOption.value.series[0].data.push(cpuValue)
-  if (cpuChartOption.value.xAxis.data.length > 60) {
-    cpuChartOption.value.xAxis.data.shift()
-    cpuChartOption.value.series[0].data.shift()
-  }
-
-  // 更新内存图表数据
-  memoryChartOption.value.xAxis.data.push(timeStr)
-  memoryChartOption.value.series[0].data.push(memoryValue)
-  if (memoryChartOption.value.xAxis.data.length > 60) {
-    memoryChartOption.value.xAxis.data.shift()
-    memoryChartOption.value.series[0].data.shift()
-  }
-}
-
-const updateMetrics = async () => {
+const refreshProcessList = async () => {
   try {
-    const data = await monitorApi.getSystemMetrics()
-    const now = new Date()
-    const timeStr = now.toLocaleTimeString()
-    
-    cpuUsage.value = Math.round(data.cpuUsage)
-    memoryUsage.value = Math.round(data.memoryUsage)
-    diskUsage.value = Math.round(data.diskUsage)
-    processCount.value = data.processCount
-    
-    updateChartData(timeStr, data.cpuUsage, data.memoryUsage)
-  } catch (error) {
-    console.error('获取系统指标失败:', error)
+    loading.value = true
+    error.value = null
+    const data = await store.fetchProcessList()
+    processList.value = data || []
+  } catch (err) {
+    error.value = '获取进程列表失败'
+    console.error('获取进程列表失败:', err)
+  } finally {
+    loading.value = false
   }
 }
 
-// 定时更新数据
-let timer: number | null = null
+const getProcessStatusType = (status: string | undefined) => {
+  if (!status) return ''
+  switch (status.toLowerCase()) {
+    case 'running': return 'success'
+    case 'stopped': return 'danger'
+    case 'sleeping': return 'warning'
+    default: return ''
+  }
+}
 
+const handleKillProcess = async (process: ProcessInfo) => {
+  if (!process?.pid) return
+  
+  try {
+    await ElMessageBox.confirm('确定要终止该进程吗？', '警告', {
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+      type: 'warning'
+    })
+    
+    loading.value = true
+    error.value = null
+    await store.killProcess(process.pid)
+    ElMessage.success('进程已终止')
+    await refreshProcessList()
+  } catch (err) {
+    if (err === 'cancel') return
+    error.value = '终止进程失败'
+    console.error('终止进程失败:', err)
+    ElMessage.error('终止进程失败')
+  } finally {
+    loading.value = false
+  }
+}
+
+// 系统指标相关
+const cpuUsage = ref(0)
+const cpuCores = ref(0)
+const cpuLoad = ref(0)
+const totalMemory = ref(0)
+const usedMemory = ref(0)
+const memoryUsage = ref(0)
+
+const refreshSystemMetrics = async () => {
+  try {
+    loading.value = true
+    error.value = null
+    const metrics = await store.fetchSystemMetrics()
+    if (metrics) {
+      cpuUsage.value = metrics.cpu?.usage || 0
+      cpuCores.value = metrics.cpu?.cores || 0
+      cpuLoad.value = metrics.cpu?.load?.[0] || 0
+      totalMemory.value = metrics.memory?.total || 0
+      usedMemory.value = metrics.memory?.used || 0
+      memoryUsage.value = metrics.memory?.usage || 0
+    }
+  } catch (err) {
+    error.value = '获取系统指标失败'
+    console.error('获取系统指标失败:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+const cpuHealthStatus = computed(() => {
+  if (cpuUsage.value >= 90) return 'danger'
+  if (cpuUsage.value >= 70) return 'warning'
+  return 'success'
+})
+
+const memoryHealthStatus = computed(() => {
+  if (memoryUsage.value >= 90) return 'danger'
+  if (memoryUsage.value >= 70) return 'warning'
+  return 'success'
+})
+
+const cpuStatusText = computed(() => {
+  if (cpuUsage.value >= 90) return '严重'
+  if (cpuUsage.value >= 70) return '警告'
+  return '正常'
+})
+
+const memoryStatusText = computed(() => {
+  if (memoryUsage.value >= 90) return '严重'
+  if (memoryUsage.value >= 70) return '警告'
+  return '正常'
+})
+
+const formatMemory = (bytes: number) => {
+  if (!bytes) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB', 'TB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  return `${(bytes / Math.pow(1024, i)).toFixed(2)} ${units[i]}`
+}
+
+// 自动刷新
+let refreshTimer: NodeJS.Timer | null = null
+
+const startAutoRefresh = () => {
+  refreshTimer = setInterval(refreshSystemMetrics, 5000)
+}
+
+const stopAutoRefresh = () => {
+  if (refreshTimer) {
+    clearInterval(refreshTimer)
+    refreshTimer = null
+  }
+}
+
+// 生命周期钩子
 onMounted(async () => {
-  // 初始化加载日志
-  await fetchLogs()
-  
-  // 初始化系统指标
-  await updateMetrics()
-  
-  // 定时更新系统指标
-  timer = window.setInterval(updateMetrics, 2000)
+  await Promise.all([
+    refreshSystemMetrics(),
+    refreshLogs(),
+    refreshProcessList()
+  ])
+  startAutoRefresh()
 })
 
 onUnmounted(() => {
-  if (timer !== null) {
-    clearInterval(timer)
-  }
+  stopAutoRefresh()
 })
 </script>
 
 <style scoped>
-.monitor-page {
+.monitor-container {
   padding: 20px;
 }
 
-.overview-card {
-  margin-bottom: 20px;
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.monitor-card {
+  height: 100%;
 }
 
 .card-header {
@@ -440,85 +387,29 @@ onUnmounted(() => {
   align-items: center;
 }
 
-.card-header h2,
-.card-header h3 {
-  margin: 0;
-}
-
-.stat-card {
+.header-actions {
   display: flex;
   align-items: center;
-  padding: 20px;
-  background-color: var(--el-bg-color-page);
-  border-radius: var(--el-border-radius-base);
 }
 
-.stat-icon {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 48px;
-  height: 48px;
-  border-radius: 12px;
-  margin-right: 16px;
-  font-size: 24px;
+.metric-content {
+  padding: 10px;
 }
 
-.stat-icon.cpu {
-  background-color: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
+.metric-item {
+  text-align: center;
+  padding: 10px;
 }
 
-.stat-icon.memory {
-  background-color: var(--el-color-success-light-9);
-  color: var(--el-color-success);
-}
-
-.stat-icon.disk {
-  background-color: var(--el-color-warning-light-9);
-  color: var(--el-color-warning);
-}
-
-.stat-icon.process {
-  background-color: var(--el-color-info-light-9);
-  color: var(--el-color-info);
-}
-
-.stat-info {
-  flex: 1;
-}
-
-.stat-label {
+.metric-label {
   font-size: 14px;
-  color: var(--el-text-color-secondary);
-  margin-bottom: 4px;
+  color: #666;
+  margin-bottom: 5px;
 }
 
-.stat-value {
+.metric-value {
   font-size: 24px;
   font-weight: bold;
-  color: var(--el-text-color-primary);
-}
-
-.chart-container {
-  height: 300px;
-}
-
-.chart {
-  height: 100%;
-}
-
-.table-footer {
-  margin-top: 16px;
-  display: flex;
-  justify-content: flex-end;
-}
-
-:deep(.el-card) {
-  margin-bottom: 20px;
-}
-
-:deep(.el-table) {
-  margin-top: 16px;
+  color: #333;
 }
 </style> 

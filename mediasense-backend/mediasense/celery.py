@@ -32,6 +32,10 @@ app.conf.beat_schedule = {
         'task': 'crawler.tasks.schedule_crawlers',
         'schedule': crontab(minute='0'),  # 每小时执行一次
     },
+    'collect-system-metrics': {
+        'task': 'monitoring.tasks.collect_system_metrics',
+        'schedule': crontab(minute='*/1'),  # 每分钟执行一次
+    },
 }
 
 

@@ -1,143 +1,81 @@
-import { vi } from 'vitest'
 import { config } from '@vue/test-utils'
-import ElementPlus from 'element-plus'
-
-// 配置全局组件
-config.global.plugins = [ElementPlus]
-
-vi.mock('@element-plus/icons-vue', () => ({
-  Check: { render: () => null },
-  Loading: { render: () => null },
-  Search: { render: () => null },
-  User: { render: () => null },
-  CircleClose: { render: () => null },
-  Close: { render: () => null },
-  Edit: { render: () => null },
-  Delete: { render: () => null },
-  Plus: { render: () => null },
-  Warning: { render: () => null },
-  Success: { render: () => null },
-  Info: { render: () => null },
-  Error: { render: () => null },
-  ArrowDown: { render: () => null },
-  Connection: { render: () => null },
-  Lock: { render: () => null },
-  Message: { render: () => null }
-}))
+import { createRouter, createWebHistory, Router } from 'vue-router'
+import { createPinia } from 'pinia'
+import ElementPlus from './mocks/element-plus'
+import { routes } from '@/router'
+import axios from 'axios'
+import * as echarts from 'echarts'
+import { vi } from 'vitest'
 
 // Mock axios
-vi.mock('axios', () => ({
-  default: {
-    create: () => ({
-      get: vi.fn().mockResolvedValue({ data: {} }),
-      post: vi.fn().mockResolvedValue({ data: {} }),
-      put: vi.fn().mockResolvedValue({ data: {} }),
-      delete: vi.fn().mockResolvedValue({ data: {} }),
-      interceptors: {
-        request: { use: vi.fn(), eject: vi.fn() },
-        response: { use: vi.fn(), eject: vi.fn() }
-      }
-    })
-  }
+vi.mock('axios')
+
+// Mock echarts
+vi.mock('echarts', () => ({
+  init: vi.fn(() => ({
+    setOption: vi.fn(),
+    resize: vi.fn(),
+    dispose: vi.fn()
+  }))
 }))
 
-// 模拟 Element Plus 的组件和指令
-const mockComponent = {
-  template: '<div><slot></slot><slot name="header"></slot><slot name="dropdown"></slot></div>',
-  props: {
-    modelValue: null
+// 创建路由实例
+const router = createRouter({
+  history: createWebHistory(),
+  routes
+})
+
+// 配置全局组件
+config.global.plugins = [
+  ElementPlus,
+  router,
+  createPinia()
+]
+
+// 配置全局属性
+config.global.mocks = {
+  $route: {
+    params: {},
+    query: {},
+    path: '/'
   },
-  emits: ['update:modelValue', 'click', 'change']
+  $router: router
 }
 
-const mockDirective = {
-  mounted: () => {},
-  updated: () => {},
-  unmounted: () => {}
+// 配置全局 stubs
+config.global.stubs = {
+  transition: false,
+  'router-view': true,
+  'router-link': true
 }
-
-vi.mock('element-plus', async () => {
-  const actual = await vi.importActual('element-plus')
-  return {
-    ...actual as any,
-    ElDescriptions: mockComponent,
-    ElDescriptionsItem: mockComponent,
-    ElInputNumber: mockComponent,
-    ElCollapse: mockComponent,
-    ElCollapseItem: mockComponent,
-    ElDatePicker: mockComponent,
-    ElTable: mockComponent,
-    ElTableColumn: mockComponent,
-    ElButton: mockComponent,
-    ElDialog: mockComponent,
-    ElForm: mockComponent,
-    ElFormItem: mockComponent,
-    ElInput: mockComponent,
-    ElSelect: mockComponent,
-    ElOption: mockComponent,
-    ElSwitch: mockComponent,
-    ElTabs: mockComponent,
-    ElTabPane: mockComponent,
-    ElCard: mockComponent,
-    ElMenu: mockComponent,
-    ElMenuItem: mockComponent,
-    ElDropdown: mockComponent,
-    ElDropdownMenu: mockComponent,
-    ElDropdownItem: mockComponent,
-    ElContainer: mockComponent,
-    ElHeader: mockComponent,
-    ElMain: mockComponent,
-    ElFooter: mockComponent,
-    ElLink: mockComponent,
-    ElIcon: mockComponent,
-    ElMessage: {
-      success: vi.fn(),
-      warning: vi.fn(),
-      error: vi.fn(),
-      info: vi.fn()
-    },
-    vLoading: mockDirective
-  }
-})
-
-// Mock window.matchMedia
-Object.defineProperty(window, 'matchMedia', {
-  writable: true,
-  value: vi.fn().mockImplementation(query => ({
-    matches: false,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(),
-  })),
-})
 
 // Mock ResizeObserver
 class ResizeObserver {
-  observe = vi.fn()
-  unobserve = vi.fn()
-  disconnect = vi.fn()
+  observe() {}
+  unobserve() {}
+  disconnect() {}
 }
 
-window.ResizeObserver = ResizeObserver
+// Mock matchMedia
+window.matchMedia = vi.fn().mockImplementation(query => ({
+  matches: false,
+  media: query,
+  onchange: null,
+  addListener: vi.fn(),
+  removeListener: vi.fn()
+}))
 
-// Mock IntersectionObserver
-class IntersectionObserver {
-  observe = vi.fn()
-  unobserve = vi.fn()
-  disconnect = vi.fn()
+// Mock localStorage
+const localStorageMock = {
+  getItem: vi.fn(),
+  setItem: vi.fn(),
+  clear: vi.fn(),
+  removeItem: vi.fn()
 }
+Object.defineProperty(window, 'localStorage', { value: localStorageMock })
 
-window.IntersectionObserver = IntersectionObserver
+// Mock canvas
+HTMLCanvasElement.prototype.getContext = vi.fn()
 
-// Mock console.error to suppress unnecessary warnings
-console.error = vi.fn()
-
-// Mock CSS modules
-vi.mock('*.css', () => ({}))
-vi.mock('*.scss', () => ({}))
-vi.mock('*.less', () => ({}))
-vi.mock('*.sass', () => ({})) 
+// 导出配置
+export { router }

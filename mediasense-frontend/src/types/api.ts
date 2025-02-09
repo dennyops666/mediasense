@@ -103,40 +103,70 @@ export interface CrawlerConfig {
 
 // AI 服务相关类型
 export interface SentimentAnalysis {
-  text: string
   sentiment: 'positive' | 'negative' | 'neutral'
   score: number
-  keywords: string[]
+  details: {
+    positive: number
+    negative: number
+    neutral: number
+  }
 }
 
 export interface TextSummary {
-  originalText: string
   summary: string
-  keyPoints: string[]
-  wordCount: number
+  length: number
+  keywords: string[]
 }
 
 export interface TopicAnalysis {
-  text: string
   topics: Array<{
     name: string
-    confidence: number
+    score: number
     keywords: string[]
   }>
 }
 
 export interface TrendAnalysis {
-  keyword: string
-  period: string
-  trends: Array<{
+  trend: 'up' | 'down' | 'stable'
+  data: Array<{
     date: string
-    frequency: number
-    sentiment: number
+    value: number
   }>
-  relatedTopics: Array<{
-    topic: string
-    correlation: number
-  }>
+}
+
+export interface UsageStats {
+  totalCalls: number
+  monthCalls: number
+  remainingCredits: number
+}
+
+export interface PerformanceStats {
+  avgResponseTime: number
+  successRate: number
+}
+
+export interface TaskStats {
+  total: number
+  success: number
+  failed: number
+}
+
+export interface TrendData {
+  dates: string[]
+  values: number[]
+}
+
+export interface ModelUsage {
+  model: string
+  count: number
+}
+
+export interface KeywordData {
+  name: string
+  value: number
+  textStyle?: {
+    color?: string
+  }
 }
 
 export interface AIAnalysisRequest {

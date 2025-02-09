@@ -2,6 +2,9 @@ import os
 import environ
 from pathlib import Path
 
+# 设置 Django 设置模块
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'mediasense.settings')
+
 # 初始化环境变量
 env = environ.Env()
 environ.Env.read_env()
@@ -32,6 +35,8 @@ INSTALLED_APPS = [
     'crawler',
     'monitoring',  # 使用新的monitoring应用
     'custom_auth',
+    'news.apps.NewsConfig',  # 添加news应用
+    'news_search.apps.NewsSearchConfig',  # 添加news_search应用
 ]
 
 MIDDLEWARE = [
@@ -44,6 +49,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'mediasense.middleware.Custom404Middleware',
+    'mediasense.middleware.token_refresh.TokenRefreshMiddleware',  # 添加token刷新中间件
     # 'monitoring.middleware.AsyncMiddleware',  # 暂时禁用异步中间件
 ]
 
@@ -144,8 +150,8 @@ CORS_ALLOW_CREDENTIALS = True
 # JWT settings
 from datetime import timedelta
 SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=1),
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=24),
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=30),
     'ROTATE_REFRESH_TOKENS': True,
     'BLACKLIST_AFTER_ROTATION': True,
     'UPDATE_LAST_LOGIN': True,
@@ -165,6 +171,15 @@ SIMPLE_JWT = {
     'SLIDING_TOKEN_REFRESH_SERIALIZER': 'rest_framework_simplejwt.serializers.TokenRefreshSlidingSerializer',
     'AUTH_TOKEN_CLASSES': ('rest_framework_simplejwt.tokens.AccessToken',),
     'TOKEN_TYPE_CLAIM': 'token_type',
+    'JTI_CLAIM': 'jti',
+    'SLIDING_TOKEN_LIFETIME': timedelta(hours=24),
+    'SLIDING_TOKEN_REFRESH_LIFETIME': timedelta(days=30),
+    'AUTH_COOKIE': 'access_token',
+    'AUTH_COOKIE_DOMAIN': None,
+    'AUTH_COOKIE_SECURE': False,
+    'AUTH_COOKIE_HTTP_ONLY': True,
+    'AUTH_COOKIE_PATH': '/',
+    'AUTH_COOKIE_SAMESITE': 'Lax',
 }
 
 # Email settings
@@ -186,6 +201,12 @@ OPENAI_RATE_LIMIT = int(os.getenv('OPENAI_RATE_LIMIT', '60'))
 OPENAI_RATE_LIMIT_WINDOW = int(os.getenv('OPENAI_RATE_LIMIT_WINDOW', '60'))
 OPENAI_CACHE_TTL = int(os.getenv('OPENAI_CACHE_TTL', '3600'))
 
+# Elasticsearch配置
+ELASTICSEARCH_HOSTS = env.list('ELASTICSEARCH_HOSTS', default=['http://localhost:9200'])
+ELASTICSEARCH_TIMEOUT = env.int('ELASTICSEARCH_TIMEOUT', default=30)
+ELASTICSEARCH_MAX_RETRIES = env.int('ELASTICSEARCH_MAX_RETRIES', default=3)
+ELASTICSEARCH_RETRY_ON_TIMEOUT = env.bool('ELASTICSEARCH_RETRY_ON_TIMEOUT', default=True)
+
 # Redis配置
 REDIS_HOST = os.getenv('REDIS_HOST', 'localhost')
 REDIS_PORT = int(os.getenv('REDIS_PORT', '6379'))
@@ -199,19 +220,50 @@ GENERATE_SUMMARY = env.bool("GENERATE_SUMMARY", default=True)
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {process:d} {thread:d} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
     'handlers': {
         'console': {
             'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'django.log'),
+            'formatter': 'verbose',
         },
     },
     'root': {
-        'handlers': ['console'],
-        'level': 'DEBUG',
+        'handlers': ['console', 'file'],
+        'level': 'INFO',
     },
     'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
         'crawler': {
-            'handlers': ['console'],
-            'level': 'DEBUG',
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'monitoring': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'ai_service': {
+            'handlers': ['console', 'file'],
+            'level': 'INFO',
             'propagate': True,
         },
     },
@@ -220,3 +272,25 @@ LOGGING = {
 # 测试设置
 TEST_RUNNER = 'monitoring.tests.test_runner.NoDbTestRunner'
 TEST_NON_SERIALIZED_APPS = []
+
+# 添加日志配置
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+        'file': {
+            'class': 'logging.FileHandler',
+            'filename': 'debug.log',
+        },
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console', 'file'],
+            'level': 'DEBUG',
+            'propagate': True,
+        },
+    },
+}

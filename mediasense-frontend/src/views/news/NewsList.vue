@@ -8,6 +8,7 @@
             placeholder="选择分类"
             clearable
             @change="handleFilterChange"
+            data-test="category-select"
           >
             <el-option
               v-for="category in newsStore.categories"
@@ -24,6 +25,7 @@
             placeholder="选择来源"
             clearable
             @change="handleFilterChange"
+            data-test="source-select"
           >
             <el-option
               v-for="source in newsStore.sources"
@@ -42,6 +44,7 @@
             start-placeholder="开始日期"
             end-placeholder="结束日期"
             @change="handleFilterChange"
+            data-test="date-picker"
           />
         </el-form-item>
 
@@ -51,15 +54,20 @@
             placeholder="搜索关键词"
             clearable
             @keyup.enter="handleFilterChange"
+            data-test="search-input"
           >
             <template #suffix>
-              <el-icon class="search-icon" @click="handleFilterChange">
+              <el-icon class="search-icon" @click="handleFilterChange" data-test="search-button">
                 <search />
               </el-icon>
             </template>
           </el-input>
         </el-form-item>
       </el-form>
+
+      <el-button type="primary" @click="handleCreateClick" data-test="create-button">
+        创建新闻
+      </el-button>
     </div>
 
     <div class="news-grid" v-loading="newsStore.loading">
@@ -70,26 +78,32 @@
         :key="news.id"
         class="news-card"
         @click="handleNewsClick(news.id)"
+        data-test="news-item"
       >
         <template #header>
           <div class="news-header">
-            <h3 class="news-title">{{ news.title }}</h3>
+            <h3 class="news-title" data-test="news-title">
+              {{ news.title }}
+            </h3>
             <el-tag size="small" :type="getTagType(news.category)">
               {{ news.category }}
             </el-tag>
           </div>
         </template>
 
-        <p class="news-summary">{{ news.summary }}</p>
+        <p class="news-summary" data-test="news-summary">{{ news.summary }}</p>
         
         <div class="news-footer">
-          <span class="news-source">
+          <span class="news-source" data-test="news-source">
             <el-icon><location /></el-icon>
             {{ news.source }}
           </span>
-          <span class="news-time">
+          <span class="news-time" data-test="news-publish-time">
             <el-icon><clock /></el-icon>
             {{ formatDate(news.publishTime) }}
+          </span>
+          <span class="news-views" data-test="news-read-count">
+            阅读量: {{ news.readCount }}
           </span>
         </div>
       </el-card>
@@ -104,7 +118,16 @@
         layout="total, sizes, prev, pager, next, jumper"
         @size-change="handleSizeChange"
         @current-change="handleCurrentChange"
+        data-test="pagination"
       />
+    </div>
+
+    <div v-if="newsStore.loading" data-test="loading-spinner">
+      <el-loading />
+    </div>
+
+    <div v-if="newsStore.error" class="error-message" data-test="error-message">
+      {{ newsStore.error }}
     </div>
   </div>
 </template>
@@ -116,6 +139,7 @@ import { useNewsStore } from '@/stores/news'
 import { Search, Location, Clock } from '@element-plus/icons-vue'
 import { formatDate } from '@/utils/date'
 import { storeToRefs } from 'pinia'
+import { ElMessage } from 'element-plus'
 
 const router = useRouter()
 const newsStore = useNewsStore()
@@ -130,6 +154,15 @@ onMounted(async () => {
   ])
 })
 
+// 处理创建新闻
+const handleCreateClick = () => {
+  router.push({
+    name: 'news-create'
+  }).catch(() => {
+    ElMessage.error('导航失败')
+  })
+}
+
 // 处理筛选条件变化
 const handleFilterChange = () => {
   newsStore.applyFilter(newsStore.filter)
@@ -137,16 +170,22 @@ const handleFilterChange = () => {
 
 // 处理分页变化
 const handleSizeChange = (size: number) => {
-  newsStore.applyFilter({ pageSize: size })
+  newsStore.applyFilter({ ...newsStore.filter, pageSize: size })
 }
 
 const handleCurrentChange = (page: number) => {
-  newsStore.applyFilter({ page })
+  newsStore.applyFilter({ ...newsStore.filter, page })
 }
 
 // 处理新闻点击
 const handleNewsClick = (id: string) => {
-  router.push(`/news/${id}`)
+  router.push({
+    name: 'news-detail',
+    params: { id: String(id) }
+  }).catch(error => {
+    console.error('导航失败:', error)
+    ElMessage.error('导航失败')
+  })
 }
 
 // 获取标签类型

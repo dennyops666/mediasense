@@ -1,38 +1,74 @@
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed } from 'vue'
 import { useMonitorStore } from '@/stores/monitor'
-import type { SystemMetrics, Alert } from '@/types/monitor'
+import type { SystemMetrics, SystemLog, ProcessInfo, Alert } from '@/types/api'
 
 export function useMonitor() {
   const store = useMonitorStore()
-  const updateInterval = ref<number>()
   const loading = ref(false)
   const error = ref<string | null>(null)
+
+  // 计算属性
+  const resources = computed(() => {
+    if (!store.metrics) {
+      return {
+        cpu: { usage: 0, cores: 0 },
+        memory: { total: 0, used: 0, free: 0 },
+        disk: { total: 0, used: 0, free: 0 },
+        network: { upload: 0, download: 0, latency: 0 }
+      }
+    }
+    return {
+      cpu: {
+        usage: store.metrics.cpu,
+        cores: store.metrics.cpuCores
+      },
+      memory: {
+        total: store.metrics.memoryTotal,
+        used: store.metrics.memoryUsed,
+        free: store.metrics.memoryFree
+      },
+      disk: {
+        total: store.metrics.diskTotal,
+        used: store.metrics.diskUsed,
+        free: store.metrics.diskFree
+      },
+      network: {
+        upload: store.metrics.networkUpload,
+        download: store.metrics.networkDownload,
+        latency: store.metrics.networkLatency
+      }
+    }
+  })
+  
+  const logs = computed<SystemLog[]>(() => store.logs || [])
+  const processes = computed<ProcessInfo[]>(() => store.processes || [])
+  const alerts = computed<Alert[]>(() => store.alerts || [])
 
   // 获取系统指标
   const fetchMetrics = async () => {
     try {
       loading.value = true
-      await store.fetchSystemMetrics()
       error.value = null
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取系统指标失败'
+      await store.fetchSystemMetrics()
+      return store.metrics
+    } catch (err: any) {
+      error.value = err.message
+      throw err
     } finally {
       loading.value = false
     }
   }
 
   // 获取系统日志
-  const fetchLogs = async (params: {
-    page: number
-    pageSize: number
-    level?: string
-  }) => {
+  const fetchLogs = async () => {
     try {
       loading.value = true
-      await store.fetchSystemLogs(params)
       error.value = null
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取系统日志失败'
+      await store.fetchSystemLogs({ page: 1, pageSize: 10 })
+      return store.logs
+    } catch (err: any) {
+      error.value = err.message
+      throw err
     } finally {
       loading.value = false
     }
@@ -42,27 +78,27 @@ export function useMonitor() {
   const fetchProcesses = async () => {
     try {
       loading.value = true
-      await store.fetchProcessList()
       error.value = null
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取进程列表失败'
+      await store.fetchProcessList()
+      return store.processes
+    } catch (err: any) {
+      error.value = err.message
+      throw err
     } finally {
       loading.value = false
     }
   }
 
   // 获取告警列表
-  const fetchAlerts = async (params: {
-    page: number
-    pageSize: number
-    level?: string
-  }) => {
+  const fetchAlerts = async () => {
     try {
       loading.value = true
-      await store.fetchAlerts(params)
       error.value = null
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '获取告警列表失败'
+      await store.fetchAlerts()
+      return store.alerts
+    } catch (err: any) {
+      error.value = err.message
+      throw err
     } finally {
       loading.value = false
     }
@@ -72,10 +108,11 @@ export function useMonitor() {
   const acknowledgeAlert = async (alertId: string) => {
     try {
       loading.value = true
-      await store.acknowledgeAlert(alertId)
       error.value = null
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '确认告警失败'
+      await store.handleAcknowledgeAlert(alertId)
+    } catch (err: any) {
+      error.value = err.message
+      throw err
     } finally {
       loading.value = false
     }
@@ -85,10 +122,11 @@ export function useMonitor() {
   const deleteAlert = async (alertId: string) => {
     try {
       loading.value = true
-      await store.deleteAlert(alertId)
       error.value = null
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '删除告警失败'
+      await store.deleteAlert(alertId)
+    } catch (err: any) {
+      error.value = err.message
+      throw err
     } finally {
       loading.value = false
     }
@@ -98,52 +136,47 @@ export function useMonitor() {
   const clearAllAlerts = async () => {
     try {
       loading.value = true
-      await store.clearAllAlerts()
       error.value = null
-    } catch (err) {
-      error.value = err instanceof Error ? err.message : '清除告警失败'
+      await store.clearAllAlerts()
+    } catch (err: any) {
+      error.value = err.message
+      throw err
     } finally {
       loading.value = false
     }
   }
 
   // 开始自动更新
-  const startAutoUpdate = (interval = 5000) => {
-    stopAutoUpdate()
-    updateInterval.value = window.setInterval(() => {
-      fetchMetrics()
-    }, interval)
+  const startAutoUpdate = () => {
+    store.startAutoUpdate()
   }
 
   // 停止自动更新
   const stopAutoUpdate = () => {
-    if (updateInterval.value) {
-      clearInterval(updateInterval.value)
-      updateInterval.value = undefined
-    }
+    store.stopAutoUpdate()
   }
 
   // 导出监控数据
-  const exportMonitorData = () => {
-    return store.exportMonitoringData()
+  const exportData = async () => {
+    try {
+      loading.value = true
+      error.value = null
+      const result = await store.exportMonitoringData()
+      return result
+    } catch (err: any) {
+      error.value = err.message
+      throw err
+    } finally {
+      loading.value = false
+    }
   }
-
-  // 生命周期钩子
-  onMounted(() => {
-    fetchMetrics()
-    startAutoUpdate()
-  })
-
-  onUnmounted(() => {
-    stopAutoUpdate()
-  })
 
   return {
     // 状态
-    metrics: store.metrics,
-    logs: store.logs,
-    processes: store.processes,
-    alerts: store.alerts,
+    resources,
+    logs,
+    processes,
+    alerts,
     loading,
     error,
 
@@ -157,6 +190,6 @@ export function useMonitor() {
     clearAllAlerts,
     startAutoUpdate,
     stopAutoUpdate,
-    exportMonitorData
+    exportData
   }
 } 

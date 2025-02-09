@@ -37,6 +37,12 @@ formatter = logging.Formatter('%(levelname)s %(asctime)s %(name)s %(process)d %(
 console_handler.setFormatter(formatter)
 logger.addHandler(console_handler)
 
+# 添加文件处理器
+file_handler = logging.FileHandler('logs/crawler_service.log')
+file_handler.setLevel(logging.DEBUG)
+file_handler.setFormatter(formatter)
+logger.addHandler(file_handler)
+
 class CrawlerService:
     """爬虫服务"""
 
@@ -47,6 +53,8 @@ class CrawlerService:
         :param config: 爬虫配置
         :return: 爬虫实例
         """
+        logger.info(f"开始创建爬虫实例: {config.name} (类型: {config.crawler_type})")
+        
         if not config.status:
             logger.warning(f"爬虫 {config.name} 未启用")
             return None
@@ -55,21 +63,29 @@ class CrawlerService:
             logger.error(f"不支持的爬虫类型: {config.crawler_type}")
             return None
 
-        # 创建爬虫实例
-        if config.name == "InfoQ":
-            return InfoQCrawler(config)
+        try:
+            # 创建爬虫实例
+            if config.name == "InfoQ":
+                crawler = InfoQCrawler(config)
+            else:
+                crawler_map = {
+                    1: RSSCrawler,    # RSS类型
+                    2: APICrawler,    # API类型
+                    3: WebCrawler     # HTML类型
+                }
+                
+                crawler_class = crawler_map.get(config.crawler_type)
+                if not crawler_class:
+                    raise ValueError(f"未知的爬虫类型: {config.crawler_type}")
+                    
+                crawler = crawler_class(config)
+                
+            logger.info(f"成功创建爬虫实例: {config.name} ({crawler.__class__.__name__})")
+            return crawler
             
-        crawler_map = {
-            1: RSSCrawler,    # RSS类型
-            2: APICrawler,    # API类型
-            3: WebCrawler     # HTML类型
-        }
-        
-        crawler_class = crawler_map.get(config.crawler_type)
-        if not crawler_class:
-            raise ValueError(f"未知的爬虫类型: {config.crawler_type}")
-            
-        return crawler_class(config)
+        except Exception as e:
+            logger.error(f"创建爬虫实例失败: {config.name} - {str(e)}", exc_info=True)
+            return None
 
     @classmethod
     def create_task(cls, config: CrawlerConfig) -> Optional[CrawlerTask]:
@@ -78,20 +94,33 @@ class CrawlerService:
         :param config: 爬虫配置
         :return: 爬虫任务
         """
-        # 检查是否有运行中的任务
-        if CrawlerTask.objects.filter(
-            config=config,
-            status__in=[0, 1]  # 未开始或运行中
-        ).exists():
-            return None
+        logger.info(f"开始创建爬虫任务: {config.name}")
+        
+        try:
+            # 检查是否有运行中的任务
+            running_tasks = CrawlerTask.objects.filter(
+                config=config,
+                status__in=[0, 1]  # 未开始或运行中
+            )
             
-        # 创建新任务
-        return CrawlerTask.objects.create(
-            config=config,
-            task_id=str(uuid.uuid4()),  # 使用UUID作为任务ID
-            status=0,  # 未开始状态
-            start_time=timezone.now()
-        )
+            if running_tasks.exists():
+                logger.warning(f"存在运行中的任务: {config.name}")
+                return None
+                
+            # 创建新任务
+            task = CrawlerTask.objects.create(
+                config=config,
+                task_id=str(uuid.uuid4()),  # 使用UUID作为任务ID
+                status=0,  # 未开始状态
+                start_time=timezone.now()
+            )
+            
+            logger.info(f"成功创建爬虫任务: {config.name} (任务ID: {task.task_id})")
+            return task
+            
+        except Exception as e:
+            logger.error(f"创建爬虫任务失败: {config.name} - {str(e)}", exc_info=True)
+            return None
 
     @classmethod
     def run_task(cls, task: CrawlerTask) -> bool:
@@ -184,27 +213,37 @@ class CrawlerService:
     @classmethod
     def crawl_website(cls, config, task=None):
         """
-        爬取网站内容
+        爬取网站
         :param config: 爬虫配置
         :param task: 爬虫任务
         :return: 爬取结果
         """
+        # 初始化统计信息
         stats = {
+            'total': 0,
             'saved': 0,
             'filtered': 0,
             'errors': 0,
-            'duplicated': 0,
-            'invalid_time': 0
+            'duplicated': 0
         }
-
+        
         try:
-            # 根据爬虫类型创建爬虫实例
+            # 获取爬虫实例
             crawler = cls.get_crawler(config)
             if not crawler:
-                raise ValueError(f"无法创建爬虫实例: {config.name}")
+                error_msg = f"无法创建爬虫实例: {config.name}"
+                logger.error(error_msg)
+                return {
+                    'status': 'error',
+                    'message': error_msg,
+                    'total': 0,
+                    **stats
+                }
                 
             # 执行爬虫
+            logger.info(f"开始执行爬虫: {config.name}")
             result = crawler.run()
+            
             if result['status'] != 'success':
                 logger.warning(f"爬虫执行失败: {result['message']}")
                 return {
@@ -248,35 +287,30 @@ class CrawlerService:
                     result = cls._save_article(item, config)
                     if result == 'saved':
                         stats['saved'] += 1
-                    elif result == 'filtered':
-                        stats['filtered'] += 1
                     elif result == 'duplicated':
                         stats['duplicated'] += 1
                 except Exception as e:
-                    logger.error(f'处理文章时发生错误: {str(e)}')
+                    logger.error(f"保存文章失败: {str(e)}")
                     stats['errors'] += 1
-
-            logger.info(f"保存完成: {config.name}, 成功保存{stats['saved']}条数据")
-                
+                    
+            logger.info(f"爬取完成: {config.name}, 统计信息: {json.dumps(stats, ensure_ascii=False)}")
+            
             return {
                 'status': 'success',
-                'task_id': task.task_id if task else None,
-                'total': len(cleaned_items),
+                'message': '爬取成功',
+                'total': len(items),
                 **stats
             }
             
-        except requests.exceptions.RequestException as e:
-            error_msg = f"网络请求失败: {str(e)}"
-            logger.error(error_msg)
-            return {'status': 'error', 'message': error_msg, 'total': 0, **stats}
-        except ValueError as e:
-            error_msg = f"数据解析失败: {str(e)}"
-            logger.error(error_msg)
-            return {'status': 'error', 'message': error_msg, 'total': 0, **stats}
         except Exception as e:
-            error_msg = f"爬取失败 {config.name}: {str(e)}"
+            error_msg = f"爬取网站失败: {config.name} - {str(e)}"
             logger.error(error_msg, exc_info=True)
-            return {'status': 'error', 'message': error_msg, 'total': 0, **stats}
+            return {
+                'status': 'error',
+                'message': error_msg,
+                'total': 0,
+                **stats
+            }
     
     @staticmethod
     def _clean_data(item):

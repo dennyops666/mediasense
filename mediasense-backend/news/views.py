@@ -56,6 +56,60 @@ class NewsViewSet(viewsets.ModelViewSet):
     ordering_fields = ['publish_time', 'created_at']
     pagination_class = StandardResultsSetPagination
 
+    def list(self, request, *args, **kwargs):
+        """获取新闻列表"""
+        queryset = self.filter_queryset(self.get_queryset())
+        page = self.paginate_queryset(queryset)
+        
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response({
+            "count": len(serializer.data),
+            "results": serializer.data
+        })
+
+    def retrieve(self, request, *args, **kwargs):
+        """获取单个新闻详情"""
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response({
+            "data": serializer.data
+        })
+
+    def create(self, request, *args, **kwargs):
+        """创建新闻"""
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response({
+            "message": "创建成功",
+            "data": serializer.data
+        }, status=status.HTTP_201_CREATED, headers=headers)
+
+    def update(self, request, *args, **kwargs):
+        """更新新闻"""
+        partial = kwargs.pop('partial', False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        return Response({
+            "message": "更新成功",
+            "data": serializer.data
+        })
+
+    def destroy(self, request, *args, **kwargs):
+        """删除新闻"""
+        instance = self.get_object()
+        self.perform_destroy(instance)
+        return Response({
+            "message": "删除成功"
+        }, status=status.HTTP_204_NO_CONTENT)
+
     @action(detail=False, methods=['get'])
     def categories(self, request):
         categories = NewsCategory.objects.all()

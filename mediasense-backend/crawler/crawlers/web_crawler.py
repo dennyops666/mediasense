@@ -1,7 +1,7 @@
 from .base import BaseCrawler
 import logging
 import requests
-from typing import Dict, List
+from typing import Dict, List, Any, Optional
 from bs4 import BeautifulSoup
 from django.utils import timezone
 from urllib.parse import urljoin
@@ -13,6 +13,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
+from ..exceptions import FetchError, ParseError
 
 logger = logging.getLogger(__name__)
 
@@ -30,153 +31,222 @@ class WebCrawler(BaseCrawler):
         self.session = requests.Session()
         self.session.headers.update(self.headers)
 
-    def fetch_data(self) -> Dict:
-        """获取网页数据"""
+    def fetch_data(self) -> Dict[str, Any]:
+        """
+        获取网页数据
+        :return: 包含状态和数据的字典
+        :raises: FetchError 当获取数据失败时
+        """
         try:
-            logger.info(f"开始获取网页数据: {self.config.source_url}")
-            response = self.session.get(self.config.source_url, timeout=30)
+            logger.info(f"开始获取网页数据: {self.source_url}")
+            response = self.session.get(self.source_url, timeout=30)
             response.raise_for_status()
-            return {'html': response.text}
+            return {
+                'status': 'success',
+                'message': '成功获取网页数据',
+                'data': response.text
+            }
+        except requests.exceptions.RequestException as e:
+            error_msg = f"网络请求失败: {str(e)}"
+            logger.error(error_msg)
+            return {
+                'status': 'error',
+                'message': error_msg,
+                'data': None
+            }
         except Exception as e:
-            logger.error(f"获取网页数据失败: {str(e)}")
-            raise
+            error_msg = f"获取网页数据失败: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return {
+                'status': 'error',
+                'message': error_msg,
+                'data': None
+            }
 
-    def parse_response(self, data: Dict) -> List[Dict]:
-        """解析网页数据"""
+    def parse_response(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        解析网页数据
+        :param data: fetch_data返回的数据字典
+        :return: 解析后的文章列表
+        :raises: ParseError 当解析数据失败时
+        """
         try:
             logger.info("开始解析网页数据")
-            articles = []
             
-            html = data.get('html', '')
-            if not html:
-                logger.error("网页内容为空")
+            if data.get('status') != 'success' or not data.get('data'):
+                logger.error(f"获取网页数据失败: {data.get('message')}")
                 return []
                 
             # 解析HTML
-            soup = BeautifulSoup(html, 'html.parser')
+            soup = BeautifulSoup(data['data'], 'html.parser')
             
-            # 获取配置
-            selectors = self.config.config_data
-            if not selectors:
-                logger.error("未配置选择器")
-                return []
-                
-            # 获取文章列表
-            list_selector = selectors.get('list_selector')
+            # 获取文章列表选择器
+            list_selector = self.config.config_data.get('list_selector')
             if not list_selector:
                 logger.error("未配置文章列表选择器")
                 return []
                 
-            article_elements = soup.select(list_selector)
-            logger.info(f"找到{len(article_elements)}个文章元素")
+            # 获取文章列表
+            articles = []
+            items = soup.select(list_selector)
+            logger.info(f"找到{len(items)}个文章元素")
             
-            for element in article_elements:
+            for item in items:
                 try:
                     # 提取标题
-                    title = ''
-                    if selectors.get('title_selector'):
-                        title_elem = element.select_one(selectors['title_selector'])
-                        if title_elem:
-                            title = title_elem.get_text().strip()
+                    title_selector = self.config.config_data.get('title_selector')
+                    title_elem = item.select_one(title_selector) if title_selector else None
+                    title = title_elem.get_text().strip() if title_elem else None
+                    
+                    if not title:
+                        logger.warning("跳过无标题文章")
+                        continue
                             
                     # 提取链接
-                    url = ''
-                    if selectors.get('url_selector'):
-                        url_elem = element.select_one(selectors['url_selector'])
-                        if url_elem and url_elem.has_attr('href'):
-                            url = url_elem['href']
-                            if not url.startswith(('http://', 'https://')):
-                                url = urljoin(self.config.source_url, url)
-                                
-                    # 提取内容
-                    content = ''
-                    if selectors.get('content_selector'):
-                        content_elem = element.select_one(selectors['content_selector'])
-                        if content_elem:
-                            content = content_elem.get_text(separator='\n').strip()
-                            
-                    # 提取描述
-                    description = ''
-                    if selectors.get('description_selector'):
-                        desc_elem = element.select_one(selectors['description_selector'])
-                        if desc_elem:
-                            description = desc_elem.get_text().strip()
+                    link_selector = self.config.config_data.get('link_selector')
+                    link_elem = item.select_one(link_selector) if link_selector else None
+                    url = link_elem.get('href') if link_elem else None
+                    
+                    if url:
+                        url = urljoin(self.source_url, url)
+                    
+                    if not url or not url.startswith(('http://', 'https://')):
+                        logger.warning(f"跳过无效URL: {url}")
+                        continue
                             
                     # 提取作者
-                    author = ''
-                    if selectors.get('author_selector'):
-                        author_elem = element.select_one(selectors['author_selector'])
-                        if author_elem:
-                            author = author_elem.get_text().strip()
+                    author_selector = self.config.config_data.get('author_selector')
+                    author_elem = item.select_one(author_selector) if author_selector else None
+                    author = author_elem.get_text().strip() if author_elem else ''
                             
                     # 提取发布时间
-                    pub_time = None
-                    if selectors.get('pub_time_selector'):
-                        time_elem = element.select_one(selectors['pub_time_selector'])
-                        if time_elem:
-                            pub_time = time_elem.get_text().strip()
+                    time_selector = self.config.config_data.get('time_selector')
+                    time_elem = item.select_one(time_selector) if time_selector else None
+                    pub_time = time_elem.get_text().strip() if time_elem else None
+                    
+                    if pub_time:
+                        try:
+                            pub_time = self.parse_datetime(pub_time)
+                        except Exception:
+                            pub_time = timezone.now()
+                    else:
+                        pub_time = timezone.now()
+                        
+                    # 提取摘要
+                    summary_selector = self.config.config_data.get('summary_selector')
+                    summary_elem = item.select_one(summary_selector) if summary_selector else None
+                    description = summary_elem.get_text().strip() if summary_elem else ''
+                    
+                    # 提取内容
+                    content = ''
+                    if self.config.config_data.get('need_content', False):
+                        try:
+                            content = self._get_article_content(url)
+                        except Exception as e:
+                            logger.error(f"获取文章内容失败: {str(e)}", exc_info=True)
                             
                     # 提取标签
                     tags = []
-                    if selectors.get('tags_selector'):
-                        tag_elems = element.select(selectors['tags_selector'])
-                        tags = [tag.get_text().strip() for tag in tag_elems]
+                    tags_selector = self.config.config_data.get('tags_selector')
+                    if tags_selector:
+                        tag_elems = item.select(tags_selector)
+                        tags = [tag.get_text().strip() for tag in tag_elems if tag.get_text().strip()]
                         
                     # 提取图片
                     images = []
-                    if selectors.get('images_selector'):
-                        img_elems = element.select(selectors['images_selector'])
+                    image_selector = self.config.config_data.get('image_selector')
+                    if image_selector:
+                        img_elems = item.select(image_selector)
                         for img in img_elems:
-                            if img.has_attr('src'):
-                                img_url = img['src']
-                                if not img_url.startswith(('http://', 'https://')):
-                                    img_url = urljoin(self.config.source_url, img_url)
-                                images.append(img_url)
-                                
-                    # 获取详情页内容
-                    if url and not content and selectors.get('detail_content_selector'):
-                        try:
-                            detail_response = self.session.get(url, timeout=30)
-                            detail_response.raise_for_status()
-                            detail_soup = BeautifulSoup(detail_response.text, 'html.parser')
-                            
-                            content_elem = detail_soup.select_one(selectors['detail_content_selector'])
-                            if content_elem:
-                                content = content_elem.get_text(separator='\n').strip()
-                                
-                        except Exception as e:
-                            logger.error(f"获取详情页失败: {str(e)}")
+                            src = img.get('src') or img.get('data-src')
+                            if src:
+                                src = urljoin(self.source_url, src)
+                                if src.startswith(('http://', 'https://')):
+                                    images.append(src)
                             
                     # 构建文章数据
                     article = {
                         'title': title,
                         'url': url,
-                        'content': content or description or '',
-                        'description': description or '',
-                        'author': author or '',
-                        'source': self.config.name,
-                        'pub_time': pub_time or timezone.now(),
+                        'content': content or description,
+                        'description': description,
+                        'author': author,
+                        'source': self.source_name,
+                        'pub_time': pub_time,
                         'tags': tags,
-                        'images': images,
-                        'config': self.config
+                        'images': images
                     }
                     
-                    if article['title'] and article['url']:
-                        articles.append(article)
-                        logger.debug(f"成功解析文章: {article['title']}")
-                    else:
-                        logger.warning(f"文章缺少必要字段: {article}")
+                    articles.append(article)
+                    logger.debug(f"成功解析文章: {article['title']}")
                         
                 except Exception as e:
-                    logger.error(f"解析文章失败: {str(e)}")
+                    logger.error(f"解析文章元素失败: {str(e)}", exc_info=True)
                     continue
                     
             logger.info(f"网页解析完成，共获取{len(articles)}篇文章")
             return articles
             
         except Exception as e:
-            logger.error(f"网页解析失败: {str(e)}")
+            error_msg = f"网页解析失败: {str(e)}"
+            logger.error(error_msg, exc_info=True)
             return []
+
+    def _get_article_content(self, url: str) -> str:
+        """
+        获取文章详细内容
+        :param url: 文章URL
+        :return: 文章内容
+        """
+        try:
+            response = self.session.get(url, timeout=30)
+            response.raise_for_status()
+            
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            content_selector = self.config.config_data.get('content_selector')
+            if not content_selector:
+                return ''
+                
+            content_elem = soup.select_one(content_selector)
+            if not content_elem:
+                return ''
+                
+            return content_elem.get_text(separator='\n').strip()
+            
+        except Exception as e:
+            logger.error(f"获取文章内容失败: {str(e)}", exc_info=True)
+            return ''
+
+    def run(self) -> Dict[str, Any]:
+        """
+        运行爬虫
+        :return: 包含状态和数据的字典
+        """
+        try:
+            # 获取网页数据
+            result = self.fetch_data()
+            if result['status'] != 'success':
+                return result
+                
+            # 解析数据
+            articles = self.parse_response(result)
+            
+            # 返回结果
+            return {
+                'status': 'success',
+                'message': '成功获取并解析网页数据',
+                'data': articles
+            }
+            
+        except Exception as e:
+            error_msg = f"Web爬虫运行失败: {str(e)}"
+            logger.error(error_msg, exc_info=True)
+            return {
+                'status': 'error',
+                'message': error_msg,
+                'data': []
+            }
 
 class InfoQCrawler(BaseCrawler):
     """InfoQ中文站爬虫"""

@@ -1,131 +1,115 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import type { SearchParams, SearchResults, HotKeyword, SearchHistoryItem } from '@/types/search'
-import { searchNews, fetchSearchSuggestions } from '@/api/search'
+import { searchNews, fetchSearchSuggestions, getSearchHistory, clearSearchHistory as clearHistory } from '@/api/search'
+import type { SearchParams, SearchResult } from '@/types/search'
 import { ElMessage } from 'element-plus'
 
 export const useSearchStore = defineStore('search', () => {
   // 状态
-  const searchResults = ref<SearchResults>({
-    total: 0,
-    items: [],
-    facets: {
-      categories: {},
-      sources: {}
-    }
-  })
-
-  const hotKeywords = ref<HotKeyword[]>([])
-  const searchHistory = ref<SearchHistoryItem[]>([])
+  const searchResults = ref<SearchResult[]>([])
+  const total = ref(0)
   const loading = ref(false)
+  const error = ref<string | null>(null)
+  const searchHistory = ref<string[]>([])
+  const suggestions = ref<string[]>([])
+  const searchTime = ref(0)
 
-  // 搜索参数
-  const searchParams = ref<SearchParams>({
-    keyword: '',
-    category: '',
-    source: '',
-    dateRange: null,
-    sortBy: 'relevance',
-    order: 'desc',
-    page: 1,
-    pageSize: 20
-  })
-
-  // 获取搜索建议
-  const fetchSuggestions = async (keyword: string) => {
+  // 搜索
+  const search = async (params: SearchParams) => {
+    loading.value = true
+    error.value = null
+    const startTime = Date.now()
+    
     try {
-      return await fetchSearchSuggestions(keyword)
-    } catch (error) {
-      ElMessage.error('获取搜索建议失败')
-      return []
-    }
-  }
-
-  // 执行搜索
-  const search = async (params: Partial<SearchParams>) => {
-    try {
-      loading.value = true
-      // 更新搜索参数
-      Object.assign(searchParams.value, params)
-
-      // 调用搜索 API
-      const results = await searchNews(searchParams.value)
-      searchResults.value = results
-
-      // 更新搜索历史
+      const response = await searchNews(params)
+      searchResults.value = response.items
+      total.value = response.total
+      searchTime.value = (Date.now() - startTime) / 1000
+      
+      // 添加到搜索历史
       if (params.keyword) {
-        addToSearchHistory(params.keyword)
+        addToHistory(params.keyword)
       }
-    } catch (error) {
-      searchResults.value = {
-        total: 0,
-        items: [],
-        facets: {
-          categories: {},
-          sources: {}
-        }
-      }
-      ElMessage.error('搜索失败')
+    } catch (err) {
+      error.value = err instanceof Error ? err.message : '搜索失败'
+      searchResults.value = []
+      total.value = 0
+      searchTime.value = 0
     } finally {
       loading.value = false
     }
   }
 
-  // 更新搜索参数
-  const updateSearchParams = (params: Partial<SearchParams>) => {
-    Object.assign(searchParams.value, params)
+  // 获取搜索建议
+  const getSuggestions = async (keyword: string) => {
+    if (!keyword.trim()) {
+      suggestions.value = []
+      return
+    }
+    
+    try {
+      const result = await fetchSearchSuggestions(keyword)
+      suggestions.value = result
+    } catch (err) {
+      suggestions.value = []
+      console.error('获取搜索建议失败:', err)
+    }
   }
 
-  // 添加搜索历史
-  const addToSearchHistory = (keyword: string) => {
-    const existingIndex = searchHistory.value.findIndex(
-      item => item.keyword === keyword
-    )
-
-    if (existingIndex !== -1) {
-      searchHistory.value.splice(existingIndex, 1)
+  // 获取搜索历史
+  const getHistory = async () => {
+    try {
+      const history = await getSearchHistory()
+      searchHistory.value = history
+    } catch (err) {
+      console.error('获取搜索历史失败:', err)
     }
-
-    searchHistory.value.unshift({
-      keyword,
-      timestamp: new Date().toISOString()
-    })
-
-    // 限制历史记录数量
-    if (searchHistory.value.length > 10) {
-      searchHistory.value.pop()
-    }
-
-    // 保存到本地存储
-    localStorage.setItem('searchHistory', JSON.stringify(searchHistory.value))
   }
 
   // 清空搜索历史
-  const clearSearchHistory = () => {
-    searchHistory.value = []
-    localStorage.removeItem('searchHistory')
+  const clearHistory = async () => {
+    try {
+      await clearHistory()
+      searchHistory.value = []
+      ElMessage.success('搜索历史已清空')
+    } catch (err) {
+      ElMessage.error('清空搜索历史失败')
+    }
   }
 
-  // 初始化
-  const initialize = () => {
-    // 从本地存储加载搜索历史
-    const savedHistory = localStorage.getItem('searchHistory')
-    if (savedHistory) {
-      searchHistory.value = JSON.parse(savedHistory)
+  // 添加到搜索历史
+  const addToHistory = async (keyword: string) => {
+    if (!keyword.trim()) return
+    
+    try {
+      // 避免重复添加
+      if (!searchHistory.value.includes(keyword)) {
+        searchHistory.value.unshift(keyword)
+        // 限制历史记录数量
+        if (searchHistory.value.length > 10) {
+          searchHistory.value.pop()
+        }
+      }
+    } catch (err) {
+      console.error('添加搜索历史失败:', err)
     }
   }
 
   return {
+    // 状态
     searchResults,
-    hotKeywords,
-    searchHistory,
+    total,
     loading,
-    searchParams,
-    fetchSuggestions,
+    error,
+    searchHistory,
+    suggestions,
+    searchTime,
+    
+    // 方法
     search,
-    updateSearchParams,
-    addToSearchHistory,
-    clearSearchHistory,
-    initialize
+    getSuggestions,
+    getHistory,
+    clearHistory,
+    addToHistory
   }
 }) 

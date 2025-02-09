@@ -1,9 +1,39 @@
 from .base import *
+import os
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = False
+DEBUG = True
+
+# URL settings
+APPEND_SLASH = False
 
 ALLOWED_HOSTS = ["*"]
 
 # CORS settings
 CORS_ALLOW_ALL_ORIGINS = True
+
+# Elasticsearch配置
+ELASTICSEARCH_HOSTS = ['http://localhost:9200']
+ELASTICSEARCH_INDEX_PREFIX = ''  # 不使用前缀
+ELASTICSEARCH_USERNAME = None
+ELASTICSEARCH_PASSWORD = None
+ELASTICSEARCH_TIMEOUT = 30
+ELASTICSEARCH_MAX_RETRIES = 3
+ELASTICSEARCH_RETRY_ON_TIMEOUT = True
+
+# 搜索配置
+SEARCH_CACHE_TIMEOUT = 300  # 5分钟
+SEARCH_RESULT_PAGE_SIZE = 10
+SEARCH_MAX_SUGGESTIONS = 10
+SEARCH_HOT_THRESHOLD = 100  # 热门搜索阈值
+SEARCH_HISTORY_MAX_SIZE = 50  # 每个用户最多保存50条搜索历史
+
+# OpenAI配置
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', '')
+OPENAI_API_BASE = os.getenv('OPENAI_API_BASE', 'https://api.openai-proxy.com/v1')
+OPENAI_MODEL = os.getenv('OPENAI_MODEL', 'gpt-3.5-turbo')
+
+# 监控配置
+MONITORING_METRICS_INTERVAL = 30  # 监控指标收集间隔（秒）
+MONITORING_RETENTION_DAYS = 30  # 监控数据保留天数
+MONITORING_ALERT_CHECK_INTERVAL = 60  # 告警检查间隔（秒）

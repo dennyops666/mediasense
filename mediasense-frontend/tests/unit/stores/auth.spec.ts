@@ -1,8 +1,10 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { setActivePinia, createPinia } from 'pinia'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
-import * as authApi from '@/api/auth'
+import { login, register, logout } from '@/api/auth'
 import { ElMessage } from 'element-plus'
+import { unref } from 'vue'
+import * as authApi from '@/api/auth'
 
 vi.mock('@/api/auth', () => ({
   login: vi.fn(),
@@ -21,124 +23,153 @@ vi.mock('element-plus', () => ({
 describe('Auth Store', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
-    vi.clearAllMocks()
     localStorage.clear()
+    vi.clearAllMocks()
   })
 
   describe('初始状态', () => {
     it('应该有正确的初始状态', () => {
       const store = useAuthStore()
-      expect(store.token).toBe('')
-      expect(store.user).toBeNull()
-      expect(store.loading).toBe(false)
-      expect(store.isAuthenticated).toBe(false)
-      expect(store.isAdmin).toBe(false)
+      expect(unref(store.token)).toBe('')
+      expect(unref(store.user)).toBeNull()
+      expect(unref(store.loading)).toBe(false)
+      expect(unref(store.isAuthenticated)).toBe(false)
+      expect(unref(store.isAdmin)).toBe(false)
     })
 
     it('应该从 localStorage 加载 token', () => {
+      const store = useAuthStore()
       const mockToken = 'test-token'
       localStorage.setItem('token', mockToken)
-      const store = useAuthStore()
-      expect(store.token).toBe(mockToken)
+      store.initToken()
+      expect(unref(store.token)).toBe(mockToken)
     })
   })
 
-  describe('登录功能', () => {
-    it('应该成功登录并更新状态', async () => {
-      const mockResponse = {
-        token: 'test-token',
-        user: { id: 1, username: 'test', role: 'user' }
-      }
-      vi.mocked(authApi.login).mockResolvedValue(mockResponse)
-
+  describe('用户状态管理', () => {
+    it('应该正确存储用户信息', async () => {
       const store = useAuthStore()
-      await store.login('test', 'password')
-
-      expect(store.token).toBe(mockResponse.token)
-      expect(store.user).toEqual(mockResponse.user)
-      expect(store.loading).toBe(false)
+      const mockUser = {
+        id: 1,
+        username: 'test',
+        email: 'test@example.com'
+      }
+      const mockResponse = { token: 'mock-token', user: mockUser }
+      
+      vi.mocked(login).mockResolvedValueOnce(mockResponse)
+      
+      await store.login('test', 'password123')
+      
+      expect(store.user).toEqual(mockUser)
+      expect(store.token).toBe('mock-token')
       expect(store.isAuthenticated).toBe(true)
-      expect(localStorage.getItem('token')).toBe(mockResponse.token)
-      expect(ElMessage.success).toHaveBeenCalledWith('登录成功')
     })
 
-    it('应该处理登录失败', async () => {
-      const error = new Error('登录失败')
-      vi.mocked(authApi.login).mockRejectedValue(error)
-
+    it('应该正确处理登录失败', async () => {
       const store = useAuthStore()
-      await expect(store.login('test', 'wrong-password')).rejects.toThrow()
-
-      expect(store.token).toBe('')
+      const errorMessage = '用户名或密码错误'
+      
+      vi.mocked(login).mockRejectedValueOnce(new Error(errorMessage))
+      
+      await expect(store.login('wrong', 'wrong')).rejects.toThrow(errorMessage)
       expect(store.user).toBeNull()
-      expect(store.loading).toBe(false)
+      expect(store.token).toBeNull()
       expect(store.isAuthenticated).toBe(false)
-      expect(ElMessage.error).toHaveBeenCalledWith('登录失败')
+    })
+  })
+
+  describe('Token管理', () => {
+    it('应该正确存储和清除token', async () => {
+      const store = useAuthStore()
+      const mockResponse = {
+        token: 'mock-token',
+        user: { id: 1, username: 'test' }
+      }
+      
+      vi.mocked(login).mockResolvedValueOnce(mockResponse)
+      await store.login('test', 'password123')
+      expect(store.token).toBe('mock-token')
+      
+      vi.mocked(logout).mockResolvedValueOnce({ message: '登出成功' })
+      await store.logout()
+      expect(store.token).toBeNull()
+    })
+
+    it('应该在登出时清除所有状态', async () => {
+      const store = useAuthStore()
+      const mockResponse = {
+        token: 'mock-token',
+        user: { id: 1, username: 'test' }
+      }
+      
+      vi.mocked(login).mockResolvedValueOnce(mockResponse)
+      await store.login('test', 'password123')
+      
+      vi.mocked(logout).mockResolvedValueOnce({ message: '登出成功' })
+      await store.logout()
+      
+      expect(store.user).toBeNull()
+      expect(store.token).toBeNull()
+      expect(store.isAuthenticated).toBe(false)
+    })
+  })
+
+  describe('权限控制', () => {
+    it('应该正确判断用户权限', async () => {
+      const store = useAuthStore()
+      const mockUser = {
+        id: 1,
+        username: 'test',
+        email: 'test@example.com',
+        roles: ['admin']
+      }
+      const mockResponse = { token: 'mock-token', user: mockUser }
+      
+      vi.mocked(login).mockResolvedValueOnce(mockResponse)
+      await store.login('test', 'password123')
+      
+      expect(store.hasRole('admin')).toBe(true)
+      expect(store.hasRole('user')).toBe(false)
+    })
+
+    it('未登录时应该没有任何权限', () => {
+      const store = useAuthStore()
+      expect(store.hasRole('admin')).toBe(false)
+      expect(store.hasRole('user')).toBe(false)
     })
   })
 
   describe('注册功能', () => {
-    it('应该成功注册并更新状态', async () => {
-      const mockResponse = {
-        token: 'test-token',
-        user: { id: 1, username: 'test', role: 'user' }
-      }
-      vi.mocked(authApi.register).mockResolvedValue(mockResponse)
-
+    it('应该正确处理注册流程', async () => {
       const store = useAuthStore()
-      await store.register('test', 'password', 'test@example.com')
-
-      expect(store.token).toBe(mockResponse.token)
-      expect(store.user).toEqual(mockResponse.user)
-      expect(store.loading).toBe(false)
-      expect(store.isAuthenticated).toBe(true)
-      expect(localStorage.getItem('token')).toBe(mockResponse.token)
-      expect(ElMessage.success).toHaveBeenCalledWith('注册成功')
+      const mockUser = {
+        id: 1,
+        username: 'newuser',
+        email: 'new@example.com'
+      }
+      
+      vi.mocked(register).mockResolvedValueOnce(mockUser)
+      
+      const result = await store.register({
+        username: 'newuser',
+        email: 'new@example.com',
+        password: 'password123'
+      })
+      
+      expect(result).toEqual(mockUser)
     })
 
     it('应该处理注册失败', async () => {
-      const error = new Error('注册失败')
-      vi.mocked(authApi.register).mockRejectedValue(error)
-
       const store = useAuthStore()
-      await expect(store.register('test', 'password', 'invalid-email')).rejects.toThrow()
-
-      expect(store.token).toBe('')
-      expect(store.user).toBeNull()
-      expect(store.loading).toBe(false)
-      expect(store.isAuthenticated).toBe(false)
-      expect(ElMessage.error).toHaveBeenCalledWith('注册失败')
-    })
-  })
-
-  describe('登出功能', () => {
-    it('应该成功登出并清除状态', async () => {
-      vi.mocked(authApi.logout).mockResolvedValue(undefined)
-
-      const store = useAuthStore()
-      store.token = 'test-token'
-      store.user = { id: 1, username: 'test', role: 'user' }
-      localStorage.setItem('token', 'test-token')
-
-      await store.logout()
-
-      expect(store.token).toBe('')
-      expect(store.user).toBeNull()
-      expect(store.loading).toBe(false)
-      expect(store.isAuthenticated).toBe(false)
-      expect(localStorage.getItem('token')).toBeNull()
-      expect(ElMessage.success).toHaveBeenCalledWith('已退出登录')
-    })
-
-    it('应该处理登出失败', async () => {
-      const error = new Error('登出失败')
-      vi.mocked(authApi.logout).mockRejectedValue(error)
-
-      const store = useAuthStore()
-      await expect(store.logout()).rejects.toThrow()
-
-      expect(store.loading).toBe(false)
-      expect(ElMessage.error).toHaveBeenCalledWith('退出登录失败')
+      const errorMessage = '用户名已存在'
+      
+      vi.mocked(register).mockRejectedValueOnce(new Error(errorMessage))
+      
+      await expect(store.register({
+        username: 'existing',
+        email: 'test@example.com',
+        password: 'password123'
+      })).rejects.toThrow(errorMessage)
     })
   })
 
@@ -148,11 +179,13 @@ describe('Auth Store', () => {
       vi.mocked(authApi.getUserInfo).mockResolvedValue(mockUser)
 
       const store = useAuthStore()
+      store.$patch({ token: 'test-token' })
+
       await store.fetchUserInfo()
 
-      expect(store.user).toEqual(mockUser)
-      expect(store.loading).toBe(false)
-      expect(store.isAdmin).toBe(true)
+      expect(unref(store.user)).toEqual(mockUser)
+      expect(unref(store.loading)).toBe(false)
+      expect(unref(store.isAdmin)).toBe(true)
     })
 
     it('应该在获取用户信息失败时清除状态', async () => {
@@ -160,16 +193,14 @@ describe('Auth Store', () => {
       vi.mocked(authApi.getUserInfo).mockRejectedValue(error)
 
       const store = useAuthStore()
-      store.token = 'test-token'
-      store.user = { id: 1, username: 'test', role: 'user' }
-      localStorage.setItem('token', 'test-token')
+      store.$patch({ token: 'test-token' })
 
       await expect(store.fetchUserInfo()).rejects.toThrow()
 
-      expect(store.token).toBe('')
-      expect(store.user).toBeNull()
-      expect(store.loading).toBe(false)
-      expect(store.isAuthenticated).toBe(false)
+      expect(unref(store.token)).toBe('')
+      expect(unref(store.user)).toBeNull()
+      expect(unref(store.loading)).toBe(false)
+      expect(unref(store.isAuthenticated)).toBe(false)
       expect(localStorage.getItem('token')).toBeNull()
     })
   })

@@ -68,6 +68,16 @@ export const acknowledgeAlert = async (alertId: string): Promise<{ success: bool
   return response.data
 }
 
+export const clearAllAlerts = async (): Promise<{ success: boolean; message: string }> => {
+  const response = await request.delete('/api/monitor/alerts')
+  return response.data
+}
+
+export const exportMonitoringData = async (): Promise<{ data: any }> => {
+  const response = await request.get('/api/monitor/export')
+  return response
+}
+
 export default {
   getSystemMetrics,
   getSystemLogs,
@@ -77,5 +87,7 @@ export default {
   getServiceStatus,
   getAlerts,
   restartService,
-  acknowledgeAlert
+  acknowledgeAlert,
+  clearAllAlerts,
+  exportMonitoringData
 } 

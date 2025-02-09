@@ -43,61 +43,127 @@ from rest_framework.metadata import SimpleMetadata
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.filters import SearchFilter, OrderingFilter
 from rest_framework.settings import api_settings
-from django.db.models import Count
+from django.db.models import Count, Avg, Max
 from .async_viewset import AsyncViewSet
 from rest_framework.authentication import TokenAuthentication
 from rest_framework_simplejwt.authentication import JWTAuthentication
 
 logger = logging.getLogger(__name__)
 
-class SystemMetricsViewSet(AsyncViewSet):
+class AsyncViewSet(viewsets.ModelViewSet):
+    """异步视图集基类"""
+    
+    async def get_queryset(self):
+        """获取异步查询集"""
+        return await sync_to_async(super().get_queryset)()
+
+    async def get_object(self):
+        """获取异步对象"""
+        return await sync_to_async(super().get_object)()
+
+    async def get_serializer(self, *args, **kwargs):
+        """获取异步序列化器"""
+        return await sync_to_async(super().get_serializer)(*args, **kwargs)
+
+    async def perform_create(self, serializer):
+        """异步创建对象"""
+        return await sync_to_async(serializer.save)()
+
+    async def perform_update(self, serializer):
+        """异步更新对象"""
+        return await sync_to_async(serializer.save)()
+
+    async def perform_destroy(self, instance):
+        """异步删除对象"""
+        return await sync_to_async(instance.delete)()
+
+    async def list(self, request, *args, **kwargs):
+        """列出所有对象"""
+        try:
+            queryset = await self.get_queryset()
+            serializer = await self.get_serializer(queryset, many=True)
+            data = await sync_to_async(lambda: serializer.data)()
+            return Response(data)
+        except Exception as e:
+            logger.error(f"列出对象失败: {str(e)}")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    async def retrieve(self, request, *args, **kwargs):
+        """获取单个对象"""
+        try:
+            instance = await self.get_object()
+            serializer = await self.get_serializer(instance)
+            data = await sync_to_async(lambda: serializer.data)()
+            return Response(data)
+        except Exception as e:
+            logger.error(f"获取对象失败: {str(e)}")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    async def create(self, request, *args, **kwargs):
+        """创建对象"""
+        try:
+            serializer = await self.get_serializer(data=request.data)
+            if await sync_to_async(serializer.is_valid)():
+                await self.perform_create(serializer)
+                data = await sync_to_async(lambda: serializer.data)()
+                return Response(data, status=status.HTTP_201_CREATED)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"创建对象失败: {str(e)}")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    async def update(self, request, *args, **kwargs):
+        """更新对象"""
+        try:
+            instance = await self.get_object()
+            serializer = await self.get_serializer(instance, data=request.data)
+            if await sync_to_async(serializer.is_valid)():
+                await self.perform_update(serializer)
+                data = await sync_to_async(lambda: serializer.data)()
+                return Response(data)
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"更新对象失败: {str(e)}")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+    async def destroy(self, request, *args, **kwargs):
+        """删除对象"""
+        try:
+            instance = await self.get_object()
+            await self.perform_destroy(instance)
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except Exception as e:
+            logger.error(f"删除对象失败: {str(e)}")
+            return Response(
+                {'detail': str(e)},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+class SystemMetricsViewSet(viewsets.ModelViewSet):
     queryset = SystemMetrics.objects.all()
     serializer_class = SystemMetricsSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
     renderer_classes = [JSONRenderer]
 
-    async def get_queryset(self):
-        """获取查询集"""
-        try:
-            if hasattr(self, 'queryset') and self.queryset is not None:
-                queryset = self.queryset
-                if isinstance(queryset, models.QuerySet):
-                    queryset = await sync_to_async(lambda: queryset.all())()
-                return queryset
-            raise NotImplementedError('get_queryset() must be implemented.')
-        except Exception as e:
-            logger.error(f"获取查询集失败: {str(e)}")
-            raise
-
-    async def list(self, request, *args, **kwargs):
+    def list(self, request, *args, **kwargs):
         """列出系统指标"""
         try:
-            # 获取查询集
-            queryset = await self.get_queryset()
-            
-            # 过滤查询集
-            queryset = await self.filter_queryset(queryset)
-            
-            # 处理分页
-            page = await self.paginate_queryset(queryset)
-            if page is not None:
-                serializer = await self.get_serializer(page, many=True)
-                data = await sync_to_async(lambda: serializer.data)()
-                response = await self.get_paginated_response(data)
-            else:
-                # 序列化数据
-                serializer = await self.get_serializer(queryset, many=True)
-                data = await sync_to_async(lambda: serializer.data)()
-                response = Response(data)
-            
-            # 设置渲染器
-            response.accepted_renderer = JSONRenderer()
-            response.accepted_media_type = "application/json"
-            response.renderer_context = self.get_renderer_context()
-            
-            return response
-            
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
         except Exception as e:
             logger.error(f"列出系统指标失败: {str(e)}")
             return Response(
@@ -105,38 +171,12 @@ class SystemMetricsViewSet(AsyncViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    def get_renderer_context(self):
-        """获取渲染器上下文"""
-        return {
-            'view': self,
-            'args': getattr(self, 'args', ()),
-            'kwargs': getattr(self, 'kwargs', {}),
-            'request': getattr(self, 'request', None)
-        }
-
-    async def create(self, request, *args, **kwargs):
-        """创建系统指标"""
-        try:
-            serializer = await self.get_serializer(data=request.data)
-            if await sync_to_async(serializer.is_valid)(raise_exception=True):
-                instance = await sync_to_async(serializer.save)()
-                serializer = await self.get_serializer(instance)
-                data = await sync_to_async(lambda: serializer.data)()
-                return Response(data, status=status.HTTP_201_CREATED)
-        except Exception as e:
-            logger.error(f"创建系统指标失败: {str(e)}")
-            return Response(
-                {'detail': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    async def retrieve(self, request, *args, **kwargs):
+    def retrieve(self, request, *args, **kwargs):
         """获取单个系统指标"""
         try:
-            instance = await self.get_object()
-            serializer = await self.get_serializer(instance)
-            data = await sync_to_async(lambda: serializer.data)()
-            return Response(data)
+            instance = self.get_object()
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
         except Exception as e:
             logger.error(f"获取系统指标失败: {str(e)}")
             return Response(
@@ -144,62 +184,57 @@ class SystemMetricsViewSet(AsyncViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    async def update(self, request, *args, **kwargs):
-        """更新系统指标"""
-        try:
-            partial = kwargs.pop('partial', False)
-            instance = await self.get_object()
-            serializer = await self.get_serializer(instance, data=request.data, partial=partial)
-            if await sync_to_async(serializer.is_valid)(raise_exception=True):
-                instance = await sync_to_async(serializer.save)()
-                serializer = await self.get_serializer(instance)
-                data = await sync_to_async(lambda: serializer.data)()
-                return Response(data)
-        except Http404:
-            raise
-        except Exception as e:
-            logger.error(f"更新系统指标失败: {str(e)}")
-            return Response(
-                {'detail': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
-    async def destroy(self, request, *args, **kwargs):
-        """删除系统指标"""
-        try:
-            instance = await self.get_object()
-            await sync_to_async(instance.delete)()
-            return Response(status=status.HTTP_204_NO_CONTENT)
-        except Http404:
-            raise
-        except Exception as e:
-            logger.error(f"删除系统指标失败: {str(e)}")
-            return Response(
-                {'detail': str(e)},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-
     @action(detail=False, methods=['get'])
-    async def performance_stats(self, request):
+    def performance_stats(self, request):
         """获取性能统计信息"""
         try:
             # 获取最新的系统指标
             latest_metrics = {}
             for metric_type in SystemMetrics.MetricType.choices:
-                metric = await sync_to_async(
-                    lambda: self.queryset.filter(metric_type=metric_type[0])
-                    .order_by('-timestamp')
-                    .first()
-                )()
+                metric = self.queryset.filter(metric_type=metric_type[0]).order_by('-created_at').first()
                 if metric:
-                    serializer = await self.get_serializer(metric)
-                    data = await sync_to_async(lambda: serializer.data)()
-                    latest_metrics[metric_type[0]] = data
+                    latest_metrics[metric_type[0]] = {
+                        'value': round(metric.value, 2),
+                        'created_at': metric.created_at.isoformat()
+                    }
+                else:
+                    latest_metrics[metric_type[0]] = None
 
-            return Response({
-                'metrics': latest_metrics,
-                'timestamp': timezone.now()
-            })
+            # 获取24小时内的平均值
+            last_24h = timezone.now() - timedelta(hours=24)
+            avg_metrics = {}
+            max_metrics = {}
+            
+            for metric_type in SystemMetrics.MetricType.choices:
+                metrics_24h = self.queryset.filter(
+                    metric_type=metric_type[0],
+                    created_at__gte=last_24h
+                )
+                
+                if metrics_24h.exists():
+                    # 计算平均值
+                    avg = metrics_24h.aggregate(avg_value=Avg('value'))
+                    avg_metrics[metric_type[0]] = round(avg['avg_value'], 2)
+                    
+                    # 计算最大值
+                    max_val = metrics_24h.aggregate(max_value=Max('value'))
+                    max_metrics[metric_type[0]] = round(max_val['max_value'], 2)
+                else:
+                    avg_metrics[metric_type[0]] = None
+                    max_metrics[metric_type[0]] = None
+
+            response_data = {
+                'current_metrics': latest_metrics,
+                'average_24h': avg_metrics,
+                'max_24h': max_metrics,
+                'timestamp': timezone.now().isoformat(),
+                'metric_types': {
+                    metric_type[0]: metric_type[1] 
+                    for metric_type in SystemMetrics.MetricType.choices
+                }
+            }
+
+            return Response(response_data)
         except Exception as e:
             logger.error(f"获取性能统计信息失败: {str(e)}")
             return Response(
@@ -207,147 +242,82 @@ class SystemMetricsViewSet(AsyncViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    async def get_object(self):
-        """获取单个对象"""
-        try:
-            queryset = await self.get_queryset()
-            
-            lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
-            assert lookup_url_kwarg in self.kwargs, (
-                'Expected view %s to be called with a URL keyword argument '
-                'named "%s". Fix your URL conf, or set the `.lookup_field` '
-                'attribute on the view correctly.' %
-                (self.__class__.__name__, lookup_url_kwarg)
-            )
-            
-            filter_kwargs = {self.lookup_field: self.kwargs[lookup_url_kwarg]}
-            obj = await sync_to_async(queryset.get)(**filter_kwargs)
-            
-            # 检查对象级权限
-            await self.check_object_permissions(self.request, obj)
-            
-            return obj
-        except Exception as e:
-            logger.error(f"获取对象失败: {str(e)}")
-            raise
-
-class AlertRuleViewSet(AsyncViewSet):
+class AlertRuleViewSet(viewsets.ModelViewSet):
     queryset = AlertRule.objects.all()
     serializer_class = AlertRuleSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
-    @action(detail=True, methods=['post'])
-    async def enable(self, request, pk=None):
-        """启用告警规则"""
+    def list(self, request, *args, **kwargs):
+        """列出所有告警规则"""
         try:
-            rule = await self.get_object()
-            await self.check_object_permissions(request, rule)
-            rule.is_enabled = True
-            try:
-                await sync_to_async(rule.save)()
-                serializer = self.get_serializer(rule)
-                return Response(serializer.data)
-            except Exception as e:
-                logger.error(f"保存告警规则失败: {str(e)}")
-                raise serializers.ValidationError(str(e))
-        except Http404:
-            raise
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
         except Exception as e:
-            logger.error(f"启用告警规则失败: {str(e)}")
+            logger.error(f"列出告警规则失败: {str(e)}")
             return Response(
                 {'detail': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=True, methods=['post'])
-    async def disable(self, request, pk=None):
-        """禁用告警规则"""
+    def retrieve(self, request, *args, **kwargs):
+        """获取单个告警规则"""
         try:
-            rule = await self.get_object()
-            await self.check_object_permissions(request, rule)
-            rule.is_enabled = False
-            try:
-                await sync_to_async(rule.save)()
-                serializer = self.get_serializer(rule)
-                return Response(serializer.data)
-            except Exception as e:
-                logger.error(f"保存告警规则失败: {str(e)}")
-                raise serializers.ValidationError(str(e))
-        except Http404:
-            raise
+            instance = self.get_object()
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
         except Exception as e:
-            logger.error(f"禁用告警规则失败: {str(e)}")
+            logger.error(f"获取告警规则失败: {str(e)}")
             return Response(
                 {'detail': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class AlertHistoryViewSet(AsyncViewSet):
+class AlertHistoryViewSet(viewsets.ModelViewSet):
     queryset = AlertHistory.objects.all()
     serializer_class = AlertHistorySerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
-    @action(detail=True, methods=['post'])
-    async def acknowledge(self, request, pk=None):
-        """确认告警"""
+    def list(self, request, *args, **kwargs):
+        """列出所有告警历史"""
         try:
-            alert = await self.get_object()
-            await self.check_object_permissions(request, alert)
-            alert.status = 'acknowledged'
-            try:
-                await sync_to_async(alert.save)()
-                serializer = self.get_serializer(alert)
-                return Response(serializer.data)
-            except Exception as e:
-                logger.error(f"保存告警失败: {str(e)}")
-                raise serializers.ValidationError(str(e))
-        except Http404:
-            raise
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
         except Exception as e:
-            logger.error(f"确认告警失败: {str(e)}")
+            logger.error(f"列出告警历史失败: {str(e)}")
             return Response(
                 {'detail': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=True, methods=['post'])
-    async def resolve(self, request, pk=None):
-        """解决告警"""
+    def retrieve(self, request, *args, **kwargs):
+        """获取单个告警历史"""
         try:
-            alert = await self.get_object()
-            await self.check_object_permissions(request, alert)
-            alert.status = 'resolved'
-            try:
-                await sync_to_async(alert.save)()
-                serializer = self.get_serializer(alert)
-                return Response(serializer.data)
-            except Exception as e:
-                logger.error(f"保存告警失败: {str(e)}")
-                raise serializers.ValidationError(str(e))
-        except Http404:
-            raise
+            instance = self.get_object()
+            serializer = self.get_serializer(instance)
+            return Response(serializer.data)
         except Exception as e:
-            logger.error(f"解决告警失败: {str(e)}")
+            logger.error(f"获取告警历史失败: {str(e)}")
             return Response(
                 {'detail': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class MonitoringVisualizationViewSet(AsyncViewSet):
+class MonitoringVisualizationViewSet(viewsets.ModelViewSet):
     queryset = MonitoringVisualization.objects.all()
     serializer_class = MonitoringVisualizationSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
-    async def list(self, request, *args, **kwargs):
+    def list(self, request, *args, **kwargs):
         """列出所有可视化"""
         try:
-            queryset = await sync_to_async(lambda: self.queryset.all())()
-            serializer = await self.get_serializer(queryset, many=True)
-            data = await sync_to_async(lambda: serializer.data)()
-            return Response(data)
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
         except Exception as e:
             logger.error(f"列出可视化失败: {str(e)}")
             return Response(
@@ -417,19 +387,18 @@ class ErrorLogViewSet(viewsets.ViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class DashboardViewSet(AsyncViewSet):
+class DashboardViewSet(viewsets.ModelViewSet):
     queryset = Dashboard.objects.all()
     serializer_class = DashboardSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
-    async def list(self, request, *args, **kwargs):
+    def list(self, request, *args, **kwargs):
         """列出所有仪表板"""
         try:
-            queryset = await sync_to_async(lambda: self.queryset.all())()
-            serializer = await self.get_serializer(queryset, many=True)
-            data = await sync_to_async(lambda: serializer.data)()
-            return Response(data)
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
         except Exception as e:
             logger.error(f"列出仪表板失败: {str(e)}")
             return Response(
@@ -437,19 +406,18 @@ class DashboardViewSet(AsyncViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class DashboardWidgetViewSet(AsyncViewSet):
+class DashboardWidgetViewSet(viewsets.ModelViewSet):
     queryset = DashboardWidget.objects.all()
     serializer_class = DashboardWidgetSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
-    async def list(self, request, *args, **kwargs):
+    def list(self, request, *args, **kwargs):
         """列出所有仪表板组件"""
         try:
-            queryset = await sync_to_async(lambda: self.queryset.all())()
-            serializer = await self.get_serializer(queryset, many=True)
-            data = await sync_to_async(lambda: serializer.data)()
-            return Response(data)
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
         except Exception as e:
             logger.error(f"列出仪表板组件失败: {str(e)}")
             return Response(
@@ -457,19 +425,18 @@ class DashboardWidgetViewSet(AsyncViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-class AlertNotificationConfigViewSet(AsyncViewSet):
+class AlertNotificationConfigViewSet(viewsets.ModelViewSet):
     queryset = AlertNotificationConfig.objects.all()
     serializer_class = AlertNotificationConfigSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
 
-    async def list(self, request, *args, **kwargs):
+    def list(self, request, *args, **kwargs):
         """列出所有告警通知配置"""
         try:
-            queryset = await sync_to_async(lambda: self.queryset.all())()
-            serializer = await self.get_serializer(queryset, many=True)
-            data = await sync_to_async(lambda: serializer.data)()
-            return Response(data)
+            queryset = self.get_queryset()
+            serializer = self.get_serializer(queryset, many=True)
+            return Response(serializer.data)
         except Exception as e:
             logger.error(f"列出告警通知配置失败: {str(e)}")
             return Response(
@@ -479,35 +446,45 @@ class AlertNotificationConfigViewSet(AsyncViewSet):
 
 class SystemStatusViewSet(viewsets.ViewSet):
     """系统状态视图集"""
-    queryset = SystemMetrics.objects.all()
-    serializer_class = SystemMetricsSerializer
     permission_classes = [IsAuthenticated]
     authentication_classes = [JWTAuthentication]
+    renderer_classes = [JSONRenderer]
 
-    def list(self, request, *args, **kwargs):
+    def list(self, request):
         """获取系统状态概览"""
         try:
-            # 获取最新的系统指标
-            latest_metrics = {}
-            for metric_type in SystemMetrics.MetricType.choices:
-                metric = self.queryset.filter(metric_type=metric_type[0]).order_by('-timestamp').first()
-                if metric:
-                    latest_metrics[metric_type[0]] = self.serializer_class(metric).data
+            # 获取系统状态信息
+            cpu_percent = psutil.cpu_percent()
+            memory = psutil.virtual_memory()
+            disk = psutil.disk_usage('/')
+            
+            # 获取最近的错误日志数量
+            recent_errors = ErrorLog.objects.filter(
+                created_at__gte=timezone.now() - timedelta(hours=24)
+            ).count()
             
             # 获取活跃告警数量
-            active_alerts_count = AlertHistory.objects.filter(status='active').count()
+            active_alerts = AlertHistory.objects.filter(
+                status='active'
+            ).count()
             
-            # 构建响应数据
-            data = {
-                'metrics': latest_metrics,
-                'active_alerts_count': active_alerts_count,
-                'timestamp': timezone.now()
+            status_data = {
+                'system': {
+                    'cpu_usage': cpu_percent,
+                    'memory_usage': memory.percent,
+                    'disk_usage': disk.percent,
+                },
+                'monitoring': {
+                    'recent_errors': recent_errors,
+                    'active_alerts': active_alerts,
+                },
+                'status': 'healthy' if cpu_percent < 80 and memory.percent < 80 and disk.percent < 80 else 'warning',
+                'created_at': timezone.now().isoformat()
             }
             
-            return Response(data)
-            
+            return Response(status_data)
         except Exception as e:
-            logger.error(f"获取系统状态概览失败: {str(e)}")
+            logger.error(f"获取系统状态失败: {str(e)}")
             return Response(
                 {'detail': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -517,15 +494,11 @@ class SystemStatusViewSet(viewsets.ViewSet):
     def health(self, request):
         """获取系统健康状态"""
         try:
-            # 检查各个组件的健康状态
             health_status = {
-                'status': 'ok',
-                'components': {
-                    'database': True,
-                    'cache': True,
-                    'storage': True
-                },
-                'timestamp': timezone.now()
+                'status': 'up',
+                'database': 'up',
+                'cache': 'up',
+                'created_at': timezone.now().isoformat()
             }
             return Response(health_status)
         except Exception as e:
@@ -539,31 +512,36 @@ class SystemStatusViewSet(viewsets.ViewSet):
     def overview(self, request):
         """获取系统概览信息"""
         try:
-            # 获取最新的系统指标
-            metrics = {}
-            for metric_type in ['cpu_usage', 'memory_usage', 'disk_usage']:
-                metric = SystemMetrics.objects.filter(
-                    metric_type=metric_type
-                ).order_by('-timestamp').first()
-                metrics[metric_type] = metric.value if metric else 0
-
-            # 构建响应数据
-            data = {
-                'cpu_usage': metrics.get('cpu_usage', 0),
-                'memory_usage': metrics.get('memory_usage', 0),
-                'disk_usage': metrics.get('disk_usage', 0),
-                'services': {
-                    'web_server': 'running',
-                    'database': 'running',
-                    'cache': 'running',
-                    'task_queue': 'running'
+            # 获取24小时内的统计信息
+            last_24h = timezone.now() - timedelta(hours=24)
+            
+            # 获取告警统计
+            alerts = AlertHistory.objects.all()
+            active_alerts = alerts.filter(status='active')
+            rules = AlertRule.objects.all()
+            enabled_rules = rules.filter(is_enabled=True)
+            
+            # 获取最近活动
+            recent_errors = ErrorLog.objects.filter(created_at__gte=last_24h)
+            recent_alerts = alerts.filter(triggered_at__gte=last_24h)
+            
+            overview_data = {
+                'metrics': {
+                    'total_alerts': alerts.count(),
+                    'active_alerts': active_alerts.count(),
+                    'total_rules': rules.count(),
+                    'enabled_rules': enabled_rules.count(),
                 },
-                'timestamp': timezone.now()
+                'recent_activity': {
+                    'error_count': recent_errors.count(),
+                    'alert_count': recent_alerts.count(),
+                },
+                'timestamp': timezone.now().isoformat()
             }
             
-            return Response(data)
+            return Response(overview_data)
         except Exception as e:
-            logger.error(f"获取系统概览失败: {str(e)}")
+            logger.error(f"获取系统概览信息失败: {str(e)}")
             return Response(
                 {'detail': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
