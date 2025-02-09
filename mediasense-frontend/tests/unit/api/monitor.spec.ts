@@ -65,7 +65,7 @@ describe('Monitor API', () => {
     vi.mocked(request.get).mockResolvedValueOnce({ data: mockMetrics })
     const result = await getSystemMetrics()
     expect(result).toEqual(mockMetrics)
-    expect(request.get).toHaveBeenCalledWith('/api/monitor/metrics')
+    expect(request.get).toHaveBeenCalledWith('/monitor/metrics')
   })
 
   it('应该能获取系统日志', async () => {
@@ -86,7 +86,7 @@ describe('Monitor API', () => {
     vi.mocked(request.get).mockResolvedValueOnce({ data: mockLogs })
     const result = await getSystemLogs({ page: 1, pageSize: 10 })
     expect(result).toEqual(mockLogs)
-    expect(request.get).toHaveBeenCalledWith('/api/monitor/logs', {
+    expect(request.get).toHaveBeenCalledWith('/monitor/logs', {
       params: { page: 1, pageSize: 10 }
     })
   })
@@ -105,7 +105,7 @@ describe('Monitor API', () => {
     }
     const result = await getMetricsHistory(params)
     expect(result).toEqual(mockHistory)
-    expect(request.get).toHaveBeenCalledWith('/api/monitor/metrics/history', {
+    expect(request.get).toHaveBeenCalledWith('/monitor/metrics/history', {
       params
     })
   })
@@ -126,7 +126,7 @@ describe('Monitor API', () => {
     vi.mocked(request.get).mockResolvedValueOnce({ data: mockProcesses })
     const result = await getProcessList()
     expect(result).toEqual(mockProcesses)
-    expect(request.get).toHaveBeenCalledWith('/api/monitor/processes')
+    expect(request.get).toHaveBeenCalledWith('/monitor/processes')
   })
 
   it('应该能获取磁盘使用情况', async () => {
@@ -143,7 +143,7 @@ describe('Monitor API', () => {
     vi.mocked(request.get).mockResolvedValueOnce({ data: mockDiskUsage })
     const result = await getDiskUsage()
     expect(result).toEqual(mockDiskUsage)
-    expect(request.get).toHaveBeenCalledWith('/api/monitor/disk')
+    expect(request.get).toHaveBeenCalledWith('/monitor/disk')
   })
 
   it('应该能获取服务状态', async () => {
@@ -157,7 +157,7 @@ describe('Monitor API', () => {
     vi.mocked(request.get).mockResolvedValueOnce({ data: mockServices })
     const result = await getServiceStatus()
     expect(result).toEqual(mockServices)
-    expect(request.get).toHaveBeenCalledWith('/api/monitor/services')
+    expect(request.get).toHaveBeenCalledWith('/monitor/services')
   })
 
   it('应该能获取告警列表', async () => {
@@ -172,7 +172,7 @@ describe('Monitor API', () => {
     vi.mocked(request.get).mockResolvedValueOnce({ data: mockAlerts })
     const result = await getAlerts()
     expect(result).toEqual(mockAlerts)
-    expect(request.get).toHaveBeenCalledWith('/api/monitor/alerts')
+    expect(request.get).toHaveBeenCalledWith('/monitor/alerts')
   })
 
   it('应该能确认告警', async () => {
@@ -181,7 +181,7 @@ describe('Monitor API', () => {
     
     const result = await acknowledgeAlert('alert1')
     expect(result).toEqual(mockResponse)
-    expect(request.post).toHaveBeenCalledWith('/api/monitor/alerts/acknowledge', {
+    expect(request.post).toHaveBeenCalledWith('/monitor/alerts/acknowledge', {
       alertId: 'alert1'
     })
   })
@@ -192,7 +192,7 @@ describe('Monitor API', () => {
     
     const result = await restartService('nginx')
     expect(result).toEqual(mockResponse)
-    expect(request.post).toHaveBeenCalledWith('/api/monitor/services/restart', {
+    expect(request.post).toHaveBeenCalledWith('/monitor/services/restart', {
       serviceName: 'nginx'
     })
   })

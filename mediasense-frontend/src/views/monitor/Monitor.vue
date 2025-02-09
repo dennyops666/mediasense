@@ -5,156 +5,121 @@
       v-if="error"
       :title="error"
       type="error"
-      show-icon
       data-test="error-alert"
+      show-icon
+      class="error-alert"
     />
 
+    <!-- 系统指标卡片 -->
     <div class="metrics-grid">
-      <!-- CPU 卡片 -->
-      <el-card class="monitor-card" data-test="cpu-card">
+      <el-card class="metric-card" data-test="cpu-card">
         <template #header>
           <div class="card-header">
-            <span>CPU 状态</span>
-            <el-tag
-              :type="cpuHealthType"
-              data-test="cpu-health-status"
-            >
-              {{ cpuStatusText }}
-            </el-tag>
+            <span>CPU</span>
           </div>
         </template>
-        <div class="metric-content">
-          <div class="metric-item">
-            <div class="metric-label">使用率</div>
-            <div class="metric-value" data-test="cpu-usage">{{ cpuUsage }}%</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-label">核心数</div>
-            <div class="metric-value" data-test="cpu-cores">{{ cpuCores }}</div>
-          </div>
+        <div class="metric-value" data-test="cpu-usage">
+          {{ metrics?.cpu?.usage }}%
+        </div>
+        <div class="metric-detail" data-test="cpu-cores">
+          核心数: {{ metrics?.cpu?.cores }}
         </div>
       </el-card>
 
-      <!-- 内存卡片 -->
-      <el-card class="monitor-card" data-test="memory-card">
+      <el-card class="metric-card" data-test="memory-card">
         <template #header>
           <div class="card-header">
-            <span>内存状态</span>
-            <el-tag
-              :type="memoryHealthType"
-              data-test="memory-health-status"
-            >
-              {{ memoryStatusText }}
-            </el-tag>
+            <span>内存</span>
           </div>
         </template>
-        <div class="metric-content">
-          <div class="metric-item">
-            <div class="metric-label">使用率</div>
-            <div class="metric-value" data-test="memory-usage">{{ memoryUsage }}%</div>
-          </div>
-          <div class="metric-item">
-            <div class="metric-label">总内存</div>
-            <div class="metric-value" data-test="total-memory">{{ formatMemory(totalMemory) }}</div>
-          </div>
+        <div class="metric-value" data-test="memory-usage">
+          {{ metrics?.memory?.usagePercentage }}%
         </div>
-      </el-card>
-
-      <!-- 日志卡片 -->
-      <el-card class="monitor-card" data-test="logs-card">
-        <template #header>
-          <div class="card-header">
-            <span>系统日志</span>
-            <el-button
-              type="primary"
-              @click="refreshLogs"
-              :loading="loading"
-              data-test="refresh-logs"
-            >
-              刷新
-            </el-button>
-          </div>
-        </template>
-        <el-table :data="logs" stripe data-test="logs-table">
-          <el-table-column prop="timestamp" label="时间" width="180" />
-          <el-table-column prop="level" label="级别" width="100">
-            <template #default="{ row }">
-              <el-tag
-                v-if="row && row.level"
-                :type="getLogLevelType(row.level)"
-                :data-test="`log-level-${(row.level || 'unknown').toLowerCase()}`"
-              >
-                {{ row.level || 'UNKNOWN' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="message" label="消息" />
-        </el-table>
-      </el-card>
-
-      <!-- 进程列表 -->
-      <el-card class="monitor-card" data-test="process-card">
-        <template #header>
-          <div class="card-header">
-            <span>进程列表</span>
-            <div class="header-actions">
-              <el-input
-                v-model="processSearch"
-                placeholder="搜索进程"
-                prefix-icon="Search"
-                clearable
-                style="width: 200px; margin-right: 10px;"
-                data-test="process-search"
-              />
-              <el-button
-                type="primary"
-                @click="refreshProcessList"
-                :loading="loading"
-                data-test="refresh-processes"
-              >
-                刷新
-              </el-button>
-            </div>
-          </div>
-        </template>
-        <el-table :data="filteredProcessList" stripe data-test="process-table">
-          <el-table-column prop="pid" label="PID" width="100" />
-          <el-table-column prop="name" label="名称" />
-          <el-table-column prop="user" label="用户" width="120" />
-          <el-table-column prop="cpu" label="CPU %" width="100" />
-          <el-table-column prop="memory" label="内存" width="120">
-            <template #default="{ row }">
-              <span v-if="row" data-test="process-memory">{{ formatMemory(row.memory || 0) }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="100">
-            <template #default="{ row }">
-              <el-tag
-                v-if="row && row.status"
-                :type="getProcessStatusType(row.status)"
-                :data-test="`process-status-${(row.status || '').toLowerCase()}`"
-              >
-                {{ row.status }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="100">
-            <template #default="{ row }">
-              <el-button
-                v-if="row"
-                type="danger"
-                size="small"
-                @click="handleKillProcess(row.pid)"
-                :disabled="loading"
-                :data-test="`kill-process-${row.pid}`"
-              >
-                终止
-              </el-button>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div class="metric-detail">
+          已用: {{ metrics?.memory?.used }} / {{ metrics?.memory?.total }}
+        </div>
       </el-card>
     </div>
+
+    <!-- 日志表格 -->
+    <el-card class="log-card">
+      <template #header>
+        <div class="card-header">
+          <span>系统日志</span>
+        </div>
+      </template>
+      <el-table :data="logs" data-test="logs-table">
+        <el-table-column prop="timestamp" label="时间" width="180">
+          <template #default="{ row }">
+            <span data-test="log-timestamp">{{ formatTime(row.timestamp) }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="level" label="级别" width="100">
+          <template #default="{ row }">
+            <el-tag
+              :type="row.level === 'ERROR' ? 'danger' : row.level === 'WARNING' ? 'warning' : 'info'"
+              :data-test="`log-level-${row.id}`"
+            >
+              {{ row.level }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column prop="message" label="消息">
+          <template #default="{ row }">
+            <span data-test="log-message">{{ row.message }}</span>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
+
+    <!-- 进程列表 -->
+    <el-card class="process-card">
+      <template #header>
+        <div class="card-header">
+          <span>进程列表</span>
+          <el-input
+            v-model="processFilter"
+            placeholder="搜索进程"
+            data-test="process-search"
+          />
+        </div>
+      </template>
+      <el-table :data="filteredProcesses" data-test="process-table">
+        <el-table-column prop="pid" label="PID" width="100">
+          <template #default="{ row }">
+            <span data-test="process-pid">{{ row.pid }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="name" label="名称">
+          <template #default="{ row }">
+            <span data-test="process-name">{{ row.name }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="status" label="状态" width="100">
+          <template #default="{ row }">
+            <el-tag
+              :type="row.status === 'RUNNING' ? 'success' : 'danger'"
+              :data-test="`process-status-${row.pid}`"
+            >
+              {{ row.status }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <el-button
+              v-if="row.status === 'RUNNING'"
+              type="danger"
+              size="small"
+              :data-test="`kill-process-${row.pid}`"
+              @click="handleKillProcess(row.pid)"
+            >
+              终止
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-card>
   </div>
 </template>
 
@@ -164,12 +129,15 @@ import { ElMessageBox, ElMessage } from 'element-plus'
 import { Search } from '@element-plus/icons-vue'
 import { useMonitorStore } from '@/stores/monitor'
 import type { ProcessInfo, LogInfo } from '@/types/monitor'
+import { formatTime } from '@/utils/time'
 
 const store = useMonitorStore()
 const loading = ref(false)
-const error = ref<string | null>(null)
-const processSearch = ref('')
-const processList = ref<ProcessInfo[]>([])
+const error = computed(() => store.error)
+const processFilter = ref('')
+
+const metrics = computed(() => store.metrics)
+const logs = computed(() => store.logs || [])
 
 // 系统指标相关
 const cpuUsage = computed(() => store.metrics?.cpu?.usage || 0)
@@ -206,25 +174,15 @@ const memoryStatusText = computed(() => {
   return '正常'
 })
 
-// 日志相关
-const logs = computed(() => store.logs || [])
-
-const getLogLevelType = (level: string): string => {
-  if (!level) return ''
-  const levelMap: Record<string, string> = {
-    error: 'danger',
-    warning: 'warning',
-    info: 'info'
-  }
-  return levelMap[level.toLowerCase()] || ''
-}
-
 // 进程相关
-const filteredProcessList = computed(() => {
-  if (!processSearch.value) return store.processList || []
-  const searchTerm = processSearch.value.toLowerCase()
-  return (store.processList || []).filter(process => 
-    process.name.toLowerCase().includes(searchTerm)
+const filteredProcesses = computed(() => {
+  const processes = store.processes || []
+  if (!processFilter.value) {
+    return processes
+  }
+  return processes.filter(process => 
+    process.name.toLowerCase().includes(processFilter.value.toLowerCase()) ||
+    process.pid.toString().includes(processFilter.value)
   )
 })
 
@@ -290,24 +248,19 @@ const refreshProcessList = async () => {
 // 终止进程
 const handleKillProcess = async (pid: number) => {
   try {
-    await ElMessageBox.confirm('确定要终止该进程吗？', '警告', {
+    await ElMessageBox.confirm(`确定要终止进程 ${pid} 吗？`, '提示', {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning'
     })
     
-    loading.value = true
-    error.value = null
     await store.killProcess(pid)
+    await store.fetchProcessList()
     ElMessage.success('进程已终止')
-    await refreshProcessList()
-  } catch (e) {
-    if (e !== 'cancel') {
-      error.value = e instanceof Error ? e.message : '终止进程失败'
-      ElMessage.error(error.value)
+  } catch (err) {
+    if (err !== 'cancel') {
+      ElMessage.error(`终止进程失败：${err instanceof Error ? err.message : String(err)}`)
     }
-  } finally {
-    loading.value = false
   }
 }
 
@@ -315,11 +268,16 @@ const handleKillProcess = async (pid: number) => {
 const refreshInterval = ref<number | null>(null)
 
 onMounted(async () => {
-  await Promise.all([
-    refreshSystemMetrics(),
-    refreshLogs(),
-    refreshProcessList()
-  ])
+  try {
+    await Promise.all([
+      store.fetchSystemMetrics(),
+      store.fetchSystemLogs(),
+      store.fetchProcessList()
+    ])
+    await store.startMonitoring()
+  } catch (err) {
+    console.error('初始化监控失败:', err)
+  }
   
   store.startMonitoring()
   refreshInterval.value = window.setInterval(() => {
@@ -340,17 +298,33 @@ onUnmounted(() => {
 <style scoped>
 .monitor-container {
   padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.error-alert {
+  margin-bottom: 16px;
 }
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
   gap: 20px;
-  margin-top: 20px;
 }
 
-.monitor-card {
-  height: 100%;
+.metric-card {
+  text-align: center;
+}
+
+.metric-value {
+  font-size: 2em;
+  font-weight: bold;
+  margin: 10px 0;
+}
+
+.metric-detail {
+  color: #666;
 }
 
 .card-header {
@@ -359,29 +333,7 @@ onUnmounted(() => {
   align-items: center;
 }
 
-.header-actions {
-  display: flex;
-  align-items: center;
-}
-
-.metric-content {
-  padding: 10px;
-}
-
-.metric-item {
-  text-align: center;
-  padding: 10px;
-}
-
-.metric-label {
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 5px;
-}
-
-.metric-value {
-  font-size: 24px;
-  font-weight: bold;
-  color: #333;
+.process-card :deep(.el-input) {
+  width: 200px;
 }
 </style> 

@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import * as crawlerApi from '@/api/crawler'
-import axios from 'axios'
+import request from '@/utils/request'
 import type { CrawlerConfig, CrawlerTask, CrawlerData } from '@/types/crawler'
 
-vi.mock('axios', () => ({
+// Mock request
+vi.mock('@/utils/request', () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
@@ -14,225 +16,249 @@ vi.mock('axios', () => ({
 
 describe('爬虫 API', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
   })
 
   describe('配置管理', () => {
     it('应该成功获取爬虫配置列表', async () => {
-      const mockResponse = {
-        data: {
-          items: [
+      const mockConfigs: CrawlerConfig[] = [
         {
           id: '1',
-              name: '新闻爬虫',
-              type: 'news',
-              url: 'http://example.com',
-          enabled: true,
-              targetUrl: 'http://example.com',
-              method: 'GET',
-              headers: [],
-              selectors: [],
-              timeout: 30,
-              retries: 3,
-              concurrency: 1,
-              selector: {
-                title: '.title',
-                content: '.content'
-              }
-            }
-          ],
-          total: 1
+          name: '测试配置1',
+          url: 'http://example.com',
+          rules: { title: '.title', content: '.content' },
+          schedule: '0 0 * * *',
+          status: 'active'
         }
+      ]
+
+      const mockResponse = {
+        data: mockConfigs
       }
-      ;(axios.get as any).mockResolvedValueOnce(mockResponse)
+
+      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
 
       const result = await crawlerApi.getCrawlerConfigs()
-      expect(result.items).toHaveLength(1)
-      expect(result.total).toBe(1)
-      expect(axios.get).toHaveBeenCalledWith('/api/crawler/configs')
+      expect(result).toEqual(mockConfigs)
+      expect(request.get).toHaveBeenCalledWith('/crawler/configs')
     })
 
     it('应该成功创建爬虫配置', async () => {
-      const mockConfig: Partial<CrawlerConfig> = {
-        name: '新闻爬虫',
-        type: 'news',
+      const newConfig: Partial<CrawlerConfig> = {
+        name: '新配置',
         url: 'http://example.com',
-        enabled: true
+        rules: { title: '.title', content: '.content' }
       }
-      const mockResponse = {
-        data: { id: '1', ...mockConfig }
-      }
-      ;(axios.post as any).mockResolvedValueOnce(mockResponse)
 
-      const result = await crawlerApi.createCrawlerConfig(mockConfig)
-      expect(result.id).toBe('1')
-      expect(result.name).toBe('新闻爬虫')
-      expect(axios.post).toHaveBeenCalledWith('/api/crawler/configs', mockConfig)
+      const mockResponse = {
+        data: {
+          id: '1',
+          ...newConfig,
+          status: 'active',
+          schedule: '0 0 * * *'
+        }
+      }
+
+      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
+
+      const result = await crawlerApi.createCrawlerConfig(newConfig)
+      expect(result).toEqual(mockResponse.data)
+      expect(request.post).toHaveBeenCalledWith('/crawler/configs', newConfig)
     })
 
     it('应该成功更新爬虫配置', async () => {
-      const mockConfig: Partial<CrawlerConfig> = {
-        name: '更新后的爬虫',
-        enabled: false
+      const configId = '1'
+      const updateData: Partial<CrawlerConfig> = {
+        name: '更新后的配置',
+        schedule: '0 0 * * 1'
       }
-      const mockResponse = {
-        data: { id: '1', ...mockConfig }
-      }
-      ;(axios.put as any).mockResolvedValueOnce(mockResponse)
 
-      const result = await crawlerApi.updateCrawlerConfig('1', mockConfig)
-      expect(result.name).toBe('更新后的爬虫')
-      expect(axios.put).toHaveBeenCalledWith('/api/crawler/configs/1', mockConfig)
+      const mockResponse = {
+        data: {
+          id: configId,
+          ...updateData,
+          url: 'http://example.com',
+          rules: { title: '.title', content: '.content' },
+          status: 'active'
+        }
+      }
+
+      vi.mocked(request.put).mockResolvedValueOnce(mockResponse)
+
+      const result = await crawlerApi.updateCrawlerConfig(configId, updateData)
+      expect(result).toEqual(mockResponse.data)
+      expect(request.put).toHaveBeenCalledWith(`/crawler/configs/${configId}`, updateData)
     })
 
     it('应该成功删除爬虫配置', async () => {
+      const configId = 1
       const mockResponse = {
-        data: { success: true }
+        data: {
+          success: true
+        }
       }
-      ;(axios.delete as any).mockResolvedValueOnce(mockResponse)
+      vi.mocked(request.delete).mockResolvedValueOnce(mockResponse)
 
-      const result = await crawlerApi.deleteCrawlerConfig('1')
-      expect(result.success).toBe(true)
-      expect(axios.delete).toHaveBeenCalledWith('/api/crawler/configs/1')
+      const result = await crawlerApi.deleteCrawlerConfig(configId)
+      expect(result).toEqual(mockResponse.data)
+      expect(request.delete).toHaveBeenCalledWith(`/crawler/configs/${configId}`)
     })
   })
 
   describe('任务管理', () => {
     it('应该成功获取任务列表', async () => {
+      const mockTasks: CrawlerTask[] = [
+        {
+          id: '1',
+          configId: '1',
+          status: 'running',
+          startTime: new Date().toISOString(),
+          endTime: null,
+          result: null
+        }
+      ]
+
       const mockResponse = {
         data: {
-          items: [
-            {
-              id: '1',
-              name: '新闻爬取任务',
-              status: 'running',
-              configId: '1',
-              startTime: '2024-01-01T00:00:00Z',
-              totalItems: 100,
-              successItems: 80,
-              failedItems: 20
-            }
-          ],
+          items: mockTasks,
           total: 1,
           page: 1,
           pageSize: 10
         }
       }
-      ;(axios.get as any).mockResolvedValueOnce(mockResponse)
+
+      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
 
       const result = await crawlerApi.getTasks({ page: 1, pageSize: 10 })
-      expect(result.items).toHaveLength(1)
-      expect(result.total).toBe(1)
-      expect(axios.get).toHaveBeenCalledWith('/api/crawler/tasks', {
+      expect(result).toEqual(mockResponse.data)
+      expect(request.get).toHaveBeenCalledWith('/crawler/tasks', {
         params: { page: 1, pageSize: 10 }
       })
     })
 
     it('应该成功启动任务', async () => {
+      const taskId = '1'
       const mockResponse = {
-        data: { success: true, taskId: '1' }
+        data: {
+          id: taskId,
+          status: 'running',
+          startTime: new Date().toISOString()
+        }
       }
-      ;(axios.post as any).mockResolvedValueOnce(mockResponse)
 
-      const result = await crawlerApi.startTask('1')
-      expect(result.success).toBe(true)
-      expect(result.taskId).toBe('1')
-      expect(axios.post).toHaveBeenCalledWith('/api/crawler/tasks/1/start')
+      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
+
+      const result = await crawlerApi.startTask(taskId)
+      expect(result).toEqual(mockResponse.data)
+      expect(request.post).toHaveBeenCalledWith(`/crawler/tasks/${taskId}/start`)
     })
 
     it('应该成功停止任务', async () => {
+      const taskId = '1'
       const mockResponse = {
-        data: { success: true }
+        data: {
+          id: taskId,
+          status: 'stopped',
+          endTime: new Date().toISOString()
+        }
       }
-      ;(axios.post as any).mockResolvedValueOnce(mockResponse)
 
-      const result = await crawlerApi.stopTask('1')
-      expect(result.success).toBe(true)
-      expect(axios.post).toHaveBeenCalledWith('/api/crawler/tasks/1/stop')
+      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
+
+      const result = await crawlerApi.stopTask(taskId)
+      expect(result).toEqual(mockResponse.data)
+      expect(request.post).toHaveBeenCalledWith(`/crawler/tasks/${taskId}/stop`)
     })
 
     it('应该成功批量启动任务', async () => {
-      ;(axios.post as any).mockResolvedValueOnce({ data: { success: true } })
+      const taskIds = ['1', '2']
+      const mockResponse = {
+        data: {
+          success: true,
+          failedIds: []
+        }
+      }
 
-      await crawlerApi.batchStartTasks(['1', '2'])
-      expect(axios.post).toHaveBeenCalledWith('/api/crawler/tasks/batch-start', {
-        ids: ['1', '2']
-      })
+      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
+
+      const result = await crawlerApi.batchStartTasks(taskIds)
+      expect(result).toEqual(mockResponse.data)
+      expect(request.post).toHaveBeenCalledWith('/crawler/tasks/batch-start', { ids: taskIds })
     })
   })
 
   describe('数据管理', () => {
     it('应该成功获取爬取数据', async () => {
+      const mockData: CrawlerData[] = [
+        {
+          id: '1',
+          taskId: '1',
+          title: '测试标题',
+          content: '测试内容',
+          url: 'http://example.com/1',
+          createdAt: new Date().toISOString()
+        }
+      ]
+
       const mockResponse = {
         data: {
-          items: [
-            {
-              id: '1',
-              taskId: '1',
-              title: '测试新闻',
-              content: '测试内容',
-              url: 'http://example.com/news/1',
-              source: '测试来源',
-              publishTime: '2024-01-01T00:00:00Z',
-              crawlTime: '2024-01-01T00:00:00Z'
-            }
-          ],
+          items: mockData,
           total: 1,
           page: 1,
           pageSize: 10
         }
       }
-      ;(axios.get as any).mockResolvedValueOnce(mockResponse)
 
-      const result = await crawlerApi.getData({
-        taskId: '1',
-        page: 1,
-        pageSize: 10
-      })
-      expect(result.items).toHaveLength(1)
-      expect(result.total).toBe(1)
-      expect(axios.get).toHaveBeenCalledWith('/api/crawler/data', {
-        params: { taskId: '1', page: 1, pageSize: 10 }
+      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
+
+      const result = await crawlerApi.getData({ page: 1, pageSize: 10 })
+      expect(result).toEqual(mockResponse.data)
+      expect(request.get).toHaveBeenCalledWith('/crawler/data', {
+        params: { page: 1, pageSize: 10 }
       })
     })
 
     it('应该成功删除数据', async () => {
+      const dataId = 1
       const mockResponse = {
-        data: { success: true }
+        data: {
+          success: true
+        }
       }
-      ;(axios.delete as any).mockResolvedValueOnce(mockResponse)
+      vi.mocked(request.delete).mockResolvedValueOnce(mockResponse)
 
-      const result = await crawlerApi.deleteData('1')
-      expect(result.success).toBe(true)
-      expect(axios.delete).toHaveBeenCalledWith('/api/crawler/data/1')
+      const result = await crawlerApi.deleteData(dataId)
+      expect(result).toEqual(mockResponse.data)
+      expect(request.delete).toHaveBeenCalledWith(`/crawler/data/${dataId}`)
     })
 
     it('应该成功批量删除数据', async () => {
-      ;(axios.post as any).mockResolvedValueOnce({ data: { success: true } })
+      const dataIds = ['1', '2']
+      const mockResponse = {
+        data: { success: true }
+      }
 
-      await crawlerApi.batchDeleteData(['1', '2'])
-      expect(axios.post).toHaveBeenCalledWith('/api/crawler/data/batch-delete', {
-        ids: ['1', '2']
+      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
+
+      await crawlerApi.batchDeleteData(dataIds)
+      expect(request.post).toHaveBeenCalledWith('/crawler/data/batch-delete', {
+        ids: dataIds
       })
     })
 
     it('应该成功导出数据', async () => {
       const mockBlob = new Blob(['test data'], { type: 'application/json' })
       const mockResponse = {
-        data: mockBlob,
-        headers: {
-          'content-disposition': 'attachment; filename=crawler-data.json'
-        }
+        data: mockBlob
       }
-      ;(axios.get as any).mockResolvedValueOnce(mockResponse)
 
-      const result = await crawlerApi.exportData({
-        taskId: '1',
-        format: 'json'
-      })
+      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
+
+      const result = await crawlerApi.exportData({ taskId: '1' })
       expect(result).toBeInstanceOf(Blob)
-      expect(axios.get).toHaveBeenCalledWith('/api/crawler/data/export', {
-        params: { taskId: '1', format: 'json' },
+      expect(request.get).toHaveBeenCalledWith('/crawler/data/export', {
+        params: { taskId: '1' },
         responseType: 'blob'
       })
     })

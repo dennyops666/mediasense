@@ -1,11 +1,22 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { login, register, logout, refreshToken } from '@/api/auth'
 import axios from 'axios'
+import { vi, describe, it, expect, beforeEach } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
+import * as authApi from '@/api/auth'
+import request from '@/utils/request'
 
-vi.mock('axios')
+// Mock request
+vi.mock('@/utils/request', () => ({
+  default: {
+    post: vi.fn(),
+    get: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn()
+  }
+}))
 
 describe('认证 API', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
   })
 
@@ -21,29 +32,55 @@ describe('认证 API', () => {
           }
         }
       }
-      ;(axios.post as any).mockResolvedValueOnce(mockResponse)
+      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
 
-      const result = await login('test', 'password123')
+      const result = await authApi.login({
+        username: 'test',
+        password: 'password123'
+      })
       expect(result).toEqual(mockResponse.data)
-      expect(axios.post).toHaveBeenCalledWith('/api/auth/login', {
+      expect(request.post).toHaveBeenCalledWith('/auth/login', {
         username: 'test',
         password: 'password123'
       })
     })
 
     it('使用错误的凭证应该返回错误', async () => {
-      const errorMessage = '用户名或密码错误'
-      ;(axios.post as any).mockRejectedValueOnce(new Error(errorMessage))
+      const mockError = {
+        response: {
+          data: {
+            message: 'Invalid credentials'
+          }
+        }
+      }
+      vi.mocked(request.post).mockRejectedValueOnce(mockError)
 
-      await expect(login('wrong', 'wrong')).rejects.toThrow(errorMessage)
+      await expect(authApi.login({
+        username: 'wrong',
+        password: 'wrong'
+      })).rejects.toEqual(mockError)
     })
 
     it('应该正确处理特殊字符输入', async () => {
       const username = 'test@#$%'
       const password = 'pass!@#$'
+      const mockResponse = {
+        data: {
+          token: 'mock-token',
+          user: {
+            id: 1,
+            username: username,
+            email: 'test@example.com'
+          }
+        }
+      }
+      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
       
-      await login(username, password)
-      expect(axios.post).toHaveBeenCalledWith('/api/auth/login', {
+      await authApi.login({
+        username,
+        password
+      })
+      expect(request.post).toHaveBeenCalledWith('/auth/login', {
         username,
         password
       })
@@ -59,47 +96,68 @@ describe('认证 API', () => {
           email: 'newuser@example.com'
         }
       }
-      ;(axios.post as any).mockResolvedValueOnce(mockResponse)
+      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
 
-      const result = await register({
+      const result = await authApi.register({
         username: 'newuser',
         email: 'newuser@example.com',
         password: 'password123'
       })
       expect(result).toEqual(mockResponse.data)
+      expect(request.post).toHaveBeenCalledWith('/auth/register', {
+        username: 'newuser',
+        email: 'newuser@example.com',
+        password: 'password123'
+      })
     })
 
     it('使用重复的用户名应该返回错误', async () => {
-      const errorMessage = '用户名已存在'
-      ;(axios.post as any).mockRejectedValueOnce(new Error(errorMessage))
+      const mockError = {
+        response: {
+          data: {
+            message: 'Username already exists'
+          }
+        }
+      }
+      vi.mocked(request.post).mockRejectedValueOnce(mockError)
 
-      await expect(register({
+      await expect(authApi.register({
         username: 'existing',
         email: 'test@example.com',
         password: 'password123'
-      })).rejects.toThrow(errorMessage)
+      })).rejects.toEqual(mockError)
     })
 
     it('应该验证邮箱格式', async () => {
-      const errorMessage = '无效的邮箱格式'
-      ;(axios.post as any).mockRejectedValueOnce(new Error(errorMessage))
+      const mockError = {
+        response: {
+          data: {
+            message: 'Invalid email format'
+          }
+        }
+      }
+      vi.mocked(request.post).mockRejectedValueOnce(mockError)
 
-      await expect(register({
-        username: 'test',
+      await expect(authApi.register({
+        username: 'newuser',
         email: 'invalid-email',
         password: 'password123'
-      })).rejects.toThrow(errorMessage)
+      })).rejects.toEqual(mockError)
     })
   })
 
   describe('登出接口', () => {
     it('应该成功登出并清除token', async () => {
-      const mockResponse = { data: { message: '登出成功' } }
-      ;(axios.post as any).mockResolvedValueOnce(mockResponse)
+      const mockResponse = {
+        data: {
+          message: '登出成功'
+        }
+      }
+      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
 
-      const result = await logout()
+      const result = await authApi.logout()
       expect(result).toEqual(mockResponse.data)
-      expect(axios.post).toHaveBeenCalledWith('/api/auth/logout')
+      expect(request.post).toHaveBeenCalledWith('/auth/logout')
     })
   })
 
@@ -110,20 +168,24 @@ describe('认证 API', () => {
           token: 'new-mock-token'
         }
       }
-      ;(axios.post as any).mockResolvedValueOnce(mockResponse)
+      vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
 
-      const result = await refreshToken('old-token')
+      const result = await authApi.refreshToken()
       expect(result).toEqual(mockResponse.data)
-      expect(axios.post).toHaveBeenCalledWith('/api/auth/refresh', {
-        token: 'old-token'
-      })
+      expect(request.post).toHaveBeenCalledWith('/auth/refresh')
     })
 
     it('token过期时应该返回错误', async () => {
-      const errorMessage = 'token已过期'
-      ;(axios.post as any).mockRejectedValueOnce(new Error(errorMessage))
+      const mockError = {
+        response: {
+          data: {
+            message: 'Token expired'
+          }
+        }
+      }
+      vi.mocked(request.post).mockRejectedValueOnce(mockError)
 
-      await expect(refreshToken('expired-token')).rejects.toThrow(errorMessage)
+      await expect(authApi.refreshToken()).rejects.toEqual(mockError)
     })
   })
-}) 
+})

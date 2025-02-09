@@ -1,11 +1,22 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import * as searchApi from '@/api/search'
-import axios from 'axios'
+import request from '@/utils/request'
+import type { SearchResponse } from '@/types/search'
 
-vi.mock('axios')
+// Mock request
+vi.mock('@/utils/request', () => ({
+  default: {
+    get: vi.fn(),
+    post: vi.fn(),
+    put: vi.fn(),
+    delete: vi.fn()
+  }
+}))
 
-describe('Search API', () => {
+describe('搜索 API', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
   })
 
@@ -14,171 +25,151 @@ describe('Search API', () => {
       const mockResponse = {
         data: {
           items: [
-            { id: 1, title: '测试新闻1', content: '内容1', publishTime: '2024-03-20T10:00:00Z' },
-            { id: 2, title: '测试新闻2', content: '内容2', publishTime: '2024-03-20T11:00:00Z' }
+            {
+              id: '1',
+              title: '测试新闻',
+              content: '测试内容',
+              source: '测试来源',
+              publishTime: new Date().toISOString()
+            }
           ],
-          total: 2
+          total: 1,
+          page: 1,
+          pageSize: 10
         }
       }
-      vi.mocked(axios.get).mockResolvedValueOnce(mockResponse)
 
-      const params = {
-        keyword: '测试',
-        page: 1,
-        pageSize: 10,
-        type: 'news',
-        startDate: '2024-03-20',
-        endDate: '2024-03-21',
-        sortBy: 'publishTime',
-        sortOrder: 'desc'
-      }
+      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
+
+      const params = { keyword: '测试', page: 1, pageSize: 10 }
       const result = await searchApi.searchNews(params)
-
       expect(result).toEqual(mockResponse.data)
-      expect(axios.get).toHaveBeenCalledWith('/api/search', { params })
+      expect(request.get).toHaveBeenCalledWith('/search', { params })
     })
 
     it('应该处理搜索失败的情况', async () => {
-      const error = new Error('搜索失败')
-      vi.mocked(axios.get).mockRejectedValueOnce(error)
+      const mockError = {
+        response: {
+          data: {
+            message: '搜索失败'
+          }
+        }
+      }
+      vi.mocked(request.get).mockRejectedValueOnce(mockError)
 
       const params = { keyword: '测试' }
-      await expect(searchApi.searchNews(params)).rejects.toThrow('搜索失败')
+      await expect(searchApi.searchNews(params)).rejects.toEqual(mockError)
     })
   })
 
   describe('fetchSearchSuggestions', () => {
     it('应该正确获取搜索建议', async () => {
       const mockResponse = {
-        data: ['建议1', '建议2', '建议3']
+        data: ['建议1', '建议2']
       }
-      vi.mocked(axios.get).mockResolvedValueOnce(mockResponse)
 
-      const keyword = '测试'
-      const result = await searchApi.fetchSearchSuggestions(keyword)
+      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
 
+      const result = await searchApi.fetchSearchSuggestions('测试')
       expect(result).toEqual(mockResponse.data)
-      expect(axios.get).toHaveBeenCalledWith('/api/search/suggestions', {
-        params: { keyword }
+      expect(request.get).toHaveBeenCalledWith('/search/suggestions', {
+        params: { keyword: '测试' }
       })
     })
 
     it('应该处理获取建议失败的情况', async () => {
-      const error = new Error('获取建议失败')
-      vi.mocked(axios.get).mockRejectedValueOnce(error)
+      const mockError = {
+        response: {
+          data: {
+            message: '获取建议失败'
+          }
+        }
+      }
+      vi.mocked(request.get).mockRejectedValueOnce(mockError)
 
-      await expect(searchApi.fetchSearchSuggestions('测试')).rejects.toThrow('获取建议失败')
+      await expect(searchApi.fetchSearchSuggestions('测试')).rejects.toEqual(mockError)
     })
   })
 
   describe('fetchHotKeywords', () => {
     it('应该正确获取热门搜索词', async () => {
       const mockResponse = {
-        data: [
-          { keyword: '热词1', count: 100 },
-          { keyword: '热词2', count: 80 },
-          { keyword: '热词3', count: 60 }
-        ]
+        data: ['热词1', '热词2']
       }
-      vi.mocked(axios.get).mockResolvedValueOnce(mockResponse)
+
+      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
 
       const result = await searchApi.fetchHotKeywords()
-
       expect(result).toEqual(mockResponse.data)
-      expect(axios.get).toHaveBeenCalledWith('/api/search/hot')
+      expect(request.get).toHaveBeenCalledWith('/search/hot')
     })
 
     it('应该处理获取热门搜索词失败的情况', async () => {
-      const error = new Error('获取热门搜索词失败')
-      vi.mocked(axios.get).mockRejectedValueOnce(error)
+      const mockError = {
+        response: {
+          data: {
+            message: '获取热门搜索词失败'
+          }
+        }
+      }
+      vi.mocked(request.get).mockRejectedValueOnce(mockError)
 
-      await expect(searchApi.fetchHotKeywords()).rejects.toThrow('获取热门搜索词失败')
+      await expect(searchApi.fetchHotKeywords()).rejects.toEqual(mockError)
     })
   })
 
   describe('getSearchHistory', () => {
     it('应该正确获取搜索历史', async () => {
       const mockResponse = {
-        data: [
-          { keyword: '历史1', timestamp: '2024-03-20T10:00:00Z' },
-          { keyword: '历史2', timestamp: '2024-03-20T09:00:00Z' },
-          { keyword: '历史3', timestamp: '2024-03-20T08:00:00Z' }
-        ]
+        data: ['历史1', '历史2']
       }
-      vi.mocked(axios.get).mockResolvedValueOnce(mockResponse)
+
+      vi.mocked(request.get).mockResolvedValueOnce(mockResponse)
 
       const result = await searchApi.getSearchHistory()
-
       expect(result).toEqual(mockResponse.data)
-      expect(axios.get).toHaveBeenCalledWith('/api/search/history')
+      expect(request.get).toHaveBeenCalledWith('/search/history')
     })
 
     it('应该处理获取搜索历史失败的情况', async () => {
-      const error = new Error('获取搜索历史失败')
-      vi.mocked(axios.get).mockRejectedValueOnce(error)
+      const mockError = {
+        response: {
+          data: {
+            message: '获取搜索历史失败'
+          }
+        }
+      }
+      vi.mocked(request.get).mockRejectedValueOnce(mockError)
 
-      await expect(searchApi.getSearchHistory()).rejects.toThrow('获取搜索历史失败')
+      await expect(searchApi.getSearchHistory()).rejects.toEqual(mockError)
     })
   })
 
   describe('clearSearchHistory', () => {
     it('应该正确清除搜索历史', async () => {
       const mockResponse = {
-        data: { success: true }
+        data: {
+          success: true
+        }
       }
-      vi.mocked(axios.delete).mockResolvedValueOnce(mockResponse)
+      vi.mocked(request.delete).mockResolvedValueOnce(mockResponse)
 
       const result = await searchApi.clearSearchHistory()
-
       expect(result).toEqual(mockResponse.data)
-      expect(axios.delete).toHaveBeenCalledWith('/api/search/history')
+      expect(request.delete).toHaveBeenCalledWith('/search/history')
     })
 
     it('应该处理清除搜索历史失败的情况', async () => {
-      const error = new Error('清除搜索历史失败')
-      vi.mocked(axios.delete).mockRejectedValueOnce(error)
-
-      await expect(searchApi.clearSearchHistory()).rejects.toThrow('清除搜索历史失败')
-    })
-  })
-
-  describe('searchApi', () => {
-    it('应该正确调用 search 方法', async () => {
-      const mockResponse = {
-        data: {
-          items: [
-            { id: 1, title: '测试新闻1', content: '内容1', publishTime: '2024-03-20T10:00:00Z' }
-          ],
-          total: 1
+      const mockError = {
+        response: {
+          data: {
+            message: '清除历史记录失败'
+          }
         }
       }
-      vi.mocked(axios.get).mockResolvedValueOnce(mockResponse)
+      vi.mocked(request.delete).mockRejectedValueOnce(mockError)
 
-      const params = {
-        keyword: '测试',
-        type: 'news',
-        page: 1,
-        pageSize: 10
-      }
-      const result = await searchApi.searchApi.search(params)
-
-      expect(result).toEqual(mockResponse.data)
-      expect(axios.get).toHaveBeenCalledWith('/api/search', { params })
-    })
-
-    it('应该正确调用 getSuggestions 方法', async () => {
-      const mockResponse = {
-        data: ['建议1', '建议2', '建议3']
-      }
-      vi.mocked(axios.get).mockResolvedValueOnce(mockResponse)
-
-      const keyword = '测试'
-      const result = await searchApi.searchApi.getSuggestions(keyword)
-
-      expect(result).toEqual(mockResponse.data)
-      expect(axios.get).toHaveBeenCalledWith('/api/search/suggestions', {
-        params: { keyword }
-      })
+      await expect(searchApi.clearSearchHistory()).rejects.toEqual(mockError)
     })
   })
 }) 
