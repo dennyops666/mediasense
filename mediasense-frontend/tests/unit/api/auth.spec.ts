@@ -38,7 +38,7 @@ describe('认证 API', () => {
         username: 'test',
         password: 'password123'
       })
-      expect(result).toEqual(mockResponse.data)
+      expect(result.data).toEqual(mockResponse.data)
       expect(request.post).toHaveBeenCalledWith('/auth/login', {
         username: 'test',
         password: 'password123'
@@ -103,7 +103,7 @@ describe('认证 API', () => {
         email: 'newuser@example.com',
         password: 'password123'
       })
-      expect(result).toEqual(mockResponse.data)
+      expect(result.data).toEqual(mockResponse.data)
       expect(request.post).toHaveBeenCalledWith('/auth/register', {
         username: 'newuser',
         email: 'newuser@example.com',
@@ -156,7 +156,7 @@ describe('认证 API', () => {
       vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
 
       const result = await authApi.logout()
-      expect(result).toEqual(mockResponse.data)
+      expect(result.data).toEqual(mockResponse.data)
       expect(request.post).toHaveBeenCalledWith('/auth/logout')
     })
   })
@@ -171,7 +171,7 @@ describe('认证 API', () => {
       vi.mocked(request.post).mockResolvedValueOnce(mockResponse)
 
       const result = await authApi.refreshToken()
-      expect(result).toEqual(mockResponse.data)
+      expect(result.data).toEqual(mockResponse.data)
       expect(request.post).toHaveBeenCalledWith('/auth/refresh')
     })
 

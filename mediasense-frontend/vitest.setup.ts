@@ -8,7 +8,6 @@ import { afterEach, beforeEach } from 'vitest'
 
 // 创建全局的 Pinia 实例
 const pinia = createPinia()
-setActivePinia(pinia)
 
 // 清理和重置
 beforeEach(() => {
@@ -18,9 +17,8 @@ beforeEach(() => {
   config.global.directives = {}
   config.global.mocks = {}
   
-  // 重新注册 Element Plus
-  config.global.plugins.push([ElementPlus])
-  config.global.plugins.push([pinia])
+  // 重新设置 Pinia
+  setActivePinia(pinia)
   
   // 全局 mock
   config.global.mocks = {
@@ -37,27 +35,23 @@ beforeEach(() => {
   }
   
   // Mock Element Plus 消息组件
-  vi.mock('element-plus', async () => {
-    const actual = await vi.importActual('element-plus')
-    return {
-      ...actual as any,
-      ElMessage: {
-        success: vi.fn(),
-        warning: vi.fn(),
-        error: vi.fn(),
-        info: vi.fn()
-      },
-      ElMessageBox: {
-        confirm: vi.fn().mockResolvedValue(true),
-        alert: vi.fn().mockResolvedValue(true)
-      },
-      ElLoading: {
-        service: vi.fn().mockReturnValue({
-          close: vi.fn()
-        })
-      }
+  vi.mock('element-plus', () => ({
+    ElMessage: {
+      success: vi.fn(),
+      warning: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn()
+    },
+    ElMessageBox: {
+      confirm: vi.fn().mockResolvedValue(true),
+      alert: vi.fn().mockResolvedValue(true)
+    },
+    ElLoading: {
+      service: vi.fn().mockReturnValue({
+        close: vi.fn()
+      })
     }
-  })
+  }))
 })
 
 // 注册 Element Plus 组件和指令

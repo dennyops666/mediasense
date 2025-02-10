@@ -2,38 +2,40 @@
 export interface SearchParams {
   keyword: string
   type?: string
-  category?: string
-  source?: string
-  date?: string
-  dateRange?: [string, string] | null
-  sortBy?: 'relevance' | 'date'
-  order?: 'asc' | 'desc'
-  page?: number
-  pageSize?: number
+  date?: string | null
+  page: number
+  pageSize: number
 }
 
 // 搜索结果接口
 export interface SearchResult {
-  id: number | string
+  id: string
   title: string
   content: string
-  summary?: string
   source: string
-  author?: string
   publishTime: string
-  category?: string
-  tags?: string[]
-  url?: string
-  score: number
+  relevanceScore: number
 }
 
+// 搜索响应接口
 export interface SearchResponse {
   items: SearchResult[]
   total: number
-  facets?: {
-    categories?: Record<string, number>
-    sources?: Record<string, number>
-  }
+}
+
+// 搜索状态接口
+export interface SearchState {
+  keyword: string
+  type: string
+  date: string | null
+  currentPage: number
+  pageSize: number
+  results: SearchResult[]
+  total: number
+  loading: boolean
+  error: string | null
+  suggestions: string[]
+  searchHistory: string[]
 }
 
 // 搜索建议接口

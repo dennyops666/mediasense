@@ -1,259 +1,266 @@
 <template>
-  <div class="search-container" data-test="search-container">
-    <!-- 搜索表单 -->
-    <div class="search-form" data-test="search-form">
+  <div class="search-page">
+    <div v-if="error" class="error-message">
+      {{ error }}
+    </div>
+
+    <div class="search-form">
       <el-input
         v-model="keyword"
         placeholder="请输入搜索关键词"
+        class="search-input"
         @input="handleInput"
-        @keyup.enter="handleSearch"
-        @focus="showSuggestions = true"
-        @blur="handleBlur"
-        data-test="search-input"
+      />
+      
+      <el-select
+        v-model="type"
+        placeholder="选择类型"
+        class="type-select"
+        @change="handleSearch"
       >
-        <template #append>
-          <el-button
-            type="primary"
-            :loading="loading"
-            @click="handleSearch"
-            data-test="search-button"
-          >
-            搜索
-          </el-button>
-        </template>
-      </el-input>
+        <el-option label="全部" value="" />
+        <el-option label="新闻" value="news" />
+        <el-option label="社交媒体" value="social" />
+      </el-select>
 
-      <!-- 搜索建议 -->
+      <el-date-picker
+        v-model="date"
+        type="date"
+        placeholder="选择日期"
+        class="date-picker"
+        @change="handleSearch"
+      />
+
+      <el-button
+        type="primary"
+        :loading="loading"
+        @click="handleSearch"
+      >
+        搜索
+      </el-button>
+    </div>
+
+    <div v-if="suggestions.length" class="search-suggestions">
       <div
-        v-if="showSuggestions && suggestions.length > 0"
-        class="suggestions"
-        data-test="suggestion-list"
+        v-for="suggestion in suggestions"
+        :key="suggestion"
+        class="suggestion-item"
+        @click="handleSelectSuggestion(suggestion)"
       >
-        <div
-          v-for="(suggestion, index) in suggestions"
-          :key="index"
-          class="suggestion-item"
-          @click="handleSuggestionClick(suggestion)"
-          @mousedown.prevent
-          data-test="suggestion-item"
-        >
-          {{ suggestion }}
-        </div>
-      </div>
-
-      <!-- 搜索历史 -->
-      <div v-if="!keyword && searchHistory.length > 0" class="search-history" data-test="search-history">
-        <div class="history-header" data-test="history-header">
-          <span>搜索历史</span>
-          <el-button
-            text
-            class="clear-history"
-            @click="handleClearHistory"
-            data-test="clear-history"
-          >
-            清空历史
-          </el-button>
-        </div>
-        <div class="history-list" data-test="history-list">
-          <div
-            v-for="(item, index) in searchHistory"
-            :key="index"
-            class="history-item"
-            @click="handleHistoryClick(item)"
-            data-test="history-item"
-          >
-            {{ item }}
-          </div>
-        </div>
-      </div>
-
-      <!-- 高级搜索选项 -->
-      <div class="advanced-search" data-test="advanced-search">
-        <el-select
-          v-model="searchParams.type"
-          placeholder="选择类型"
-          @change="handleTypeChange"
-          data-test="type-select"
-        >
-          <el-option label="全部" value="" data-test="type-option-all" />
-          <el-option label="新闻" value="news" data-test="type-option-news" />
-          <el-option label="文章" value="article" data-test="type-option-article" />
-        </el-select>
-
-        <el-date-picker
-          v-model="searchParams.date"
-          type="date"
-          placeholder="选择日期"
-          @change="handleSearch"
-          data-test="date-picker"
-        />
+        {{ suggestion }}
       </div>
     </div>
 
-    <!-- 搜索结果 -->
-    <div v-loading="loading" class="search-results" data-test="search-results">
-      <!-- 错误提示 -->
-      <div v-if="error" class="error-message" data-test="error-alert">
-        {{ error }}
-      </div>
-
-      <!-- 结果统计 -->
-      <div v-if="searchResults.length > 0" class="search-stats" data-test="search-stats">
-        找到 {{ searchStats.total }} 条结果 ({{ searchStats.time }}秒)
-      </div>
-
-      <!-- 结果列表 -->
-      <div v-if="searchResults.length > 0" class="result-list" data-test="search-results-list">
-        <div
-          v-for="item in searchResults"
-          :key="item.id"
-          class="search-result-item"
-          @click="handleResultClick(item.id)"
-          data-test="search-result-item"
+    <div v-if="searchHistory.length" class="search-history">
+      <div class="history-header">
+        <h3>搜索历史</h3>
+        <el-button
+          type="text"
+          class="clear-history"
+          @click="handleClearHistory"
         >
-          <h3 class="result-title" data-test="result-title">{{ item.title }}</h3>
-          <p class="result-content" data-test="result-content">{{ item.content }}</p>
-          <div class="result-meta" data-test="result-meta">
-            <span class="result-source" data-test="result-source">{{ item.source }}</span>
-            <span class="result-time" data-test="result-time">{{ item.publishTime }}</span>
-            <span class="relevance-score" data-test="result-score">相关度: {{ item.score }}</span>
-          </div>
+          清空历史
+        </el-button>
+      </div>
+      <div class="history-list">
+        <div
+          v-for="item in searchHistory"
+          :key="item"
+          class="history-item"
+          @click="handleSelectHistory(item)"
+        >
+          {{ item }}
+        </div>
+      </div>
+    </div>
+
+    <div v-if="loading" class="loading" loading="true">
+      <el-loading />
+    </div>
+
+    <div v-else-if="results.length" class="search-results">
+      <div class="search-stats">
+        共找到 {{ total }} 条结果
+      </div>
+
+      <div
+        v-for="item in results"
+        :key="item.id"
+        class="search-result-item"
+        @click="handleViewDetail(item.id)"
+      >
+        <h3>{{ item.title }}</h3>
+        <p>{{ item.content }}</p>
+        <div class="item-meta">
+          <span>{{ item.source }}</span>
+          <span>{{ item.publishTime }}</span>
+          <span class="relevance-score">相关度: {{ item.relevanceScore.toFixed(2) }}</span>
         </div>
       </div>
 
-      <!-- 分页 -->
       <el-pagination
-        v-if="searchResults.length > 0"
-        :current-page="searchParams.page"
-        :page-size="searchParams.pageSize"
+        v-model:current-page="currentPage"
+        v-model:page-size="pageSize"
         :total="total"
-        @current-change="handlePageChange"
-        class="pagination"
-        data-test="pagination"
+        :page-sizes="[10, 20, 50]"
+        layout="total, sizes, prev, pager, next"
+        @size-change="handleSizeChange"
+        @current-change="handleCurrentChange"
       />
+    </div>
+
+    <div v-else-if="!loading" class="no-results">
+      暂无搜索结果
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, onMounted } from 'vue'
+import { ElMessage } from 'element-plus'
 import { useSearchStore } from '@/stores/search'
-import { useRouter } from 'vue-router'
-import { debounce } from 'lodash-es'
+import type { SearchResult } from '@/types/search'
 
 const store = useSearchStore()
-const router = useRouter()
-
+const loading = ref(false)
+const error = ref<string | null>(null)
 const keyword = ref('')
-const showSuggestions = ref(false)
-const showAdvanced = ref(false)
+const type = ref('')
+const date = ref<string | null>(null)
+const results = ref<SearchResult[]>([])
+const total = ref(0)
+const currentPage = ref(1)
+const pageSize = ref(10)
+const suggestions = ref<string[]>([])
+const searchHistory = ref<string[]>([])
 
-const searchParams = ref({
-  keyword: '',
-  type: '',
-  date: null,
-  page: 1,
-  pageSize: 10
+const emit = defineEmits<{
+  (e: 'view-detail', id: string): void
+}>()
+
+onMounted(() => {
+  loadSearchHistory()
 })
 
-// 计算属性
-const suggestions = computed(() => store.suggestions)
-const searchResults = computed(() => store.searchResults)
-const loading = computed(() => store.loading)
-const error = computed(() => store.error)
-const total = computed(() => store.total)
-const searchHistory = computed(() => store.searchHistory)
-
-// 搜索结果统计
-const searchStats = computed(() => ({
-  total: store.total,
-  time: store.searchTime
-}))
-
-// 处理搜索
-const handleSearch = async () => {
-  if (!keyword.value.trim()) return
-  
-  searchParams.value.keyword = keyword.value
-  await store.search(searchParams.value)
-  showSuggestions.value = false
+const loadSearchHistory = () => {
+  const history = localStorage.getItem('searchHistory')
+  if (history) {
+    searchHistory.value = JSON.parse(history)
+  }
 }
 
-// 处理输入
-const handleInput = debounce(async (value: string) => {
-  if (value.trim()) {
-    await store.getSuggestions(value)
-    showSuggestions.value = true
-  } else {
-    showSuggestions.value = false
-  }
-}, 300)
+const saveSearchHistory = () => {
+  localStorage.setItem('searchHistory', JSON.stringify(searchHistory.value))
+}
 
-// 处理建议点击
-const handleSuggestionClick = (suggestion: string) => {
+const handleInput = async (value: string) => {
+  if (!value) {
+    suggestions.value = []
+    return
+  }
+
+  try {
+    suggestions.value = await store.getSuggestions(value)
+  } catch (err) {
+    console.error('获取搜索建议失败:', err)
+  }
+}
+
+const handleSearch = async () => {
+  try {
+    loading.value = true
+    error.value = null
+    suggestions.value = []
+
+    const response = await store.search({
+      keyword: keyword.value,
+      type: type.value || undefined,
+      date: date.value || undefined,
+      page: currentPage.value,
+      pageSize: pageSize.value
+    })
+
+    results.value = response.items
+    total.value = response.total
+
+    if (keyword.value) {
+      addToHistory(keyword.value)
+    }
+  } catch (err) {
+    error.value = '搜索失败'
+    console.error('搜索失败:', err)
+  } finally {
+    loading.value = false
+  }
+}
+
+const handleSelectSuggestion = (suggestion: string) => {
   keyword.value = suggestion
   handleSearch()
 }
 
-// 处理历史记录点击
-const handleHistoryClick = (item: string) => {
+const handleSelectHistory = (item: string) => {
   keyword.value = item
   handleSearch()
 }
 
-// 清空历史记录
 const handleClearHistory = () => {
+  searchHistory.value = []
+  saveSearchHistory()
   store.clearHistory()
 }
 
-// 处理类型变化
-const handleTypeChange = () => {
+const handleSizeChange = (val: number) => {
+  pageSize.value = val
   handleSearch()
 }
 
-// 处理分页
-const handlePageChange = (page: number) => {
-  searchParams.value.page = page
+const handleCurrentChange = (val: number) => {
+  currentPage.value = val
   handleSearch()
 }
 
-// 处理结果点击
-const handleResultClick = (id: number) => {
-  router.push(`/detail/${id}`)
+const handleViewDetail = (id: string) => {
+  emit('view-detail', id)
 }
 
-// 处理失焦
-const handleBlur = () => {
-  setTimeout(() => {
-    showSuggestions.value = false
-  }, 200)
+const addToHistory = (keyword: string) => {
+  if (!searchHistory.value.includes(keyword)) {
+    searchHistory.value.unshift(keyword)
+    if (searchHistory.value.length > 10) {
+      searchHistory.value.pop()
+    }
+    saveSearchHistory()
+  }
 }
 </script>
 
 <style scoped>
-.search-container {
+.search-page {
   padding: 20px;
 }
 
 .search-form {
-  max-width: 800px;
-  margin: 0 auto;
-  position: relative;
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
 }
 
-.suggestions {
-  position: absolute;
-  width: 100%;
-  background: white;
-  border: 1px solid #dcdfe6;
-  border-radius: 4px;
-  margin-top: 5px;
-  z-index: 1000;
-  box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
+.search-input {
+  flex: 1;
+}
+
+.error-message {
+  color: #f56c6c;
+  margin-bottom: 16px;
+}
+
+.search-suggestions {
+  margin-bottom: 20px;
 }
 
 .suggestion-item {
-  padding: 8px 12px;
+  padding: 8px 16px;
   cursor: pointer;
 }
 
@@ -262,84 +269,61 @@ const handleBlur = () => {
 }
 
 .search-history {
-  margin-top: 10px;
+  margin-bottom: 20px;
 }
 
 .history-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .history-item {
-  display: inline-block;
-  margin-right: 10px;
-  margin-bottom: 10px;
-  padding: 4px 8px;
-  background-color: #f5f7fa;
-  border-radius: 4px;
+  padding: 8px 16px;
   cursor: pointer;
 }
 
 .history-item:hover {
-  background-color: #e4e7ed;
-}
-
-.advanced-search {
-  margin-top: 10px;
-  display: flex;
-  gap: 10px;
+  background-color: #f5f7fa;
 }
 
 .search-results {
   margin-top: 20px;
 }
 
-.error-message {
-  color: #f56c6c;
-  padding: 10px;
-  border-radius: 4px;
-  background-color: #fef0f0;
-  margin-bottom: 10px;
-}
-
 .search-stats {
-  color: #909399;
-  margin-bottom: 10px;
+  margin-bottom: 16px;
+  color: #606266;
 }
 
 .search-result-item {
-  padding: 15px;
-  border-bottom: 1px solid #ebeef5;
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
   cursor: pointer;
-  transition: background-color 0.3s;
 }
 
 .search-result-item:hover {
   background-color: #f5f7fa;
 }
 
-.search-result-item h3 {
-  margin: 0 0 8px;
-  color: #303133;
-}
-
-.search-result-item p {
-  margin: 0 0 8px;
-  color: #606266;
-}
-
-.result-meta {
+.item-meta {
+  margin-top: 8px;
   color: #909399;
-  font-size: 0.9em;
-}
-
-.result-meta span {
-  margin-right: 15px;
+  font-size: 14px;
+  display: flex;
+  gap: 16px;
 }
 
 .relevance-score {
   color: #409eff;
+}
+
+.no-results {
+  text-align: center;
+  color: #909399;
+  margin-top: 40px;
 }
 </style>

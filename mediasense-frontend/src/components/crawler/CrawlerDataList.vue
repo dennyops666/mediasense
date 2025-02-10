@@ -70,32 +70,27 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import type { CrawlerData } from '@/types/crawler'
 import { useCrawlerStore } from '@/stores/crawler'
 
-const props = defineProps({
-  taskId: {
-    type: [String, Number],
-    required: true,
-    validator: (value) => {
-      return typeof value === 'string' || typeof value === 'number'
-    }
-  }
-})
+const props = defineProps<{
+  taskId: string
+}>()
 
 const store = useCrawlerStore()
-
 const loading = ref(false)
 const error = ref('')
-const searchKeyword = ref('')
+const data = ref<CrawlerData[]>([])
+const total = ref(0)
 const currentPage = ref(1)
 const pageSize = ref(10)
+const searchKeyword = ref('')
 const dialogVisible = ref(false)
-const currentData = ref(null)
-
-const total = computed(() => store.data.length)
+const currentData = ref<CrawlerData | null>(null)
 
 const filteredData = computed(() => {
-  let result = store.data
+  let result = data.value
   if (searchKeyword.value) {
     result = result.filter(item => 
       item.title.toLowerCase().includes(searchKeyword.value.toLowerCase()) ||
@@ -106,44 +101,40 @@ const filteredData = computed(() => {
   return result.slice(start, start + pageSize.value)
 })
 
-onMounted(async () => {
+const fetchData = async () => {
+  loading.value = true
+  error.value = ''
   try {
-    loading.value = true
-    error.value = ''
-    await store.fetchData({
+    const response = await store.fetchData({
       taskId: props.taskId,
       page: currentPage.value,
-      pageSize: pageSize.value
+      pageSize: pageSize.value,
+      keyword: searchKeyword.value
     })
+    data.value = response.items
+    total.value = response.total
   } catch (err) {
     error.value = '获取数据失败'
     console.error('获取数据失败:', err)
   } finally {
     loading.value = false
   }
-})
+}
 
 const handleSearch = () => {
   currentPage.value = 1
+  fetchData()
 }
 
-const handleSizeChange = async (val: number) => {
-  try {
-    loading.value = true
-    error.value = ''
-    pageSize.value = val
-    currentPage.value = 1
-    await store.fetchData({
-      taskId: props.taskId,
-      page: currentPage.value,
-      pageSize: pageSize.value
-    })
-  } catch (err) {
-    error.value = '获取数据失败'
-    console.error('获取数据失败:', err)
-  } finally {
-    loading.value = false
-  }
+const handlePageChange = (page: number) => {
+  currentPage.value = page
+  fetchData()
+}
+
+const handleSizeChange = (size: number) => {
+  pageSize.value = size
+  currentPage.value = 1
+  fetchData()
 }
 
 const handleCurrentChange = async (val: number) => {
@@ -151,11 +142,7 @@ const handleCurrentChange = async (val: number) => {
     loading.value = true
     error.value = ''
     currentPage.value = val
-    await store.fetchData({
-      taskId: props.taskId,
-      page: currentPage.value,
-      pageSize: pageSize.value
-    })
+    await fetchData()
   } catch (err) {
     error.value = '获取数据失败'
     console.error('获取数据失败:', err)
@@ -164,12 +151,12 @@ const handleCurrentChange = async (val: number) => {
   }
 }
 
-const handleView = (row: any) => {
+const handleView = (row: CrawlerData) => {
   currentData.value = row
   dialogVisible.value = true
 }
 
-const handleDelete = async (row: any) => {
+const handleDelete = async (row: CrawlerData) => {
   try {
     await ElMessageBox.confirm('确定要删除该数据吗？', '提示', {
       confirmButtonText: '确定',
@@ -180,6 +167,7 @@ const handleDelete = async (row: any) => {
     error.value = ''
     await store.deleteData(row.id)
     ElMessage.success('删除成功')
+    fetchData()
   } catch (err) {
     if (err !== 'cancel') {
       error.value = '删除数据失败'
@@ -192,12 +180,10 @@ const handleDelete = async (row: any) => {
 }
 
 const handleExport = async () => {
+  loading.value = true
+  error.value = ''
   try {
-    loading.value = true
-    error.value = ''
-    await store.exportData({
-      taskId: props.taskId
-    })
+    await store.exportData(props.taskId)
     ElMessage.success('导出成功')
   } catch (err) {
     error.value = '导出数据失败'
@@ -207,6 +193,9 @@ const handleExport = async () => {
     loading.value = false
   }
 }
+
+// 初始化
+fetchData()
 </script>
 
 <style scoped>

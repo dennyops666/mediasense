@@ -5,8 +5,12 @@ export interface CrawlerConfig {
   id: string
   name: string
   description?: string
+  type: 'web' | 'rss' | 'api'
   url: string
-  selector: {
+  method: 'GET' | 'POST'
+  headers?: Record<string, string>
+  body?: string
+  selectors: {
     title: string
     content: string
     date?: string
@@ -16,27 +20,13 @@ export interface CrawlerConfig {
   }
   schedule?: string
   enabled: boolean
+  timeout?: number
+  retries?: number
+  concurrency?: number
+  proxy?: string
+  userAgent?: string
   createdAt?: string
   updatedAt?: string
-  type: string
-  targetUrl: string
-  method: 'GET' | 'POST'
-  body?: string
-  headers: Array<{
-    key: string
-    value: string
-  }>
-  selectors: Array<{
-    field: string
-    selector: string
-    type: 'css' | 'xpath'
-    attr?: string
-  }>
-  timeout: number
-  retries: number
-  concurrency: number
-  proxy?: string
-  userAgent: string
 }
 
 /**
@@ -45,10 +35,10 @@ export interface CrawlerConfig {
 export interface CrawlerTask {
   id: string
   name: string
-  type: string
+  type: 'web' | 'rss' | 'api'
   schedule: string
   config: Record<string, any>
-  status: 'running' | 'stopped' | 'error'
+  status: TaskStatus
   lastRunTime: string
   count: number
   configId: string
@@ -65,10 +55,10 @@ export interface CrawlerTask {
 /**
  * 爬虫任务日志
  */
-export interface CrawlerTaskLog {
+export interface TaskLog {
   id: string
   taskId: string
-  level: 'info' | 'warning' | 'error'
+  level: LogLevel
   message: string
   timestamp: string
 }
@@ -81,13 +71,14 @@ export interface CrawlerStats {
   enabledConfigs: number
   totalTasks: number
   runningTasks: number
-  completedTasks: number
-  failedTasks: number
+  stoppedTasks: number
+  errorTasks: number
   totalItems: number
   successRate: number
 }
 
 export type TaskStatus = 'running' | 'stopped' | 'error'
+export type LogLevel = 'info' | 'warning' | 'error'
 
 export interface CrawlerData {
   id: string
@@ -96,10 +87,12 @@ export interface CrawlerData {
   content: string
   url: string
   source: string
-  category: string
-  publishTime: string
+  category?: string
+  tags?: string[]
+  author?: string
+  publishTime?: string
   crawlTime: string
-  rawData: Record<string, any>
+  rawData?: Record<string, any>
 }
 
 export interface TaskQueryParams {
@@ -107,20 +100,34 @@ export interface TaskQueryParams {
   pageSize?: number
   keyword?: string
   status?: TaskStatus
+  type?: string
+  startTime?: string
+  endTime?: string
 }
 
 export interface DataQueryParams {
   taskId?: string
+  keyword?: string
+  category?: string
   startTime?: string
   endTime?: string
-  keyword?: string
   page?: number
   pageSize?: number
 }
 
 export interface PaginatedResponse<T> {
-  data: T[]
+  items: T[]
   total: number
   page: number
   pageSize: number
+}
+
+export interface TaskLogQueryParams {
+  taskId: string
+  level?: LogLevel
+  keyword?: string
+  startTime?: string
+  endTime?: string
+  page?: number
+  pageSize?: number
 } 

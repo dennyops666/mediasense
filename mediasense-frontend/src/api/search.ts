@@ -3,20 +3,40 @@ import type { SearchParams, SearchResponse } from '@/types/search'
 
 /**
  * 搜索新闻
+ * @param params 搜索参数
+ * @returns 搜索结果
  */
 export const searchNews = async (params: SearchParams): Promise<SearchResponse> => {
-  const response = await request.get('/search', { params })
-  return response.data
+  const response = await request.get('/api/search', {
+    params: {
+      ...params,
+      type: params.type || undefined,
+      date: params.date || undefined
+    }
+  })
+  return {
+    items: response.data.items.map((item: any) => ({
+      id: String(item.id),
+      title: item.title,
+      content: item.content,
+      source: item.source,
+      publishTime: item.publishTime,
+      relevanceScore: Number(item.relevanceScore || item.score || 0)
+    })),
+    total: response.data.total
+  }
 }
 
 /**
  * 获取搜索建议
+ * @param keyword 搜索关键词
+ * @returns 搜索建议列表
  */
 export const fetchSearchSuggestions = async (keyword: string): Promise<string[]> => {
-  const response = await request.get('/search/suggestions', {
+  const response = await request.get('/api/search/suggestions', {
     params: { keyword }
   })
-  return response.data
+  return Array.isArray(response.data) ? response.data : []
 }
 
 /**

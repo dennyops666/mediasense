@@ -189,7 +189,7 @@ describe('新闻 API', () => {
       vi.mocked(request.delete).mockResolvedValueOnce(mockResponse)
 
       const result = await newsApi.deleteNews(newsId)
-      expect(result).toEqual(mockResponse.data)
+      expect(result).toBeUndefined()
       expect(request.delete).toHaveBeenCalledWith(`/news/${newsId}`)
     })
 

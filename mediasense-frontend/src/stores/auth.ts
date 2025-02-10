@@ -5,7 +5,7 @@ import * as authApi from '@/api/auth'
 import { ElMessage } from 'element-plus'
 
 export const useAuthStore = defineStore('auth', () => {
-  const token = ref<string | null>(null)
+  const token = ref('')
   const user = ref<User | null>(null)
   const loading = ref(false)
 
@@ -23,7 +23,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const clearToken = () => {
-    token.value = null
+    token.value = ''
     localStorage.removeItem('token')
   }
 
@@ -47,7 +47,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  const register = async (username: string, password: string, email: string) => {
+  const register = async (username: string, password: string, email: string): Promise<User> => {
     try {
       loading.value = true
       const result = await authApi.register({

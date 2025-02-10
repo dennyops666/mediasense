@@ -101,7 +101,7 @@ describe('爬虫 API', () => {
       vi.mocked(request.delete).mockResolvedValueOnce(mockResponse)
 
       const result = await crawlerApi.deleteCrawlerConfig(configId)
-      expect(result).toEqual(mockResponse.data)
+      expect(result).toBeUndefined()
       expect(request.delete).toHaveBeenCalledWith(`/crawler/configs/${configId}`)
     })
   })
@@ -229,7 +229,7 @@ describe('爬虫 API', () => {
       vi.mocked(request.delete).mockResolvedValueOnce(mockResponse)
 
       const result = await crawlerApi.deleteData(dataId)
-      expect(result).toEqual(mockResponse.data)
+      expect(result).toBeUndefined()
       expect(request.delete).toHaveBeenCalledWith(`/crawler/data/${dataId}`)
     })
 

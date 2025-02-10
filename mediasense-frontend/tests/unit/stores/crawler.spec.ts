@@ -1,11 +1,11 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
-import { useCrawlerStore } from '../../../src/stores/crawler'
-import * as crawlerApi from '../../../src/api/crawler'
+import { useCrawlerStore } from '@/stores/crawler'
+import * as crawlerApi from '@/api/crawler'
 import { ElMessage } from 'element-plus'
-import type { CrawlerConfig, CrawlerTask, CrawlerData } from '../../../src/types/crawler'
+import type { CrawlerConfig, CrawlerTask, CrawlerData } from '@/types/crawler'
 
-vi.mock('../../../src/api/crawler')
+vi.mock('@/api/crawler')
 vi.mock('element-plus', () => ({
   ElMessage: {
     success: vi.fn(),

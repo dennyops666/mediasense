@@ -29,15 +29,20 @@ const createInputMock = (name: string) => defineComponent({
   props: {
     modelValue: [String, Number],
     placeholder: String,
-    type: String,
-    disabled: Boolean
+    'data-test': String
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'input'],
   render() {
     return h('input', {
-      class: name,
+      class: 'el-input',
       value: this.modelValue,
-      onInput: (e: Event) => this.$emit('update:modelValue', (e.target as HTMLInputElement).value)
+      placeholder: this.placeholder,
+      'data-test': this['data-test'],
+      onInput: (e: Event) => {
+        const target = e.target as HTMLInputElement
+        this.$emit('update:modelValue', target.value)
+        this.$emit('input', target.value)
+      }
     })
   }
 })
@@ -47,11 +52,18 @@ const createButtonMock = (name: string) => defineComponent({
   name,
   props: {
     type: String,
+    size: String,
     disabled: Boolean,
-    loading: Boolean
+    'data-test': String
   },
+  emits: ['click'],
   render() {
-    return h('button', { class: name }, this.$slots.default?.())
+    return h('button', {
+      class: ['el-button', `el-button--${this.type}`],
+      disabled: this.disabled,
+      'data-test': this['data-test'],
+      onClick: (e: Event) => this.$emit('click', e)
+    }, this.$slots.default?.())
   }
 })
 
@@ -59,12 +71,19 @@ const createButtonMock = (name: string) => defineComponent({
 const createTableMock = (name: string) => defineComponent({
   name,
   props: {
-    data: Array,
-    border: Boolean,
-    stripe: Boolean
+    data: {
+      type: Array,
+      default: () => []
+    },
+    loading: Boolean
   },
   render() {
-    return h('table', { class: name }, this.$slots.default?.())
+    return h('div', { class: 'el-table' }, [
+      this.$slots.default?.({
+        row: {},
+        $index: 0
+      })
+    ])
   }
 })
 
@@ -252,18 +271,21 @@ const createDatePickerMock = (name: string) => defineComponent({
 const createSelectMock = (name: string) => defineComponent({
   name,
   props: {
-    modelValue: [String, Number, Boolean, Array],
-    multiple: Boolean,
-    disabled: Boolean,
-    clearable: Boolean,
-    placeholder: String
+    modelValue: [String, Number, Array],
+    placeholder: String,
+    'data-test': String
   },
-  emits: ['update:modelValue'],
+  emits: ['update:modelValue', 'change'],
   render() {
     return h('select', {
-      class: name,
+      class: 'el-select',
       value: this.modelValue,
-      onChange: (e: Event) => this.$emit('update:modelValue', (e.target as HTMLSelectElement).value)
+      'data-test': this['data-test'],
+      onChange: (e: Event) => {
+        const target = e.target as HTMLSelectElement
+        this.$emit('update:modelValue', target.value)
+        this.$emit('change', target.value)
+      }
     }, this.$slots.default?.())
   }
 })
@@ -334,13 +356,32 @@ const createSkeletonMock = (name: string) => defineComponent({
   }
 })
 
+// 创建表格列组件 mock
+const createTableColumnMock = (name: string) => defineComponent({
+  name,
+  props: {
+    prop: String,
+    label: String,
+    width: [String, Number],
+    type: String
+  },
+  render() {
+    return h('div', { class: 'el-table-column' }, [
+      this.$slots.default?.({
+        row: {},
+        $index: 0
+      })
+    ])
+  }
+})
+
 // 导出所有组件
 export const ElButton = createButtonMock('el-button')
 export const ElInput = createInputMock('el-input')
 export const ElForm = createFormMock('el-form')
 export const ElFormItem = createBaseMock('el-form-item')
 export const ElTable = createTableMock('el-table')
-export const ElTableColumn = createBaseMock('el-table-column')
+export const ElTableColumn = createTableColumnMock('el-table-column')
 export const ElPagination = createPaginationMock('el-pagination')
 export const ElDialog = createDialogMock('el-dialog')
 export const ElTabs = createTabsMock('el-tabs')

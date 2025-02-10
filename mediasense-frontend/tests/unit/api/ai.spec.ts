@@ -31,7 +31,7 @@ describe('AI API', () => {
       const result = await aiApi.analyzeSentiment(text)
       
       expect(request.post).toHaveBeenCalledWith('/ai/sentiment', { text })
-      expect(result).toEqual(mockResponse.data)
+      expect(result.data).toEqual(mockResponse.data)
     })
   })
 
@@ -53,7 +53,7 @@ describe('AI API', () => {
       const result = await aiApi.generateSummary(text, maxLength)
       
       expect(request.post).toHaveBeenCalledWith('/ai/summary', { text, maxLength })
-      expect(result).toEqual(mockResponse.data)
+      expect(result.data).toEqual(mockResponse.data)
     })
   })
 
@@ -78,7 +78,7 @@ describe('AI API', () => {
       const result = await aiApi.analyzeTopics(text)
       
       expect(request.post).toHaveBeenCalledWith('/ai/topics', { text })
-      expect(result).toEqual(mockResponse.data)
+      expect(result.data).toEqual(mockResponse.data)
     })
   })
 
@@ -111,7 +111,7 @@ describe('AI API', () => {
       const result = await aiApi.analyzeTrends(keyword, timeRange)
       
       expect(request.post).toHaveBeenCalledWith('/ai/trends', { keyword, timeRange })
-      expect(result).toEqual(mockResponse.data)
+      expect(result.data).toEqual(mockResponse.data)
     })
   })
 
@@ -138,7 +138,7 @@ describe('AI API', () => {
       const result = await aiApi.batchAnalyze(texts)
       
       expect(request.post).toHaveBeenCalledWith('/ai/batch-analyze', { texts })
-      expect(result).toEqual(mockResponse.data)
+      expect(result.data).toEqual(mockResponse.data)
     })
   })
 }) 
